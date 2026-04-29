@@ -195,7 +195,7 @@ public final class ModApprovalsStore {
             Map<SteamID64, String> knownNames = KnownAuthors.loadSteamIdToDisplayName();
             if (knownNames != null) {
                 for (AuthorEntry ae : data.authors) {
-                    if (ae.id != null && (ae.name == null || ae.name.isEmpty())) {
+                    if (ae.id != null && (Utils.isBlank(ae.name))) {
                         String resolved = knownNames.get(ae.id);
                         if (!Utils.isBlank(resolved)) {
                             ae.name = resolved;

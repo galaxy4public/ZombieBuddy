@@ -319,7 +319,7 @@ final class ImguiApprovalDialog {
 
     private static String authorText(JarBatchApprovalProtocol.Entry e) {
         if ("yes".equals(e.zbsValid) && e.zbsSteamId != null) {
-            return e.zbsNotice != null && !e.zbsNotice.isEmpty() ? e.zbsNotice : e.zbsSteamId.toString();
+            return !Utils.isBlank(e.zbsNotice) ? e.zbsNotice : e.zbsSteamId.toString();
         }
         if ("no".equals(e.zbsValid)) {
             return "No";
@@ -331,7 +331,7 @@ final class ImguiApprovalDialog {
     }
 
     private static String updatedText(JarBatchApprovalProtocol.Entry e) {
-        return e.modifiedHuman != null && !e.modifiedHuman.isEmpty() ? e.modifiedHuman : "-";
+        return !Utils.isBlank(e.modifiedHuman) ? e.modifiedHuman : "-";
     }
 
     private static float steamBanColumnContentWidth() {
@@ -373,7 +373,7 @@ final class ImguiApprovalDialog {
 
         ImGui.tableSetColumnIndex(0);
         drawMod(e);
-        // if (e.jarAbsolutePath != null && !e.jarAbsolutePath.isEmpty()) {
+        // if (!Utils.isBlank(e.jarAbsolutePath)) {
         //     ImGui.textWrapped(e.jarAbsolutePath);
         // }
 
@@ -424,7 +424,7 @@ final class ImguiApprovalDialog {
         }
         if ("no".equals(e.zbsValid)) {
             cellCenteredTextColored(1.0f, 0.25f, 0.25f, 1.0f, "Invalid signature");
-            if (e.zbsNotice != null && !e.zbsNotice.isEmpty()) {
+            if (!Utils.isBlank(e.zbsNotice)) {
                 showTooltipIfHovered(e.zbsNotice); // should be called after text draw
             }
             return;
@@ -437,7 +437,7 @@ final class ImguiApprovalDialog {
     }
 
     private void drawSteamBan(JarBatchApprovalProtocol.Entry e) {
-        String status = e.steamBanStatus == null || e.steamBanStatus.isEmpty() ? "unknown" : e.steamBanStatus;
+        String status = Utils.isBlank(e.steamBanStatus) ? "unknown" : e.steamBanStatus;
         if ("unknown".equals(status)) {
             cellCenteredTextColored(STEAM_BAN_UNKNOWN, "Unknown");
         } else if ("yes".equals(status)) {
@@ -445,7 +445,7 @@ final class ImguiApprovalDialog {
         } else {
             cellCenteredTextColored(STEAM_BAN_NO, "No");
         }
-        if (e.steamBanReason != null && !e.steamBanReason.isEmpty()) {
+        if (!Utils.isBlank(e.steamBanReason)) {
             showTooltipIfHovered(e.steamBanReason);
         }
     }
@@ -690,10 +690,10 @@ final class ImguiApprovalDialog {
 
     private static String modTooltip(JarBatchApprovalProtocol.Entry e) {
         StringBuilder sb = new StringBuilder();
-        if (e.modId != null && !e.modId.isEmpty()) {
+        if (!Utils.isBlank(e.modId)) {
             sb.append("id:  ").append(e.modId);
         }
-        if (e.jarAbsolutePath != null && !e.jarAbsolutePath.isEmpty()) {
+        if (!Utils.isBlank(e.jarAbsolutePath)) {
             if (!sb.isEmpty()) {
                 sb.append('\n');
             }

@@ -1,9 +1,6 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
-import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
-import me.zed_0xff.zombie_buddy.JarDecisionTable;
-import me.zed_0xff.zombie_buddy.Loader;
-import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.*;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -36,8 +33,8 @@ public final class ConsoleModApprovalFrontend implements ModApprovalFrontend {
             System.out.println("JAR:       " + e.jarAbsolutePath);
             System.out.println("SHA-256:   " + e.sha256);
             System.out.println("Updated:   " + e.modifiedHuman);
-            System.out.println("ZBS valid: " + (e.zbsValid != null && !e.zbsValid.isEmpty() ? e.zbsValid : "(unknown)"));
-            if (e.zbsNotice != null && !e.zbsNotice.isEmpty()) {
+            System.out.println("ZBS valid: " + (!Utils.isBlank(e.zbsValid) ? e.zbsValid : "(unknown)"));
+            if (!Utils.isBlank(e.zbsNotice)) {
                 System.out.println("ZBS note:  " + e.zbsNotice);
             }
             boolean persist;

@@ -252,23 +252,23 @@
 //     }
 // 
 //     private static String label(JarBatchApprovalProtocol.Entry e) {
-//         if (e.modDisplayName != null && !e.modDisplayName.isEmpty()) {
+//         if (!Utils.isBlank(e.modDisplayName)) {
 //             return e.modDisplayName + " (" + e.modKey + ")";
 //         }
 //         return e.modKey;
 //     }
 // 
 //     private static String zbsLine(JarBatchApprovalProtocol.Entry e) {
-//         String status = e.zbsValid == null || e.zbsValid.isEmpty() ? "unknown" : e.zbsValid;
-//         if (e.zbsNotice != null && !e.zbsNotice.isEmpty()) {
+//         String status = Utils.isBlank(e.zbsValid) ? "unknown" : e.zbsValid;
+//         if (!Utils.isBlank(e.zbsNotice)) {
 //             return status + " - " + e.zbsNotice;
 //         }
 //         return status;
 //     }
 // 
 //     private static String steamBanLine(JarBatchApprovalProtocol.Entry e) {
-//         String status = e.steamBanStatus == null || e.steamBanStatus.isEmpty() ? "unknown" : e.steamBanStatus;
-//         if (e.steamBanReason != null && !e.steamBanReason.isEmpty()) {
+//         String status = Utils.isBlank(e.steamBanStatus) ? "unknown" : e.steamBanStatus;
+//         if (!Utils.isBlank(e.steamBanReason)) {
 //             return status + " - " + e.steamBanReason;
 //         }
 //         return status;

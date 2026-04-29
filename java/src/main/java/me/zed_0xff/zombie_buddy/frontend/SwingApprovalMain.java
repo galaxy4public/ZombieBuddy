@@ -115,7 +115,7 @@ public final class SwingApprovalMain {
         if (d != null && !d.trim().isEmpty()) {
             return d;
         }
-        return e.modId != null && !e.modId.isEmpty() ? e.modId : e.modKey;
+        return !Utils.isBlank(e.modId) ? e.modId : e.modKey;
     }
 
     private static void showDialog(
@@ -266,7 +266,7 @@ public final class SwingApprovalMain {
                 applyRowBackground(linkLab, rowBg);
                 authorCell.add(linkLab);
             } else if (zbsNo) {
-                String fullNotice = e.zbsNotice != null && !e.zbsNotice.isEmpty()
+                String fullNotice = !Utils.isBlank(e.zbsNotice)
                     ? e.zbsNotice
                     : "Invalid signature — JAR may have been tampered with.";
                 int nl = fullNotice.indexOf('\n');
@@ -296,7 +296,7 @@ public final class SwingApprovalMain {
             c.gridx = COL_UPDATED;
             c.weightx = W_UPDATED;
             c.fill = GridBagConstraints.BOTH;
-            JLabel dateLab = new JLabel(e.modifiedHuman != null && !e.modifiedHuman.isEmpty() ? e.modifiedHuman : "—");
+            JLabel dateLab = new JLabel(!Utils.isBlank(e.modifiedHuman) ? e.modifiedHuman : "—");
             dateLab.setHorizontalAlignment(SwingConstants.CENTER);
             applyRowBackground(dateLab, rowBg);
             grid.add(dateLab, c);
@@ -312,7 +312,7 @@ public final class SwingApprovalMain {
                 banStatusLab.setForeground(STEAM_BAN_NO);
             }
             applyRowBackground(banStatusLab, rowBg);
-            if (e.steamBanReason != null && !e.steamBanReason.isEmpty()) {
+            if (!Utils.isBlank(e.steamBanReason)) {
                 banStatusLab.setToolTipText(escapeHtml(e.steamBanReason));
             }
             grid.add(banStatusLab, c);

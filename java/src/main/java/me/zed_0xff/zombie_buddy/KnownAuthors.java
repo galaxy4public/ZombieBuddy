@@ -68,7 +68,7 @@ public final class KnownAuthors {
         Map<SteamID64, String> out = new LinkedHashMap<>();
         for (Map.Entry<SteamID64, AuthorEntry> entry : loadAuthors().entrySet()) {
             AuthorEntry author = entry.getValue();
-            if (author != null && author.name != null && !author.name.isEmpty()) {
+            if (author != null && !Utils.isBlank(author.name)) {
                 out.put(entry.getKey(), author.name);
             }
         }

@@ -248,7 +248,7 @@ public class Loader {
         Map<SteamID64, AuthorEntry> authors,
         ZBSVerifier.Verification zbs
     ) {
-        if (authors == null || zbs == null || zbs.sid == null || zbs.profileKeys == null || zbs.profileKeys.isEmpty()) {
+        if (authors == null || zbs == null || zbs.sid == null || Utils.isBlank(zbs.profileKeys)) {
             return;
         }
         authors.compute(zbs.sid, (k, existing) -> {
@@ -279,7 +279,7 @@ public class Loader {
             authors.compute(sid, (k, existing) -> {
                 boolean trust = existing != null && existing.trust;
                 String name = existing != null ? existing.name : null;
-                if ((Utils.isBlank(name)) && known.name != null && !known.name.isEmpty()) {
+                if (Utils.isBlank(name) && !Utils.isBlank(known.name)) {
                     name = known.name;
                 }
                 Set<String> keys = new LinkedHashSet<>();
@@ -380,11 +380,11 @@ public class Loader {
             return "";
         }
         AuthorEntry stored = g_authors.get(sid);
-        if (stored != null && stored.name != null && !stored.name.isEmpty()) {
+        if (stored != null && !Utils.isBlank(stored.name)) {
             return stored.name;
         }
         KnownAuthors.AuthorEntry known = knownAuthors != null ? knownAuthors.get(sid) : null;
-        return known != null && known.name != null && !known.name.isEmpty() ? known.name : sid.toString();
+        return known != null && !Utils.isBlank(known.name) ? known.name : sid.toString();
     }
 
     public static void loadJavaMods(ArrayList<String> mods) {
@@ -584,7 +584,7 @@ public class Loader {
             if (!shouldSkip && ctx.steamBanned) {
                 shouldSkip = true;
                 skipReason = " (Steam Workshop mod is banned"
-                    + (ctx.banInfo.reason != null && !ctx.banInfo.reason.isEmpty() ? ": " + ctx.banInfo.reason : "")
+                    + (!Utils.isBlank(ctx.banInfo.reason) ? ": " + ctx.banInfo.reason : "")
                     + ", modId=" + ctx.modId + ")";
             }
 

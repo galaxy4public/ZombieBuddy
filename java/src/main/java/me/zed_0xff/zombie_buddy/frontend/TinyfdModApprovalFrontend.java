@@ -1,18 +1,11 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
-import me.zed_0xff.zombie_buddy.Accessor;
-import me.zed_0xff.zombie_buddy.JarApprovalOutcome;
-import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
-import me.zed_0xff.zombie_buddy.JarDecisionTable;
-import me.zed_0xff.zombie_buddy.Loader;
-import me.zed_0xff.zombie_buddy.Logger;
-import me.zed_0xff.zombie_buddy.ModApprovalsStore;
+import me.zed_0xff.zombie_buddy.*;
 
 import zombie.core.Core;
 import zombie.core.GameVersion;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -38,7 +31,7 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
     }
 
     private static JarApprovalOutcome promptForEntry(JarBatchApprovalProtocol.Entry e) {
-        File jarFile = e.jarAbsolutePath != null && !e.jarAbsolutePath.isEmpty()
+        File jarFile = !Utils.isBlank(e.jarAbsolutePath)
             ? new File(e.jarAbsolutePath)
             : null;
         String modKey = e.modKey;
@@ -47,7 +40,7 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
         Loader.doLoadingWaitModApproval();
         try {
             if ("no".equals(e.zbsValid)) {
-                String note = e.zbsNotice != null && !e.zbsNotice.isEmpty()
+                String note = !Utils.isBlank(e.zbsNotice)
                     ? e.zbsNotice
                     : "Invalid ZBS — load will be denied.";
                 Boolean remember = tinyfdYesNo(
@@ -71,7 +64,7 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
                     .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                 : "<unknown>";
             String zbsLine = "";
-            if (e.zbsValid != null && !e.zbsValid.isEmpty()) {
+            if (!Utils.isBlank(e.zbsValid)) {
                 String sid = e.zbsSteamId != null ? e.zbsSteamId.toString() : "";
                 zbsLine = "ZBS: " + e.zbsValid
                     + (!sid.isEmpty() ? " (Steam: " + sid + ")" : "")

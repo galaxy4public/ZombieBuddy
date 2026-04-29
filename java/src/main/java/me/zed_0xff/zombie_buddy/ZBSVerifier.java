@@ -142,7 +142,7 @@ public final class ZBSVerifier {
             return Collections.emptyList();
         }
         KnownAuthors.AuthorEntry author = knownAuthors.get(sid);
-        if (author == null || author.keys == null || author.keys.isEmpty()) {
+        if (author == null || Utils.isBlank(author.keys)) {
             return Collections.emptyList();
         }
         LinkedHashSet<String> keys = new LinkedHashSet<>();
