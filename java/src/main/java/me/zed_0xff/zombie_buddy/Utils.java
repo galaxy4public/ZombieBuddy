@@ -35,7 +35,8 @@ public final class Utils {
     }
 
     public static boolean isHiRes() {
-        return Core.getInstance().getScreenWidth() > 1280;
+        var core = Core.getInstance();
+        return core != null && core.getScreenWidth() > 1280;
     }
 
     public static boolean isBlank(String str) {

@@ -176,14 +176,18 @@ public class Exposer {
 
         // Expose global functions
         for (Class<?> cls : g_classesWithGlobalLuaMethod) {
-            Object instance = newInstance(cls);
-            if (instance != null) {
-                try {
-                    Logger.info("Exposing global functions from class: " + cls.getName());
-                    exposer.exposeGlobalFunctions(instance);
-                } catch (Exception e) {
-                    Logger.error("exposeGlobalFunctions(" + cls.getName() + "): " + e.getMessage());
-                }
+            Object instance;
+            try {
+                instance = newInstanceForGlobalLuaMethods(cls);
+            } catch (ReflectiveOperationException e) {
+                Logger.error("Cannot expose global Lua functions from " + cls.getName() + ": " + e.getMessage());
+                continue;
+            }
+            try {
+                Logger.info("Exposing global functions from class: " + cls.getName());
+                exposer.exposeGlobalFunctions(instance);
+            } catch (Exception e) {
+                Logger.error("exposeGlobalFunctions(" + cls.getName() + "): " + e.getMessage());
             }
         }
 
@@ -234,15 +238,13 @@ public class Exposer {
         return dot >= 0 ? path.substring(dot + 1) : path;
     }
 
-    public static Object newInstance(Class<?> cls) {
-        try {
-            if (Modifier.isAbstract(cls.getModifiers()) || cls.isInterface()) {
-                return null;
-            }
-            return cls.getDeclaredConstructor().newInstance();
-        } catch (Throwable t) {
-            return null;
+    private static Object newInstanceForGlobalLuaMethods(Class<?> cls) throws ReflectiveOperationException {
+        if (Modifier.isAbstract(cls.getModifiers()) || cls.isInterface()) {
+            throw new ReflectiveOperationException("class must be concrete");
         }
+        var ctor = cls.getDeclaredConstructor();
+        ctor.setAccessible(true);
+        return ctor.newInstance();
     }
 
     public static void exposeAnnotatedClasses(String packageName) {

@@ -63,7 +63,6 @@ public class Loader {
         String v = value == null ? "" : value.trim().toLowerCase();
         if (!VALID_POLICIES.contains(v)) {
             Logger.warn("Invalid policy '" + value + "', keeping '" + g_jarPolicy + "'. Valid: " + VALID_POLICIES);
-            g_jarPolicyLocked = true;
             return;
         }
         g_jarPolicy = v;
