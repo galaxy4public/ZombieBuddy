@@ -45,7 +45,7 @@ public class Patch_watermark {
         var textMgr  = TextManager.instance;
         var textH    = textMgr.MeasureStringY(font, watermark);
         var iconTex  = loadIcon();
-        var iconSize = isHiRes() ? 128 : 64;
+        var iconSize = Utils.isHiRes() ? 128 : 64;
         var textX    = iconSize + 4;
         var textY    = 0;
 
@@ -106,10 +106,6 @@ public class Patch_watermark {
             icon = null;
         }
         return icon;
-    }
-
-    private static boolean isHiRes() {
-        return Core.getInstance().getScreenWidth() > 1280;
     }
 
     @Patch(className = "zombie.core.Core", methodName = "EndFrameUI")

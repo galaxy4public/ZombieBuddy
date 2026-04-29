@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import se.krka.kahlua.vm.KahluaTable;
+import zombie.core.Core;
 import zombie.Lua.LuaManager;
 
 public final class Utils {
@@ -30,6 +31,11 @@ public final class Utils {
     public static boolean isMac() {
         return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("mac");
     }
+
+    public static boolean isHiRes() {
+        return Core.getInstance().getScreenWidth() > 1280;
+    }
+
     /**
      * Compares two version strings.
      * Supports semantic versioning (e.g., "1.0.0", "1.2.3-beta").

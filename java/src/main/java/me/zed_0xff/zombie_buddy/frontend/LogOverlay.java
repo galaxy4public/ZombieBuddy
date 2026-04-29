@@ -2,6 +2,7 @@ package me.zed_0xff.zombie_buddy.frontend;
 
 import me.zed_0xff.zombie_buddy.Accessor;
 import me.zed_0xff.zombie_buddy.Exposer;
+import me.zed_0xff.zombie_buddy.Utils;
 
 import java.lang.reflect.Field;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -24,7 +25,6 @@ import zombie.ui.UIFont;
 public class LogOverlay {
     private static final int MARGIN_LEFT       = 10;
     private static final int MARGIN_BOTTOM     = 10;
-    private static final float TOP_RESERVED    = 0.2f;
     private static final float ALPHA_MAX       = 0.4f;
     private static final long FADE_START_MS    = 4000; // Start fading after (ms)
     private static final long FADE_DURATION_MS = 700; // Fade out over (ms)
@@ -167,7 +167,7 @@ public class LogOverlay {
         var font = textMgr.font.isEmpty() ? UIFont.Small : UIFont.CodeSmall;
         var lineHeight = (int) textMgr.MeasureStringY(font, "Ay") + 2;
         var scrH = Core.getInstance().getScreenHeight();
-        int topLimit = (int) (scrH * TOP_RESERVED);
+        int topLimit = Utils.isHiRes() ? 128 : 64;
         int y = scrH - MARGIN_BOTTOM;
         
         // Track pause state to freeze fade timing
