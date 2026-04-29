@@ -37,25 +37,30 @@ import zombie.network.DesktopBrowser;
 
 final class ImguiApprovalDialog {
     private static final String PRIOR_YES = "yes";
-    private static final int ROW_OK = ImColor.rgba(60, 110, 60, 80);
-    private static final int ROW_BAD = ImColor.rgba(130, 55, 55, 95);
-    private static final int STEAM_BAN_UNKNOWN = ImColor.rgb(184, 134, 11);
-    private static final int STEAM_BAN_NO = ImColor.rgb(0, 170, 70);
-    private static final int LINK = ImColor.rgb(80, 150, 255);
-    private static final int ALLOW_CHECK_MARK = ImColor.rgb(0, 255, 0);
-    private static final int DENY_CROSS_MARK  = ImColor.rgb(255, 0, 0);
-    private static final float DIALOG_W = 1024.0f;
-    private static final float DIALOG_H = 600.0f;
-    private static final float TABLE_ROW_MIN_HEIGHT = 32.0f;
-    private static final String COL_MOD = "Mod";
-    private static final String COL_AUTHOR = "Author";
-    private static final String COL_UPDATED = "Updated";
-    private static final String COL_STEAM_BAN = "Steam ban status";
-    private static final String COL_ALLOW = "Allow";
-    private static final String COL_TRUST_AUTHOR = "Trust author";
-    private static final String TRUST_AUTHOR_TOOLTIP =
-            "Signed mods by that author can be auto-allowed while the signature remains valid and the mod is not banned.";
+
+    private static final int ROW_OK                     = ImColor.rgba(60, 110, 60, 80);
+    private static final int ROW_BAD                    = ImColor.rgba(130, 55, 55, 95);
+    private static final int STEAM_BAN_UNKNOWN          = ImColor.rgb(184, 134, 11);
+    private static final int STEAM_BAN_NO               = ImColor.rgb(0, 170, 70);
+    private static final int LINK                       = ImColor.rgb(80, 150, 255);
+    private static final int ALLOW_CHECK_MARK           = ImColor.rgb(0, 255, 0);
+    private static final int DENY_CROSS_MARK            = ImColor.rgb(255, 0, 0);
+
+    private static final float BASE_FRAME_HEIGHT        = 19.0f; // vanilla UIFont.Small + 6
+    private static final float DIALOG_W                 = 1024.0f;
+    private static final float DIALOG_H                 = 600.0f;
+    private static final float TABLE_SCROLL_H           = 420.0f;
+    private static final float TABLE_ROW_MIN_HEIGHT     = 32.0f;
+
+    private static final String COL_MOD                 = "Mod";
+    private static final String COL_AUTHOR              = "Author";
+    private static final String COL_UPDATED             = "Updated";
+    private static final String COL_STEAM_BAN           = "Steam ban status";
+    private static final String COL_ALLOW               = "Allow";
+    private static final String COL_TRUST_AUTHOR        = "Trust author";
+    private static final String TRUST_AUTHOR_TOOLTIP    = "Signed mods by that author can be auto-allowed while the signature remains valid and the mod is not banned.";
     private static final String WATERMARK_ICON_RESOURCE = "zb_icon.png";
+
     private static IconTexture watermarkIcon;
     private static boolean watermarkIconLoadAttempted;
 
@@ -66,7 +71,7 @@ final class ImguiApprovalDialog {
     private final boolean[] forceDeny;
     private final String[] authorGroupKey;
     private final ImBoolean persist = new ImBoolean(false);
-    private final ImBoolean open = new ImBoolean(true);
+    private final ImBoolean open    = new ImBoolean(true);
     private final AtomicReference<List<JarBatchApprovalProtocol.OutLine>> result;
     private final boolean showTrustColumn;
     private static float tableRowStartY;
@@ -102,7 +107,7 @@ final class ImguiApprovalDialog {
 
     void draw() {
         ImGui.getIO().setConfigWindowsMoveFromTitleBarOnly(true);
-        ImGui.setNextWindowSize(DIALOG_W, DIALOG_H, ImGuiCond.Appearing);
+        ImGui.setNextWindowSize(dialogWidth(), dialogHeight(), ImGuiCond.Appearing);
         ImGui.setNextWindowPos(
                 ImGui.getIO().getDisplaySizeX() * 0.5f,
                 ImGui.getIO().getDisplaySizeY() * 0.5f,
@@ -120,7 +125,7 @@ final class ImguiApprovalDialog {
         centeredText("Review each Java mod before allowing it to load.");
         ImGui.separator();
 
-        if (ImGui.beginChild("##zb-imgui-approval-scroll", 0.0f, 420.0f, true)) {
+        if (ImGui.beginChild("##zb-imgui-approval-scroll", 0.0f, scaled(TABLE_SCROLL_H), true)) {
             int columns = showTrustColumn ? 6 : 5;
             int tableFlags = ImGuiTableFlags.Borders
                     | ImGuiTableFlags.RowBg
@@ -149,16 +154,16 @@ final class ImguiApprovalDialog {
         String cancelLabel = "Cancel";
         String okLabel = "OK";
 
-        float spacing = ImGui.getStyle().getItemSpacingX();
-        float paddingX = ImGui.getStyle().getFramePaddingX();
-        float checkboxW = ImGui.getFrameHeight();
-        float buttonH = ImGui.getFrameHeight() * 1.35f;
+        float spacing       = ImGui.getStyle().getItemSpacingX();
+        float paddingX      = ImGui.getStyle().getFramePaddingX();
+        float checkboxW     = ImGui.getFrameHeight();
+        float buttonH       = ImGui.getFrameHeight() * 1.35f;
         float persistLabelW = ImGui.calcTextSize(persistLabel).x;
-        float cancelW = ImGui.calcTextSize(cancelLabel).x + paddingX * 4.0f;
-        float okW = Math.max(80.0f, ImGui.calcTextSize(okLabel).x + paddingX * 4.0f);
-        float persistRowW = persistLabelW + spacing + checkboxW;
-        float buttonRowW = cancelW + spacing + okW;
-        float rightPad = ImGui.getWindowWidth() - ImGui.getWindowContentRegionMaxX();
+        float cancelW       = ImGui.calcTextSize(cancelLabel).x + paddingX * 4.0f;
+        float okW           = Math.max(80.0f, ImGui.calcTextSize(okLabel).x + paddingX * 4.0f);
+        float persistRowW   = persistLabelW + spacing + checkboxW;
+        float buttonRowW    = cancelW + spacing + okW;
+        float rightPad      = ImGui.getWindowWidth() - ImGui.getWindowContentRegionMaxX();
 
         ImGui.setCursorPosX(Math.max(ImGui.getCursorPosX(), ImGui.getWindowWidth() - rightPad - persistRowW));
         ImGui.text(persistLabel);
@@ -202,7 +207,7 @@ final class ImguiApprovalDialog {
     }
 
     private void drawHeaderRow() {
-        ImGui.tableNextRow(ImGuiTableRowFlags.Headers, TABLE_ROW_MIN_HEIGHT);
+        ImGui.tableNextRow(ImGuiTableRowFlags.Headers, scaled(TABLE_ROW_MIN_HEIGHT));
         tableRowStartY = ImGui.getCursorPosY();
         ImGui.tableSetColumnIndex(0); cellCenteredText(COL_MOD);
         ImGui.tableSetColumnIndex(1); cellCenteredText(COL_AUTHOR);
@@ -265,11 +270,23 @@ final class ImguiApprovalDialog {
     }
 
     private static void centerNextItemVertically(float itemH) {
-        ImGui.setCursorPosY(tableRowStartY + Math.max(0.0f, (TABLE_ROW_MIN_HEIGHT - itemH) * 0.5f));
+        ImGui.setCursorPosY(tableRowStartY + Math.max(0.0f, (scaled(TABLE_ROW_MIN_HEIGHT) - itemH) * 0.5f));
     }
 
     private static float contentColumnWidth(float contentW) {
         return contentW + ImGui.getStyle().getCellPaddingX() * 2.0f + ImGui.getStyle().getItemSpacingX();
+    }
+
+    private static float scaled(float value) {
+        return value * (ImGui.getFrameHeight() / BASE_FRAME_HEIGHT);
+    }
+
+    private static float dialogWidth() {
+        return Math.min(scaled(DIALOG_W), Math.max(320.0f, ImGui.getIO().getDisplaySizeX() - ImGui.getFrameHeight() * 2.0f));
+    }
+
+    private static float dialogHeight() {
+        return Math.min(scaled(DIALOG_H), Math.max(240.0f, ImGui.getIO().getDisplaySizeY() - ImGui.getFrameHeight() * 2.0f));
     }
 
     private void setupTableColumns() {
@@ -347,7 +364,7 @@ final class ImguiApprovalDialog {
         boolean steamBanYes = "yes".equals(e.steamBanStatus);
         int rowColor = steamBanYes || zbsNo ? ROW_BAD : (zbsYes ? ROW_OK : 0);
 
-        ImGui.tableNextRow(0, TABLE_ROW_MIN_HEIGHT);
+        ImGui.tableNextRow(0, scaled(TABLE_ROW_MIN_HEIGHT));
         tableRowStartY = ImGui.getCursorPosY();
         if (rowColor != 0) {
             ImGui.tableSetBgColor(ImGuiTableBgTarget.RowBg0, rowColor);

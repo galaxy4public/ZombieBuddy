@@ -1,11 +1,13 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
 import imgui.ImDrawData;
+import imgui.ImFontConfig;
 import imgui.ImGui;
 import imgui.ImGuiIO;
 import imgui.flag.ImGuiMouseCursor;
 import imgui.gl3.ImGuiImplGl3;
 import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
+import me.zed_0xff.zombie_buddy.Logger;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWScrollCallback;
 import org.lwjgl.glfw.GLFWWindowRefreshCallback;
@@ -18,6 +20,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+import zombie.ui.TextManager;
+import zombie.ui.UIFont;
+
 /**
  * Standalone ImGui approval dialog entry point.
  *
@@ -28,6 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ImguiApprovalMain {
     private static final int WIDTH = 1024;
     private static final int HEIGHT = 768;
+    private static final float FALLBACK_FONT_SIZE = 13.0f;
 
     private ImguiApprovalMain() {}
 
@@ -96,9 +102,11 @@ public final class ImguiApprovalMain {
             ImGuiIO io = ImGui.getIO();
             io.addConfigFlags(64);
             io.setIniFilename(null);
+            configureImguiStyle();
 
             gl3 = new ImGuiImplGl3();
             gl3.init(GLFW.glfwGetPlatform() == 393218 ? "#version 120" : null);
+            gl3.updateFontsTexture();
 
             AtomicReference<List<JarBatchApprovalProtocol.OutLine>> result = new AtomicReference<>();
             ImguiApprovalDialog dialog = new ImguiApprovalDialog(entries, result);
@@ -172,6 +180,35 @@ public final class ImguiApprovalMain {
             }
         }
         standaloneIo.updateCursor();
+    }
+
+    private static void configureImguiStyle() {
+        float fontSize = fontSize();
+
+        ImFontConfig fontConfig = new ImFontConfig();
+        fontConfig.setSizePixels(fontSize);
+        try {
+            ImGui.getIO().getFonts().addFontDefault(fontConfig);
+        } finally {
+            fontConfig.destroy();
+        }
+        ImGui.styleColorsDark();
+        ImGui.getStyle().setFramePadding(ImGui.getStyle().getFramePaddingX(), 3.0f);
+    }
+
+    private static float fontSize() {
+        try {
+            TextManager textManager = TextManager.instance;
+            if (textManager != null) {
+                int fontHeight = textManager.getFontHeight(UIFont.Small);
+                if (fontHeight > 0) {
+                    return fontHeight;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Standalone approval dialog can run before PZ's font manager is initialized.
+        }
+        return FALLBACK_FONT_SIZE;
     }
 
     private static final class StandaloneIo {

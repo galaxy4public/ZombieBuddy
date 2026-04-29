@@ -1,6 +1,7 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
 import imgui.ImDrawData;
+import imgui.ImFontConfig;
 import imgui.ImGui;
 import imgui.ImGuiIO;
 import imgui.flag.ImGuiMouseCursor;
@@ -14,6 +15,8 @@ import org.lwjgl.opengl.GL11;
 import org.lwjglx.opengl.Display;
 import zombie.GameWindow;
 import zombie.core.opengl.RenderThread;
+import zombie.ui.TextManager;
+import zombie.ui.UIFont;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -111,8 +114,10 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
             ImGui.createContext();
             ImGuiIO io = ImGui.getIO();
             io.addConfigFlags(64); // Keyboard navigation, same flag PZ enables for its own context.
+            configureImguiStyle(windowHandle);
             String glslVersion = GLFW.glfwGetPlatform() == 393218 ? "#version 120" : null;
             gl3.init(glslVersion);
+            gl3.updateFontsTexture();
         }
 
         void render(ImguiApprovalDialog dialog) {
@@ -161,6 +166,46 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
             for (int i = 0; i < 5; i++) {
                 io.setMouseDown(i, GLFW.glfwGetMouseButton(windowHandle, i) != 0);
             }
+        }
+
+        private static void configureImguiStyle(long windowHandle) {
+            float framebufferScale = framebufferScale(windowHandle);
+            float vanillaFontSize = TextManager.instance.getFontHeight(UIFont.Small);
+            float fontSize = vanillaFontSize / framebufferScale;
+            float scale = ImGui.getIO().getFontGlobalScale();
+            Logger.debug("ImGui scale=" + scale
+                    + ", framebufferScale=" + framebufferScale
+                    + ", vanillaFontSize=" + vanillaFontSize
+                    + ", imguiFontSize=" + fontSize);
+
+            ImFontConfig fontConfig = new ImFontConfig();
+            fontConfig.setSizePixels(fontSize);
+            try {
+                ImGui.getIO().getFonts().addFontDefault(fontConfig);
+            } finally {
+                fontConfig.destroy();
+            }
+            ImGui.styleColorsDark();
+            ImGui.getStyle().setFramePadding(
+                    ImGui.getStyle().getFramePaddingX(),
+                    3.0f / framebufferScale);
+        }
+
+        private static float framebufferScale(long windowHandle) {
+            int[] winWidth = new int[1];
+            int[] winHeight = new int[1];
+            int[] fbWidth = new int[1];
+            int[] fbHeight = new int[1];
+            GLFW.glfwGetWindowSize(windowHandle, winWidth, winHeight);
+            GLFW.glfwGetFramebufferSize(windowHandle, fbWidth, fbHeight);
+            if (winWidth[0] <= 0 || winHeight[0] <= 0) {
+                return 1.0f;
+            }
+            return Math.max(
+                    1.0f,
+                    Math.max(
+                            (float) fbWidth[0] / (float) winWidth[0],
+                            (float) fbHeight[0] / (float) winHeight[0]));
         }
 
         @Override
