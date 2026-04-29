@@ -14,7 +14,7 @@ import me.zed_0xff.zombie_buddy.Exposer;
  * Control plane for Lua event (triggerEvent) logging. By default logging is disabled.
  * Lua can enable/disable and filter by event name.
  */
-@Exposer.LuaClass
+@Exposer.LuaClass(name = "ZombieBuddy.EventLog")
 public class ZBEventLog {
     private static volatile boolean enabled = false;
     private static final Set<String> include = Collections.newSetFromMap(new ConcurrentHashMap<>());

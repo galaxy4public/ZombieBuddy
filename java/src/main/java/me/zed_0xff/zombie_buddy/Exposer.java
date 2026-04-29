@@ -74,7 +74,8 @@ public class Exposer {
     }
 
     public static void exposeClass(Class<?> cls) {
-        exposeClass(cls, null);
+        LuaClass ann = cls.getAnnotation(LuaClass.class);
+        exposeClass(cls, ann != null ? ann.name() : null);
     }
 
     public static void exposeClass(Class<?> cls, String name) {
@@ -95,17 +96,24 @@ public class Exposer {
         String name = g_exposed_classes.get(cls);
         String simpleName = cls.getSimpleName();
 
-        exposer.setExposed(cls);
-        exposer.exposeLikeJavaRecursively(cls, env);
-
-        if (name != null && !name.isEmpty()) {
-            Object classObj = env.rawget(simpleName);
-            if (classObj != null) {
-                setNestedValue(env, name, classObj);
-                Logger.info("Exposing class to Lua: " + name);
-            }
-        } else {
+        if (Utils.isBlank(name)) {
             Logger.info("Exposing class to Lua: " + simpleName);
+            exposer.setExposed(cls);
+            exposer.exposeLikeJavaRecursively(cls, env);
+        } else {
+            Logger.info("Exposing class to Lua: " + simpleName + " as " + name);
+            var staticBase = getOrCreateParentTable(env, name);
+            if (staticBase == null) {
+                Logger.error("Failed to create parent table for " + name);
+                return;
+            }
+            exposer.setExposed(cls);
+            exposer.exposeLikeJavaRecursively(cls, staticBase);
+            if (!name.endsWith("." + simpleName)) {
+                String newSimpleName = leafName(name);
+                staticBase.rawset(newSimpleName, staticBase.rawget(simpleName));
+                staticBase.rawset(simpleName, null);
+            }
         }
     }
 
@@ -148,9 +156,22 @@ public class Exposer {
             return;
         }
 
-        // Expose classes
-        for (Class<?> cls : g_exposed_classes.keySet()) {
-            exposeClassNow(cls);
+        // expose non-renamed classes first
+        for (var entry : g_exposed_classes.entrySet()) {
+            Class<?> cls = entry.getKey();
+            String name = entry.getValue();
+            if (Utils.isBlank(name)) {
+                exposeClassNow(cls);
+            }
+        }
+
+        // expose renamed classes second
+        for (var entry : g_exposed_classes.entrySet()) {
+            Class<?> cls = entry.getKey();
+            String name = entry.getValue();
+            if (!Utils.isBlank(name)) {
+                exposeClassNow(cls);
+            }
         }
 
         // Expose global functions
@@ -184,12 +205,8 @@ public class Exposer {
         }
     }
 
-    /**
-     * Sets a value in nested tables. Creates intermediate tables as needed.
-     * Example: setNestedValue(env, "ZB.API.Logger", obj) creates ZB.API.Logger = obj
-     */
-    private static void setNestedValue(KahluaTable root, String path, Object value) {
-        if (root == null || path == null || value == null) return;
+    private static KahluaTable getOrCreateParentTable(KahluaTable root, String path) {
+        if (root == null || path == null) return null;
 
         String[] parts = path.split("\\.");
         KahluaTable current = root;
@@ -204,11 +221,17 @@ public class Exposer {
                 current = (KahluaTable) next;
             } else {
                 Logger.error("Cannot create nested table at " + parts[i] + " - already exists as non-table");
-                return;
+                return null;
             }
         }
 
-        current.rawset(parts[parts.length - 1], value);
+        return current;
+    }
+
+    private static String leafName(String path) {
+        if (path == null) return "";
+        int dot = path.lastIndexOf('.');
+        return dot >= 0 ? path.substring(dot + 1) : path;
     }
 
     public static Object newInstance(Class<?> cls) {

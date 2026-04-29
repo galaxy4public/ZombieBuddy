@@ -54,6 +54,7 @@ public class ZombieBuddy {
      *   sha256    (string)  — JAR sha256 (may be absent if hashing failed)
      *   decision  (string)  — "yes" | "no" (absent if never decided)
      *   persisted (boolean) — true = from ~/.zombie_buddy file, false = session only
+     *   zbsValid  (string)  — "yes" | "no" | "unsigned" | "" when not checked
      */
     public static KahluaTable getJavaModStatus(String modId) {
         Loader.JavaModLoadState s = Loader.getJarLoadState(modId);
@@ -66,11 +67,17 @@ public class ZombieBuddy {
             tbl.rawset("decision", s.decision);
             tbl.rawset("persisted", s.persisted);
         }
+        tbl.rawset("zbsValid", s.zbsValid);
         return tbl;
     }
 
     public static ArrayList<String> getActiveJavaMods() {
         return Loader.getActiveJavaMods();
+    }
+
+    public static boolean isJavaModSigned(String modId) {
+        Loader.JavaModLoadState s = Loader.getJarLoadState(modId);
+        return s != null && "yes".equals(s.zbsValid);
     }
 
     public static String getClosureFilename(Object obj) {

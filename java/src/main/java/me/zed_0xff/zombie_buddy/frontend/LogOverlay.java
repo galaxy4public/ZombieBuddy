@@ -1,8 +1,6 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
-import me.zed_0xff.zombie_buddy.Accessor;
-import me.zed_0xff.zombie_buddy.Exposer;
-import me.zed_0xff.zombie_buddy.Utils;
+import me.zed_0xff.zombie_buddy.*;
 
 import java.lang.reflect.Field;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -44,6 +42,12 @@ public class LogOverlay {
     private static long pausedAt = 0;  // When game was paused (0 = not paused)
     private static boolean wasPaused = false;
     private static final HashSet<String> filters = new HashSet<>();
+
+    static {
+        if (Agent.isExperimental()) {
+            Exposer.exposeClass(LogOverlay.class);
+        }
+    }
 
     public static void enable() {
         enabled = true;

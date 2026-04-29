@@ -172,13 +172,15 @@ public class Loader {
         final String sha256;      // JAR sha256, null if no JAR
         final String decision;    // DECISION_YES / DECISION_NO / null
         final boolean persisted;  // true if decision came from the file (vs session map)
+        final String zbsValid;    // "yes", "no", "unsigned", or ""
 
-        JavaModLoadState(boolean loaded, String reason, String sha256, String decision, boolean persisted) {
+        JavaModLoadState(boolean loaded, String reason, String sha256, String decision, boolean persisted, String zbsValid) {
             this.loaded = loaded;
             this.reason = reason;
             this.sha256 = sha256;
             this.decision = decision;
             this.persisted = persisted;
+            this.zbsValid = zbsValid != null ? zbsValid : "";
         }
     }
 
@@ -563,6 +565,7 @@ public class Loader {
             ModCtx ctx = modContexts.get(i);
             boolean shouldSkip = false;
             String skipReason = "";
+            String zbsValid = "";
             
             // Skip ZombieBuddy itself - it's loaded as a Java agent, not through normal mod loading
             if (jModInfo.javaPkgName().equals(myPackageName)) {
@@ -589,6 +592,7 @@ public class Loader {
             if (!shouldSkip && zbsSignatureChecksEnabled() && ctx.jarFile != null && ctx.hash != null) {
                 ZBSCheck.Result zbsResult = ZBSCheck.check(ctx.jarFile, ctx.hash, 
                     ctx.workshopItemId, ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById, knownAuthorsBySteamId);
+                zbsValid = zbsResult.valid();
                 if (zbsResult.verification() != null) {
                     mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
                 }
@@ -630,7 +634,8 @@ public class Loader {
                     shouldSkip ? skipReason.trim() : "loaded",
                     ctx.hash,
                     decision,
-                    persisted
+                    persisted,
+                    zbsValid
                 ));
             }
         }

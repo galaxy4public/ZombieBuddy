@@ -36,6 +36,10 @@ public final class Utils {
         return Core.getInstance().getScreenWidth() > 1280;
     }
 
+    public static boolean isBlank(String str) {
+        return str == null || str.isEmpty();
+    }
+
     /**
      * Compares two version strings.
      * Supports semantic versioning (e.g., "1.0.0", "1.2.3-beta").
