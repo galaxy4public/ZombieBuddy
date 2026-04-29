@@ -585,7 +585,7 @@ public final class PatchEngine {
                                 
                                 // Build constructor matcher based on inferred signature
                                 net.bytebuddy.matcher.ElementMatcher.Junction<net.bytebuddy.description.method.MethodDescription> constructorMatcher;
-                                if (inferredConstructorSignature != null && !inferredConstructorSignature.isEmpty()) {
+                                if (!Utils.isBlank(inferredConstructorSignature)) {
                                     // Match constructor with specific signature
                                     constructorMatcher = net.bytebuddy.matcher.ElementMatchers.isConstructor()
                                         .and(net.bytebuddy.matcher.ElementMatchers.takesArguments(inferredConstructorSignature.toArray(new Class<?>[0])));

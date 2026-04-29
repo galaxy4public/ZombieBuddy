@@ -26,7 +26,7 @@ public class Agent {
         Logger.info("activating " + ZombieBuddy.getFullVersionString());
         Loader.g_instrumentation = inst;
 
-        if (agentArgs != null && !agentArgs.isEmpty()) {
+        if (!Utils.isBlank(agentArgs)) {
             String[] args = agentArgs.split(",");
             for (String arg : args) {
                 String[] kv = arg.split("=", 2);
@@ -38,7 +38,7 @@ public class Agent {
         }
 
         String propPrefix = arguments.get("prop_prefix");
-        if (propPrefix != null && !propPrefix.isEmpty()) {
+        if (!Utils.isBlank(propPrefix)) {
             final String propertyPrefix = propPrefix.endsWith(".") ? propPrefix : propPrefix + ".";
             // Snapshot property names to avoid ConcurrentModificationException; null values skipped.
             System.getProperties().stringPropertyNames().stream()
@@ -85,7 +85,7 @@ public class Agent {
 
         // Check ZB_VERBOSITY environment variable - it overrides command line value
         String envVerbosity = System.getenv("ZB_VERBOSITY");
-        if (envVerbosity != null && !envVerbosity.isEmpty()) {
+        if (!Utils.isBlank(envVerbosity)) {
             try {
                 Loader.g_verbosity = Integer.parseInt(envVerbosity);
                 Logger.info("set verbosity to " + Loader.g_verbosity + " from ZB_VERBOSITY environment variable");

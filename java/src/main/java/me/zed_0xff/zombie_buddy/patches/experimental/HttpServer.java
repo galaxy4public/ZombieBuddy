@@ -19,6 +19,7 @@ import zombie.Lua.LuaManager;
 
 import me.zed_0xff.zombie_buddy.Accessor;
 import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Utils;
 import me.zed_0xff.zombie_buddy.ZombieBuddy;
 import me.zed_0xff.zombie_buddy.patches.experimental.http.LuaHandler;
 import me.zed_0xff.zombie_buddy.patches.experimental.http.LogHandler;
@@ -150,7 +151,7 @@ public class HttpServer {
     }
 
     public HttpServer(String host, int port, boolean isRandomPort) {
-        this.host = host != null && !host.isEmpty() ? host : "127.0.0.1";
+        this.host = !Utils.isBlank(host) ? host : "127.0.0.1";
         this.port = port;
         this.wasRandomPort = isRandomPort;
     }
@@ -217,7 +218,7 @@ public class HttpServer {
     }
 
     public static int parseIntParam(String query, String name, int defaultValue) {
-        if (query == null || query.isEmpty()) {
+        if (Utils.isBlank(query)) {
             return defaultValue;
         }
         for (String param : query.split("&")) {
@@ -234,7 +235,7 @@ public class HttpServer {
     }
 
     public static String parseStringParam(String query, String name, String defaultValue) {
-        if (query == null || query.isEmpty()) {
+        if (Utils.isBlank(query)) {
             return defaultValue;
         }
         for (String param : query.split("&")) {
@@ -254,7 +255,7 @@ public class HttpServer {
     /** Parses a boolean query param: "true"/"1" => true, "false"/"0" => false, else default. */
     public static boolean parseBoolParam(String query, String name, boolean defaultValue) {
         String s = parseStringParam(query, name, defaultValue ? "true" : "false");
-        if (s == null || s.isEmpty()) return defaultValue;
+        if (Utils.isBlank(s)) return defaultValue;
         if ("true".equalsIgnoreCase(s) || "1".equals(s)) return true;
         if ("false".equalsIgnoreCase(s) || "0".equals(s)) return false;
         return defaultValue;

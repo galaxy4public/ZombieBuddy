@@ -6,6 +6,7 @@ import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
 import me.zed_0xff.zombie_buddy.KnownAuthors;
 import me.zed_0xff.zombie_buddy.Loader;
 import me.zed_0xff.zombie_buddy.SteamWorkshop;
+import me.zed_0xff.zombie_buddy.Utils;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -249,7 +250,7 @@ public final class SwingApprovalMain {
                 String resolved = steamIdToDisplayName != null
                     ? steamIdToDisplayName.get(e.zbsSteamId)
                     : null;
-                String linkText = resolved != null && !resolved.isEmpty() ? resolved : zbsSteamId;
+                String linkText = !Utils.isBlank(resolved) ? resolved : zbsSteamId;
                 JLabel linkLab = new JLabel(
                     "<html><a href=\"" + profileUrl + "\">" + escapeHtml(linkText) + "</a></html>");
                 linkLab.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -363,7 +364,7 @@ public final class SwingApprovalMain {
                 continue;
             }
             String key = authorGroupKey[idx];
-            if (key == null || key.isEmpty()) {
+            if (Utils.isBlank(key)) {
                 continue;
             }
             authorGroups.computeIfAbsent(key, k -> new ArrayList<>()).add(idx);
@@ -415,7 +416,7 @@ public final class SwingApprovalMain {
                 }
                 boolean selected = trustChecks[sourceIdx].isSelected();
                 String key = authorGroupKey[sourceIdx];
-                if (key == null || key.isEmpty()) {
+                if (Utils.isBlank(key)) {
                     setAllowStateForTrustRow(
                         sourceIdx,
                         selected,
@@ -428,7 +429,7 @@ public final class SwingApprovalMain {
                     return;
                 }
                 List<Integer> group = authorGroups.get(key);
-                if (group == null || group.isEmpty()) {
+                if (Utils.isBlank(group)) {
                     return;
                 }
                 syncingTrust[0] = true;

@@ -21,7 +21,7 @@ public class ZombieBuddy {
             Package pkg = ZombieBuddy.class.getPackage();
             if (pkg != null) {
                 String implVersion = pkg.getImplementationVersion();
-                if (implVersion != null && !implVersion.isEmpty()) {
+                if (!Utils.isBlank(implVersion)) {
                     version = implVersion;
                 }
             }
@@ -107,7 +107,7 @@ public class ZombieBuddy {
                 tbl.rawset("line", Double.valueOf(closure.prototype.lines[0]));
             }
             String path = closure.prototype.filename;
-            if (path != null && !path.isEmpty()) {
+            if (!Utils.isBlank(path)) {
                 long lastModified = new File(path).lastModified();
                 if (lastModified != 0L) {
                     tbl.rawset("fileLastModified", Double.valueOf(lastModified));

@@ -33,7 +33,7 @@ public final class Accessor {
      * @return the field value (including null), or {@code defaultValue} only if the field could not be read
      */
     public static <T> T tryGet(Object obj, String fieldName, T defaultValue) {
-        if (obj == null || fieldName == null || fieldName.isEmpty()) {
+        if (obj == null || Utils.isBlank(fieldName)) {
             return defaultValue;
         }
         Class<?> cls = obj instanceof Class ? (Class<?>) obj : obj.getClass();
@@ -78,7 +78,7 @@ public final class Accessor {
      * @return true if the field was set successfully, false if obj/fieldName is null, field not found, or set threw
      */
     public static <T> boolean trySet(Object obj, String fieldName, T value) {
-        if (obj == null || fieldName == null || fieldName.isEmpty()) {
+        if (obj == null || Utils.isBlank(fieldName)) {
             return false;
         }
         Class<?> cls = obj instanceof Class ? (Class<?>) obj : obj.getClass();
@@ -119,7 +119,7 @@ public final class Accessor {
             return null;
         }
         for (String className : classNames) {
-            if (className != null && !className.isEmpty()) {
+            if (!Utils.isBlank(className)) {
                 String normalized = className.replace('/', '.');
                 Class<?> cls = null;
                 try {
@@ -148,7 +148,7 @@ public final class Accessor {
             return null;
         }
         for (String fieldName : fieldNames) {
-            if (fieldName != null && !fieldName.isEmpty()) {
+            if (!Utils.isBlank(fieldName)) {
                 Field f = findFieldCached(cls, fieldName);
                 if (f != null) {
                     return f;
@@ -167,7 +167,7 @@ public final class Accessor {
      * @return the first found field, or null if the class cannot be loaded or no field exists
      */
     public static Field findField(String className, String... fieldNames) {
-        if (className == null || className.isEmpty() || fieldNames == null || fieldNames.length == 0) {
+        if (Utils.isBlank(className) || fieldNames == null || fieldNames.length == 0) {
             return null;
         }
         try {
@@ -203,7 +203,7 @@ public final class Accessor {
      * @return list of matching methods (possibly empty); never null
      */
     public static List<Method> findMethodsByName(Class<?> cls, String methodName) {
-        if (cls == null || methodName == null || methodName.isEmpty()) {
+        if (cls == null || Utils.isBlank(methodName)) {
             return Collections.emptyList();
         }
         List<Method> out = new ArrayList<>();
@@ -265,7 +265,7 @@ public final class Accessor {
      * @throws IllegalArgumentException if obj or methodName is null, or methodName is empty
      */
     public static boolean hasPublicMethod(Object obj, String methodName) {
-        if (obj == null || methodName == null || methodName.isEmpty()) {
+        if (obj == null || Utils.isBlank(methodName)) {
             throw new IllegalArgumentException("obj and methodName must be non-null and non-empty");
         }
         Class<?> cls = obj.getClass();
@@ -309,7 +309,7 @@ public final class Accessor {
      * @throws ReflectiveOperationException if setAccessible or invoke fails
      */
     public static Object callExact(Object obj, String methodName, Class<?>[] parameterTypes, Object... args) throws ReflectiveOperationException {
-        if (obj == null || methodName == null || methodName.isEmpty()) {
+        if (obj == null || Utils.isBlank(methodName)) {
             throw new IllegalArgumentException("obj and methodName must be non-null and non-empty");
         }
         Method m = findExactMethod(obj.getClass(), methodName, parameterTypes);
@@ -334,7 +334,7 @@ public final class Accessor {
      * @throws ReflectiveOperationException if setAccessible or invoke fails
      */
     public static Object callByName(Object obj, String methodName, Object... args) throws ReflectiveOperationException {
-        if (obj == null || methodName == null || methodName.isEmpty()) {
+        if (obj == null || Utils.isBlank(methodName)) {
             throw new IllegalArgumentException("obj and methodName must be non-null and non-empty");
         }
         boolean staticCall = false;

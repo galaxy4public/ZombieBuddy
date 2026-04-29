@@ -145,7 +145,7 @@ public class zbUtils {
         int idx = 1;
         for (String name : names) {
             ArrayList<String> sigs = byName.get(name);
-            if (sigs == null || sigs.isEmpty()) continue;
+            if (Utils.isBlank(sigs)) continue;
             Collections.sort(sigs);
             for (String sig : sigs) {
                 outArr.rawset(Double.valueOf(idx++), sig);
@@ -295,7 +295,7 @@ public class zbUtils {
 
     @LuaMethod(name = "zbmap", global = true)
     public static KahluaTable zbMap(Object obj, String methodName) {
-        if (obj == null || methodName == null || methodName.isEmpty()) return null;
+        if (obj == null || Utils.isBlank(methodName)) return null;
         return zbMapByMethod(obj, methodName);
     }
 
@@ -574,7 +574,7 @@ public class zbUtils {
      */
     @LuaMethod(name = "zbgreplog", global = true)
     public static KahluaTable zbgreplog(String substring) {
-        if (substring == null || substring.isEmpty()) {
+        if (Utils.isBlank(substring)) {
             return null;
         }
         String logPath = ExpUtils.getConsoleLogPath();

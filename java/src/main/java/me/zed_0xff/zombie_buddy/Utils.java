@@ -5,9 +5,11 @@ import java.io.FileInputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.security.MessageDigest;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,6 +40,14 @@ public final class Utils {
 
     public static boolean isBlank(String str) {
         return str == null || str.isEmpty();
+    }
+
+    public static boolean isBlank(Collection<?> collection) {
+        return collection == null || collection.isEmpty();
+    }
+
+    public static boolean isBlank(Map<?, ?> map) {
+        return map == null || map.isEmpty();
     }
 
     /**
@@ -90,8 +100,8 @@ public final class Utils {
     }
 
     private static int comparePrerelease(String p1, String p2) {
-        boolean release1 = p1 == null || p1.isEmpty();
-        boolean release2 = p2 == null || p2.isEmpty();
+        boolean release1 = Utils.isBlank(p1);
+        boolean release2 = Utils.isBlank(p2);
         if (release1 || release2) {
             if (release1 == release2) return 0;
             return release1 ? 1 : -1;
@@ -260,7 +270,7 @@ public final class Utils {
             } else {
                 list = null;
             }
-            if (list == null || list.isEmpty()) return;
+            if (Utils.isBlank(list)) return;
 
             Class<?> invokerClass = list.get(0).getClass();
             if (!"se.krka.kahlua.integration.expose.LuaJavaInvoker".equals(invokerClass.getName())) return;

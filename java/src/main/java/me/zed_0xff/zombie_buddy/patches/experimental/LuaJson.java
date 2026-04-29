@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import me.zed_0xff.zombie_buddy.Utils;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -137,12 +139,12 @@ public class LuaJson {
         JsonObject o = new JsonObject();
         o.addProperty("className", ex.getClass().getName());
         String message = ex.getMessage();
-        if (message == null || message.isEmpty()) message = ex.toString();
+        if (Utils.isBlank(message)) message = ex.toString();
         StringBuilder fullMessage = new StringBuilder(message);
         for (Throwable cause = ex.getCause(); cause != null; cause = cause.getCause()) {
             fullMessage.append(" Caused by: ");
             String cm = cause.getMessage();
-            fullMessage.append(cm != null && !cm.isEmpty() ? cm : cause.toString());
+            fullMessage.append(!Utils.isBlank(cm) ? cm : cause.toString());
         }
         o.addProperty("message", fullMessage.toString());
         StackTraceElement[] stack = ex.getStackTrace();

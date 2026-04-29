@@ -122,7 +122,7 @@ public class LogOverlay {
     }
     
     public static void addLine(String text) {
-        if (text == null || text.isEmpty()) return;
+        if (Utils.isBlank(text)) return;
 
         int nlpos = text.indexOf('\n');
         if (nlpos >= 0 && nlpos < text.length() - 1) {

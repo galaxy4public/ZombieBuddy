@@ -144,7 +144,7 @@ public class Loader {
      * (any other {@code no} wins over {@code yes}; empty = default No in the dialog).
      */
     private static String priorHintForBatchRow(List<ModApprovalsStore.ModEntry> storedEntries, String modId, String hash) {
-        if (modId == null || modId.isEmpty()) return "";
+        if (Utils.isBlank(modId)) return "";
         boolean anyOtherNo = false;
         boolean anyOtherYes = false;
         for (ModApprovalsStore.ModEntry e : storedEntries) {
@@ -227,7 +227,7 @@ public class Loader {
         for (ModApprovalsStore.ModEntry e : g_storedEntries) {
             if (jarHash.equals(e.jarHash)) {
                 e.decision = allow;
-                if (modId != null && !modId.isEmpty()) e.id = modId;
+                if (!Utils.isBlank(modId)) e.id = modId;
                 if (workshopId != null) e.workshopId = workshopId;
                 if (authorId != null) e.authorId = authorId;
                 return;
@@ -267,7 +267,7 @@ public class Loader {
         Map<SteamID64, AuthorEntry> authors,
         Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
     ) {
-        if (authors == null || knownAuthors == null || knownAuthors.isEmpty()) {
+        if (authors == null || Utils.isBlank(knownAuthors)) {
             return;
         }
         for (Map.Entry<SteamID64, KnownAuthors.AuthorEntry> entry : knownAuthors.entrySet()) {
@@ -279,7 +279,7 @@ public class Loader {
             authors.compute(sid, (k, existing) -> {
                 boolean trust = existing != null && existing.trust;
                 String name = existing != null ? existing.name : null;
-                if ((name == null || name.isEmpty()) && known.name != null && !known.name.isEmpty()) {
+                if ((Utils.isBlank(name)) && known.name != null && !known.name.isEmpty()) {
                     name = known.name;
                 }
                 Set<String> keys = new LinkedHashSet<>();
@@ -791,7 +791,7 @@ public class Loader {
     }
 
     private static boolean validatePackageInJar(File jarFile, String packageName) {
-        if (jarFile == null || packageName == null || packageName.isEmpty()) {
+        if (jarFile == null || Utils.isBlank(packageName)) {
             return false;
         }
         try {

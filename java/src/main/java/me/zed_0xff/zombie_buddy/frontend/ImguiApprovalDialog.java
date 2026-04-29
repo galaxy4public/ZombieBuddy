@@ -18,6 +18,7 @@ import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.ModApprovalsStore;
 import me.zed_0xff.zombie_buddy.SteamWorkshop;
+import me.zed_0xff.zombie_buddy.Utils;
 
 import imgui.ImColor;
 import imgui.ImDrawList;
@@ -707,7 +708,7 @@ final class ImguiApprovalDialog {
 
     private void applyTrustAuthor(int sourceIndex, boolean selected) {
         String key = authorGroupKey[sourceIndex];
-        if (key == null || key.isEmpty()) {
+        if (Utils.isBlank(key)) {
             setAllowForTrust(sourceIndex, selected);
             return;
         }

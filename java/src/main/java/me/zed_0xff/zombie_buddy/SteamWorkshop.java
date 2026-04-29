@@ -94,7 +94,7 @@ public final class SteamWorkshop {
         Set<WorkshopItemID> workshopIds
     ) {
         Map<WorkshopItemID, ItemDetails> out = new HashMap<>();
-        if (workshopIds == null || workshopIds.isEmpty()) {
+        if (Utils.isBlank(workshopIds)) {
             return out;
         }
         Logger.info("checking mods ban status");

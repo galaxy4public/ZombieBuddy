@@ -130,7 +130,7 @@ public final class KnownAuthors {
 
     static Map<SteamID64, AuthorEntry> parseAuthorsJSON(String body) {
         Map<SteamID64, AuthorEntry> out = new LinkedHashMap<>();
-        if (body == null || body.isEmpty()) {
+        if (Utils.isBlank(body)) {
             return out;
         }
         try {

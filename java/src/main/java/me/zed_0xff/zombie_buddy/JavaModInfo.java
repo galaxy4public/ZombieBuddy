@@ -109,7 +109,7 @@ public record JavaModInfo(
     ) {}
 
     private static boolean isEmpty(String s) {
-        return s == null || s.isEmpty();
+        return Utils.isBlank(s);
     }
 
     private static String trimmedValue(String line) {
@@ -261,7 +261,7 @@ public record JavaModInfo(
      * @return JavaModInfo object, or null if the file doesn't exist or cannot be parsed
      */
     public static JavaModInfo parse(String modDirPath) {
-        if (modDirPath == null || modDirPath.isEmpty()) {
+        if (Utils.isBlank(modDirPath)) {
             return null;
         }
         return parse(new File(modDirPath));
@@ -307,10 +307,10 @@ public record JavaModInfo(
      * @return JavaModInfo object, or null if mod.info doesn't exist or cannot be parsed
      */
     public static JavaModInfo parseMerged(String commonDirPath, String versionDirPath) {
-        if (commonDirPath == null || commonDirPath.isEmpty()) {
+        if (Utils.isBlank(commonDirPath)) {
             return null;
         }
-        if (versionDirPath == null || versionDirPath.isEmpty()) {
+        if (Utils.isBlank(versionDirPath)) {
             return null;
         }
         return parseMerged(new File(commonDirPath), new File(versionDirPath));
@@ -331,13 +331,13 @@ public record JavaModInfo(
             return true;
         }
         
-        if (minVersion != null && !minVersion.isEmpty()) {
+        if (!Utils.isBlank(minVersion)) {
             if (Utils.compareVersions(currentVersion, minVersion) < 0) {
                 return false;
             }
         }
         
-        if (maxVersion != null && !maxVersion.isEmpty()) {
+        if (!Utils.isBlank(maxVersion)) {
             if (Utils.compareVersions(currentVersion, maxVersion) > 0) {
                 return false;
             }

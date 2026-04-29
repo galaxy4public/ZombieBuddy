@@ -256,7 +256,7 @@ public class Exposer {
 
     public static void exposeAnnotatedClasses(io.github.classgraph.ScanResult scanResult, String packageName) {
         for (var classInfo : scanResult.getClassesWithAnnotation(LuaClass.class.getName())) {
-            if (packageName == null || packageName.isEmpty() || !classInfo.getPackageName().equals(packageName)) {
+            if (Utils.isBlank(packageName) || !classInfo.getPackageName().equals(packageName)) {
                 Logger.error("Class " + classInfo.getName() + " is annotated with @LuaClass but is not in the exact package "
                         + packageName + ", skipping exposure");
                 continue;

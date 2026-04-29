@@ -127,7 +127,7 @@ public final class ModApprovalsStore {
             this.name = name != null && !name.trim().isEmpty() ? name.trim() : null;
             if (keys != null) {
                 for (String k : keys) {
-                    if (k != null && !k.isEmpty()) {
+                    if (!Utils.isBlank(k)) {
                         this.keys.add(k.trim().toLowerCase(Locale.ROOT));
                     }
                 }
@@ -197,7 +197,7 @@ public final class ModApprovalsStore {
                 for (AuthorEntry ae : data.authors) {
                     if (ae.id != null && (ae.name == null || ae.name.isEmpty())) {
                         String resolved = knownNames.get(ae.id);
-                        if (resolved != null && !resolved.isEmpty()) {
+                        if (!Utils.isBlank(resolved)) {
                             ae.name = resolved;
                         }
                     }

@@ -13,7 +13,7 @@ public class Main {
         String portValue = Agent.arguments.get("lua_server_port");
         String timeoutValue = Agent.arguments.get("lua_task_timeout");
 
-        if (portValue != null && !portValue.isEmpty()) {
+        if (!Utils.isBlank(portValue)) {
             try {
                 int serverPort;
                 boolean isRandomPort = false;
@@ -28,7 +28,7 @@ public class Main {
                         Logger.info("Using random port for HTTP server");
                     }
                 }
-                String bindHost = (hostValue != null && !hostValue.isEmpty()) ? hostValue : "127.0.0.1";
+                String bindHost = (!Utils.isBlank(hostValue)) ? hostValue : "127.0.0.1";
                 HttpServer httpServer = new HttpServer(bindHost, serverPort, isRandomPort);
                 httpServer.start();
 
@@ -49,7 +49,7 @@ public class Main {
         }
 
         // Configure Lua task timeout from Agent.arguments (if provided)
-        if (timeoutValue != null && !timeoutValue.isEmpty()) {
+        if (!Utils.isBlank(timeoutValue)) {
             try {
                 HttpServer.luaTaskTimeoutMs = Long.parseLong(timeoutValue);
                 Logger.info("Lua task timeout set to " + HttpServer.luaTaskTimeoutMs + "ms");
