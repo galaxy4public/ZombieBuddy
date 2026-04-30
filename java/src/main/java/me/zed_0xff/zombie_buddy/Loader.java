@@ -317,6 +317,41 @@ public class Loader {
         return ae != null && ae.trust;
     }
 
+    private static void untrustAuthorForBannedMod(
+        String modId,
+        File jarFile,
+        String hash,
+        WorkshopItemID workshopItemId,
+        boolean steamBanned,
+        Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById,
+        Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthorsBySteamId
+    ) {
+        if (!steamBanned || jarFile == null || hash == null) {
+            return;
+        }
+        ZBSCheck.Result zbsResult = ZBSCheck.check(
+            jarFile,
+            hash,
+            workshopItemId,
+            workshopItemId != null,
+            g_allowUnsignedMods,
+            workshopDetailsById,
+            knownAuthorsBySteamId
+        );
+        if (zbsResult.verification() != null) {
+            mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
+        }
+        SteamID64 sid = zbsResult.sid();
+        if (!"yes".equals(zbsResult.valid()) || sid == null) {
+            return;
+        }
+        AuthorEntry author = g_authors.get(sid);
+        if (author != null && author.trust) {
+            author.trust = false;
+            Logger.warn("Removed trusted-author flag for " + sid + " because banned mod was detected: " + modId);
+        }
+    }
+
     private static String authorDisplayName(
         SteamID64 sid,
         Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
@@ -445,6 +480,17 @@ public class Loader {
                 : (workshopDetails != null ? workshopDetails.ban : null);
             boolean steamBanned = banInfo != null && SteamWorkshop.BAN_STATUS_YES.equals(banInfo.status);
             modContexts.add(new ModCtx(modId, jarFile, hash, workshopItemId, workshopDetails, banInfo, steamBanned));
+        }
+        for (ModCtx ctx : modContexts) {
+            untrustAuthorForBannedMod(
+                ctx.modId,
+                ctx.jarFile,
+                ctx.hash,
+                ctx.workshopItemId,
+                ctx.steamBanned,
+                workshopDetailsById,
+                knownAuthorsBySteamId
+            );
         }
 
         if (POLICY_PROMPT.equals(g_jarPolicy)) {
