@@ -7,17 +7,17 @@ import java.util.Set;
 
 /**
  * In-memory allow/deny decisions for Java mod JARs, keyed by SHA-256 hash.
- * Each JAR binary is uniquely identified by its hash; the decision is "yes" or "no".
+ * Each JAR binary is uniquely identified by its hash; the decision is true for allow, false for deny.
  */
 public final class JarDecisionTable {
 
-    private final Map<String, String> byHash = new HashMap<>();
+    private final Map<String, Boolean> byHash = new HashMap<>();
 
-    public String get(String sha256) {
+    public Boolean get(String sha256) {
         return sha256 == null ? null : byHash.get(sha256);
     }
 
-    public void put(String sha256, String decision) {
+    public void put(String sha256, Boolean decision) {
         if (sha256 != null && decision != null) {
             byHash.put(sha256, decision);
         }

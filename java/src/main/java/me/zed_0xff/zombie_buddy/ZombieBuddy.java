@@ -54,7 +54,7 @@ public class ZombieBuddy {
      *   active    (boolean) — true if the JAR was loaded this run
      *   reason    (string)  — "active" or short skip reason
      *   sha256    (string)  — JAR sha256 (may be absent if hashing failed)
-     *   decision  (string)  — "yes" | "no" (absent if never decided)
+     *   decision  (boolean) — true for allow, false for deny (absent if never decided)
      *   persisted (boolean) — true when decision is present
      *   zbsValid  (boolean) — true if the JAR is signed and signature is valid
      */

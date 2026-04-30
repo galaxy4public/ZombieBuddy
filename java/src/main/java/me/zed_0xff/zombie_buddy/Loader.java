@@ -80,10 +80,6 @@ public class Loader {
     static Set<String> g_known_classes = new HashSet<>();
     static Set<File> g_known_jars = new HashSet<>();
 
-    // JAR approval decisions keyed by sha256 hash.
-    public static final String DECISION_YES = "yes";
-    public static final String DECISION_NO  = "no";
-
     // Persisted entries loaded from disk - the source of truth for saving
     private static List<ModApprovalsStore.ModEntry> g_storedEntries = new ArrayList<>();
     // Author trust entries
@@ -127,7 +123,7 @@ public class Loader {
         GameWindow.DoLoadingText(LOADING_MODS);
     }
 
-    private static String lookupJarDecision(JarDecisionTable disk, String sha256) {
+    private static Boolean lookupJarDecision(JarDecisionTable disk, String sha256) {
         if (sha256 == null) return null;
         return disk.get(sha256);
     }
@@ -142,9 +138,9 @@ public class Loader {
         final ModFlags flags;
         final String reason;      // "loaded" or a short skip reason
         final String sha256;      // JAR sha256, null if no JAR
-        final String decision;    // DECISION_YES / DECISION_NO / null
+        final Boolean decision;   // true = allow, false = deny, null = undecided
 
-        JavaModLoadState(ModFlags flags, String reason, String sha256, String decision) {
+        JavaModLoadState(ModFlags flags, String reason, String sha256, Boolean decision) {
             this.flags = flags;
             this.reason = reason;
             this.sha256 = sha256;
@@ -178,7 +174,7 @@ public class Loader {
         JarDecisionTable table = new JarDecisionTable();
         for (ModApprovalsStore.ModEntry entry : mods) {
             if (entry.jarHash != null) {
-                table.put(entry.jarHash, entry.decision ? DECISION_YES : DECISION_NO);
+                table.put(entry.jarHash, entry.decision);
             }
         }
         return table;
@@ -267,15 +263,15 @@ public class Loader {
         if (hash == null) return false;
 
         String policy = g_jarPolicy;
-        String decision = lookupJarDecision(disk, hash);
-        if (DECISION_YES.equals(decision)) return true;
-        if (DECISION_NO.equals(decision)) {
+        Boolean decision = lookupJarDecision(disk, hash);
+        if (Boolean.TRUE.equals(decision)) return true;
+        if (Boolean.FALSE.equals(decision)) {
             Logger.warn("Blocking Java mod by stored denial: " + modId + " (" + jarFile + ")");
             return false;
         }
 
         if (POLICY_ALLOW_ALL.equals(policy)) {
-            disk.put(hash, DECISION_YES);
+            disk.put(hash, Boolean.TRUE);
             storeDecision(hash, true, modId, jModInfo != null ? jModInfo.getWorkshopItemID() : null, null);
             return true;
         }
@@ -301,7 +297,7 @@ public class Loader {
         for (JarBatchApprovalProtocol.Entry entry : entries) {
             if (entry == null || entry.decision == null || Utils.isBlank(entry.sha256)) continue;
             boolean allow = entry.decision;
-            disk.put(entry.sha256, allow ? DECISION_YES : DECISION_NO);
+            disk.put(entry.sha256, allow);
             storeDecision(entry.sha256, allow, entry.modId, entry.workshopItemId, null);
         }
     }
@@ -520,18 +516,15 @@ public class Loader {
                     authorID,
                     flags.hasAll(MF_SIGNED, MF_VALID) ? authorDisplayName(authorID, knownAuthorsBySteamId) : zbsResult.notice()
                 );
-                String previousDecision = lookupJarDecision(approvals, ctx.hash);
-                Boolean decision = DECISION_YES.equals(previousDecision)
-                    ? Boolean.TRUE
-                    : (DECISION_NO.equals(previousDecision) ? Boolean.FALSE : null);
+                Boolean decision = lookupJarDecision(approvals, ctx.hash);
                 if (!forceApprovalDialog && !ctx.steamBanned && zbs.valid() && isAuthorTrusted(authorID)) {
                     // Auto-approve signed mods from trusted authors
-                    approvals.put(ctx.hash, DECISION_YES);
+                    approvals.put(ctx.hash, Boolean.TRUE);
                     storeDecision(ctx.hash, true, ctx.modId, ctx.workshopItemId, authorID);
                     continue;
                 }
                 if (!forceApprovalDialog && !ctx.steamBanned) {
-                    if (DECISION_YES.equals(previousDecision) || DECISION_NO.equals(previousDecision)) continue;
+                    if (decision != null) continue;
                 }
                 batchEntries.add(new JarBatchApprovalProtocol.Entry(
                     ctx.modId,
@@ -605,7 +598,7 @@ public class Loader {
             // Snapshot for ZombieBuddy.getJavaModStatus(). Skipped when no JAR
             // (e.g. metadata-only mod.info entries in B42 common dirs).
             if (ctx.jarFile != null) {
-                String decision = null;
+                Boolean decision = null;
                 if (ctx.hash != null) {
                     decision = approvals.get(ctx.hash);
                     if (decision != null) {
