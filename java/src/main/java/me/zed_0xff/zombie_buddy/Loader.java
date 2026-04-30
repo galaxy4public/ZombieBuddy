@@ -329,7 +329,7 @@ public class Loader {
         if (!steamBanned || jarFile == null || hash == null) {
             return;
         }
-        ZBSCheck.Result zbsResult = ZBSCheck.check(
+        ZBSVerifier.CheckResult zbsResult = ZBSVerifier.check(
             jarFile,
             hash,
             workshopItemId,
@@ -510,10 +510,10 @@ public class Loader {
                 JarBatchApprovalProtocol.Entry.SteamBan steamBan = ctx.steamBanned
                     ? new JarBatchApprovalProtocol.Entry.SteamBan(ctx.banInfo != null ? ctx.banInfo.reason : "")
                     : null;
-                ZBSCheck.Result zbsResult = zbsSignatureChecksEnabled()
-                    ? ZBSCheck.check(ctx.jarFile, ctx.hash, ctx.workshopItemId, 
+                ZBSVerifier.CheckResult zbsResult = zbsSignatureChecksEnabled()
+                    ? ZBSVerifier.check(ctx.jarFile, ctx.hash, ctx.workshopItemId,
                         ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById, knownAuthorsBySteamId)
-                    : ZBSCheck.Result.DISABLED;
+                    : ZBSVerifier.CheckResult.DISABLED;
                 if (zbsResult.verification() != null) {
                     mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
                 }
@@ -589,7 +589,7 @@ public class Loader {
 
             // ZBS: skipped entirely for policy=allow-all; invalid signatures always block when checks apply.
             if (!shouldSkip && zbsSignatureChecksEnabled() && ctx.jarFile != null && ctx.hash != null) {
-                ZBSCheck.Result zbsResult = ZBSCheck.check(ctx.jarFile, ctx.hash, 
+                ZBSVerifier.CheckResult zbsResult = ZBSVerifier.check(ctx.jarFile, ctx.hash,
                     ctx.workshopItemId, ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById, knownAuthorsBySteamId);
                 zbsValid = zbsResult.valid();
                 if (zbsResult.verification() != null) {

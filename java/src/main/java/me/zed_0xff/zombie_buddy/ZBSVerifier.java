@@ -1,6 +1,7 @@
 package me.zed_0xff.zombie_buddy;
 
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
+import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
 
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
 import org.bouncycastle.crypto.signers.Ed25519Signer;
@@ -44,6 +45,87 @@ public final class ZBSVerifier {
         .build();
 
     private ZBSVerifier() {}
+
+    /** Loader-facing ZBS check result, including policy/UI information. */
+    public record CheckResult(
+        String valid,                    // "yes", "no", "unsigned", or ""
+        SteamID64 sid,                   // signer ID or null
+        String notice,                   // UI notice text
+        boolean shouldBlock,             // true if JAR should be blocked
+        String blockReason,              // reason for blocking (if shouldBlock)
+        Verification verification        // the raw verification result, or null
+    ) {
+        public static final CheckResult DISABLED = new CheckResult("", null, "", false, null, null);
+        public static final CheckResult UNSIGNED_ALLOWED = new CheckResult("unsigned", null, "", false, null, null);
+
+        public static CheckResult missingNotAllowed() {
+            return new CheckResult("no", null, "Missing .zbs file (allow_unsigned_mods=false)",
+                true, "missing .zbs file; allow_unsigned_mods=false", null);
+        }
+    }
+
+    /**
+     * Perform a loader-facing ZBS check for a JAR file. This wraps the raw
+     * signature verification with unsigned-mod policy, Workshop uploader binding,
+     * UI notice text, and load-blocking decisions.
+     */
+    public static CheckResult check(
+            File jarFile,
+            String jarHash,
+            WorkshopItemID workshopItemId,
+            boolean steamModeEnabled,
+            boolean allowUnsignedMods,
+            Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById
+    ) {
+        return check(jarFile, jarHash, workshopItemId, steamModeEnabled, allowUnsignedMods, workshopDetailsById, null);
+    }
+
+    public static CheckResult check(
+            File jarFile,
+            String jarHash,
+            WorkshopItemID workshopItemId,
+            boolean steamModeEnabled,
+            boolean allowUnsignedMods,
+            Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById,
+            Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
+    ) {
+        File zbsFile = new File(jarFile.getAbsolutePath() + ".zbs");
+
+        if (!zbsFile.isFile()) {
+            return allowUnsignedMods ? CheckResult.UNSIGNED_ALLOWED : CheckResult.missingNotAllowed();
+        }
+
+        SteamID64 uploaderID = steamModeEnabled
+            ? SteamWorkshop.getUploaderForVerification(workshopItemId, workshopDetailsById)
+            : null;
+        Verification zbs = verify(jarFile, zbsFile, jarHash, uploaderID, knownAuthors);
+
+        boolean valid = zbs instanceof ValidSignature;
+        String notice = noticeForUi(zbs);
+
+        Logger.info("ZBS verification " + (valid ? "valid" : "invalid") + " for " + jarFile.getName() + ": " +
+            "uploaderID=" + (uploaderID != null ? uploaderID : "N/A") +
+            ", shortMessage=" + (zbs.shortMessage != null ? zbs.shortMessage.trim() : "null") +
+            ", detailedMessage=" + (zbs.detailedMessage != null ? zbs.detailedMessage.trim() : "null"));
+
+        if (valid) {
+            return new CheckResult("yes", zbs.sid, notice, false, null, zbs);
+        } else {
+            return new CheckResult("no", zbs.sid, notice, true, "invalid ZBS: " + zbs.detailedMessage, zbs);
+        }
+    }
+
+    /**
+     * Format a raw ZBS verification result for UI display.
+     */
+    public static String noticeForUi(Verification zbs) {
+        if (zbs == null) return "";
+        String shortMsg = zbs.shortMessage != null ? zbs.shortMessage.trim() : "";
+        String detail = zbs.detailedMessage != null ? zbs.detailedMessage.trim() : "";
+        if (shortMsg.isEmpty()) return detail;
+        if (detail.isEmpty() || shortMsg.equals(detail)) return shortMsg;
+        return shortMsg + "\n" + detail;
+    }
 
     /**
      * @param jarSha256Hex lowercase hex SHA-256 of the JAR (same as Loader uses)
