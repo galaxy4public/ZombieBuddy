@@ -2,6 +2,7 @@ package me.zed_0xff.zombie_buddy;
 
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
+import static me.zed_0xff.zombie_buddy.ModFlags.*;
 
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
 import org.bouncycastle.crypto.signers.Ed25519Signer;
@@ -47,20 +48,23 @@ public final class ZBSVerifier {
     private ZBSVerifier() {}
 
     /** Loader-facing ZBS check result, including policy/UI information. */
-    public record CheckResult(
-        String valid,                    // "yes", "no", "unsigned", or ""
-        SteamID64 sid,                   // signer ID or null
-        String notice,                   // UI notice text
-        boolean shouldBlock,             // true if JAR should be blocked
-        String blockReason,              // reason for blocking (if shouldBlock)
-        Verification verification        // the raw verification result, or null
+    record CheckResult(
+        ModFlags flags,
+        SteamID64 sid,              // signer ID or null
+        SteamID64 uploaderID,       // Workshop uploader ID or null
+        String notice,              // UI notice text
+        String blockReason,         // reason for blocking (if blocked)
+        Verification verification   // the raw verification result, or null
     ) {
-        public static final CheckResult DISABLED = new CheckResult("", null, "", false, null, null);
-        public static final CheckResult UNSIGNED_ALLOWED = new CheckResult("unsigned", null, "", false, null, null);
+        static final CheckResult DISABLED = new CheckResult(ModFlags.EMPTY, null, null, "", null, null);
 
-        public static CheckResult missingNotAllowed() {
-            return new CheckResult("no", null, "Missing .zbs file (allow_unsigned_mods=false)",
-                true, "missing .zbs file; allow_unsigned_mods=false", null);
+        static CheckResult unsignedAllowed(SteamID64 uploaderID) {
+            return new CheckResult(new ModFlags(MF_VALID), null, uploaderID, "", null, null);
+        }
+
+        static CheckResult missingNotAllowed(SteamID64 uploaderID) {
+            return new CheckResult(ModFlags.EMPTY, null, uploaderID, "Missing .zbs file (allow_unsigned_mods=false)",
+                "missing .zbs file; allow_unsigned_mods=false", null);
         }
     }
 
@@ -89,15 +93,17 @@ public final class ZBSVerifier {
             Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById,
             Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
     ) {
+        SteamID64 uploaderID = steamModeEnabled
+            ? SteamWorkshop.getUploaderID(workshopItemId, workshopDetailsById)
+            : null;
         File zbsFile = new File(jarFile.getAbsolutePath() + ".zbs");
 
         if (!zbsFile.isFile()) {
-            return allowUnsignedMods ? CheckResult.UNSIGNED_ALLOWED : CheckResult.missingNotAllowed();
+            return allowUnsignedMods
+                ? CheckResult.unsignedAllowed(uploaderID)
+                : CheckResult.missingNotAllowed(uploaderID);
         }
 
-        SteamID64 uploaderID = steamModeEnabled
-            ? SteamWorkshop.getUploaderForVerification(workshopItemId, workshopDetailsById)
-            : null;
         Verification zbs = verify(jarFile, zbsFile, jarHash, uploaderID, knownAuthors);
 
         boolean valid = zbs instanceof ValidSignature;
@@ -109,9 +115,9 @@ public final class ZBSVerifier {
             ", detailedMessage=" + (zbs.detailedMessage != null ? zbs.detailedMessage.trim() : "null"));
 
         if (valid) {
-            return new CheckResult("yes", zbs.sid, notice, false, null, zbs);
+            return new CheckResult(new ModFlags(MF_VALID | MF_SIGNED), zbs.sid, uploaderID, notice, null, zbs);
         } else {
-            return new CheckResult("no", zbs.sid, notice, true, "invalid ZBS: " + zbs.detailedMessage, zbs);
+            return new CheckResult(new ModFlags(MF_SIGNED), zbs.sid, uploaderID, notice, "invalid ZBS: " + zbs.detailedMessage, zbs);
         }
     }
 

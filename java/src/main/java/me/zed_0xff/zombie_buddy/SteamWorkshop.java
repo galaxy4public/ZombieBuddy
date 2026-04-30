@@ -51,10 +51,6 @@ public final class SteamWorkshop {
             : "";
     }
 
-    static final String BAN_STATUS_YES = "yes";
-    static final String BAN_STATUS_NO = "no";
-    static final String BAN_STATUS_UNKNOWN = "unknown";
-
     private static final String STEAM_GET_PUBLISHED_FILE_DETAILS_URL =
         "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
@@ -64,31 +60,22 @@ public final class SteamWorkshop {
 
     private SteamWorkshop() {}
 
-    /** Ban status info for a Workshop item. */
-    public static final class BanInfo {
-        public final String status;
-        public final String reason;
-
-        public BanInfo(String status, String reason) {
-            this.status = status != null ? status : BAN_STATUS_UNKNOWN;
-            this.reason = reason != null ? reason : "";
+    /**
+     * Ban status info for a Workshop item.
+     * {@code status}: true = banned, false = not banned, null = unknown.
+     */
+    public record BanInfo(Boolean status, String reason) {
+        public BanInfo {
+            reason = reason != null ? reason : "";
         }
     }
 
     /** Details fetched from Steam API for a Workshop item. */
-    public static final class ItemDetails {
-        public final BanInfo ban;
-        public final SteamID64 creatorSteamId64;
-
-        public ItemDetails(BanInfo ban, SteamID64 creatorSteamId64) {
-            this.ban = ban;
-            this.creatorSteamId64 = creatorSteamId64;
-        }
-    }
+    public record ItemDetails(BanInfo ban, SteamID64 creatorSteamId64) {}
 
     /**
      * Fetch Workshop item details (ban status, creator) for the given IDs.
-     * @return map of workshop ID to details; unknown items get BAN_STATUS_UNKNOWN
+     * @return map of workshop ID to details; unknown items get {@code null} ban status
      */
     public static Map<WorkshopItemID, ItemDetails> fetchItemDetails(
         Set<WorkshopItemID> workshopIds
@@ -164,14 +151,14 @@ public final class SteamWorkshop {
             }
             SteamID64 creator = parseCreatorSteamId64(it);
             out.put(id, new ItemDetails(
-                new BanInfo(banned != 0 ? BAN_STATUS_YES : BAN_STATUS_NO, reason),
+                new BanInfo(banned != 0, reason),
                 creator
             ));
         }
         for (WorkshopItemID id : chunk) {
             if (!seen.contains(id) && !out.containsKey(id)) {
                 out.put(id, new ItemDetails(
-                    new BanInfo(BAN_STATUS_UNKNOWN, "Steam API response missing mod id"),
+                    new BanInfo(null, "Steam API response missing mod id"),
                     null
                 ));
             }
@@ -185,7 +172,7 @@ public final class SteamWorkshop {
     ) {
         for (WorkshopItemID id : workshopIds) {
             if (id == null) continue;
-            out.put(id, new ItemDetails(new BanInfo(BAN_STATUS_UNKNOWN, reason), null));
+            out.put(id, new ItemDetails(new BanInfo(null, reason), null));
         }
     }
 
@@ -230,13 +217,13 @@ public final class SteamWorkshop {
      * Get the creator SteamID64 for ZBS verification.
      * @return null if no workshop item or creator unavailable
      */
-    public static SteamID64 getUploaderForVerification(
+    public static SteamID64 getUploaderID(
         WorkshopItemID workshopItemId,
         Map<WorkshopItemID, ItemDetails> byId
     ) {
         if (workshopItemId == null) return null;
         ItemDetails d = byId.get(workshopItemId);
-        return d != null ? d.creatorSteamId64 : null;
+        return d != null ? d.creatorSteamId64() : null;
     }
 
     /** Convert WorkshopItemID to string, or null. */

@@ -91,7 +91,7 @@ class JarBatchApprovalProtocolTest {
             new Date(1_777_000_000_000L),
             Boolean.FALSE,
             "Round Trip Mod",
-            new JarBatchApprovalProtocol.Entry.ZbsSignature(true, new SteamID64(76561198099999999L), ""),
+            new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198099999999L), ""),
             null,
             false
         ));
@@ -118,7 +118,7 @@ class JarBatchApprovalProtocolTest {
             new Date(1_777_000_000_000L),
             Boolean.TRUE,
             "Round Trip Mod",
-            new JarBatchApprovalProtocol.Entry.ZbsSignature(true, new SteamID64(76561198099999999L), ""),
+            new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198099999999L), ""),
             null,
             false
         ));
@@ -172,7 +172,7 @@ class JarBatchApprovalProtocolTest {
             "NumericTest",
             new WorkshopItemID(1234567890L),
             "/path", "hash", new Date(1_777_000_000_000L), null, "",
-            new JarBatchApprovalProtocol.Entry.ZbsSignature(true, new SteamID64(76561198000000000L), ""),
+            new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198000000000L), ""),
             null, false
         ));
 

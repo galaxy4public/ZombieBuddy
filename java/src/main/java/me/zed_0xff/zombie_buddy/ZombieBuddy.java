@@ -1,5 +1,7 @@
 package me.zed_0xff.zombie_buddy;
 
+import static me.zed_0xff.zombie_buddy.ModFlags.*;
+
 import java.io.File;
 import java.util.ArrayList;
 
@@ -49,25 +51,25 @@ public class ZombieBuddy {
      * metadata-only mod.info with no javaJarFile).
      *
      * Fields in the returned table:
-     *   loaded    (boolean) — true if the JAR was loaded this run
-     *   reason    (string)  — "loaded" or short skip reason
+     *   active    (boolean) — true if the JAR was loaded this run
+     *   reason    (string)  — "active" or short skip reason
      *   sha256    (string)  — JAR sha256 (may be absent if hashing failed)
      *   decision  (string)  — "yes" | "no" (absent if never decided)
      *   persisted (boolean) — true when decision is present
-     *   zbsValid  (string)  — "yes" | "no" | "unsigned" | "" when not checked
+     *   zbsValid  (boolean) — true if the JAR is signed and signature is valid
      */
     public static KahluaTable getJavaModStatus(String modId) {
         Loader.JavaModLoadState s = Loader.getJarLoadState(modId);
         if (s == null) return null;
         var tbl = LuaManager.platform.newTable();
-        tbl.rawset("loaded", s.loaded);
+        tbl.rawset("active", s.flags.has(MF_ACTIVE));
         tbl.rawset("reason", s.reason);
         if (s.sha256 != null) tbl.rawset("sha256", s.sha256);
         if (s.decision != null) {
             tbl.rawset("decision", s.decision);
-            tbl.rawset("persisted", s.persisted);
+            tbl.rawset("persisted", s.flags.has(MF_PERSIST));
         }
-        tbl.rawset("zbsValid", s.zbsValid);
+        tbl.rawset("zbsValid", s.flags.hasAll(MF_SIGNED, MF_VALID));
         return tbl;
     }
 
@@ -77,7 +79,7 @@ public class ZombieBuddy {
 
     public static boolean isJavaModSigned(String modId) {
         Loader.JavaModLoadState s = Loader.getJarLoadState(modId);
-        return s != null && "yes".equals(s.zbsValid);
+        return s != null && s.flags.hasAll(MF_SIGNED, MF_VALID);
     }
 
     public static String getClosureFilename(Object obj) {

@@ -2,6 +2,7 @@ package me.zed_0xff.zombie_buddy;
 
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
+import static me.zed_0xff.zombie_buddy.ModFlags.*;
 
 import java.io.File;
 import java.lang.ClassLoader;
@@ -138,20 +139,16 @@ public class Loader {
      * (which typically carries the JAR) overwrites the common-dir one.
      */
     static final class JavaModLoadState {
-        final boolean loaded;     // true if the JAR was loaded this run
+        final ModFlags flags;
         final String reason;      // "loaded" or a short skip reason
         final String sha256;      // JAR sha256, null if no JAR
         final String decision;    // DECISION_YES / DECISION_NO / null
-        final boolean persisted;  // true if decision came from the approvals file
-        final String zbsValid;    // "yes", "no", "unsigned", or ""
 
-        JavaModLoadState(boolean loaded, String reason, String sha256, String decision, boolean persisted, String zbsValid) {
-            this.loaded = loaded;
+        JavaModLoadState(ModFlags flags, String reason, String sha256, String decision) {
+            this.flags = flags;
             this.reason = reason;
             this.sha256 = sha256;
             this.decision = decision;
-            this.persisted = persisted;
-            this.zbsValid = zbsValid != null ? zbsValid : "";
         }
     }
 
@@ -165,7 +162,7 @@ public class Loader {
         ArrayList<String> out = new ArrayList<>();
         for (Map.Entry<String, JavaModLoadState> entry : g_jarLoadStatus.entrySet()) {
             JavaModLoadState state = entry.getValue();
-            if (state != null && state.loaded) {
+            if (state != null && state.flags.has(MF_ACTIVE)) {
                 out.add(entry.getKey());
             }
         }
@@ -341,14 +338,14 @@ public class Loader {
         if (zbsResult.verification() != null) {
             mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
         }
-        SteamID64 sid = zbsResult.sid();
-        if (!"yes".equals(zbsResult.valid()) || sid == null) {
+        SteamID64 uploaderID = zbsResult.uploaderID();
+        if (uploaderID == null) {
             return;
         }
-        AuthorEntry author = g_authors.get(sid);
+        AuthorEntry author = g_authors.get(uploaderID);
         if (author != null && author.trust) {
             author.trust = false;
-            Logger.warn("Removed trusted-author flag for " + sid + " because banned mod was detected: " + modId);
+            Logger.warn("Removed trusted-author flag for " + uploaderID + " because banned mod was detected: " + modId);
         }
     }
 
@@ -460,8 +457,7 @@ public class Loader {
                 workshopIdsToCheck.add(workshopItemId);
             }
         }
-        Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById =
-            SteamWorkshop.fetchItemDetails(workshopIdsToCheck);
+        Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById = SteamWorkshop.fetchItemDetails(workshopIdsToCheck);
 
         // Pre-compute per-mod context to avoid duplicate work in prompt and load loops
         record ModCtx(String modId, File jarFile, String hash, WorkshopItemID workshopItemId,
@@ -476,9 +472,9 @@ public class Loader {
             SteamWorkshop.ItemDetails workshopDetails = workshopItemId != null
                 ? workshopDetailsById.get(workshopItemId) : null;
             SteamWorkshop.BanInfo banInfo = workshopItemId == null
-                ? new SteamWorkshop.BanInfo(SteamWorkshop.BAN_STATUS_UNKNOWN, "Workshop id not found in mod path.")
-                : (workshopDetails != null ? workshopDetails.ban : null);
-            boolean steamBanned = banInfo != null && SteamWorkshop.BAN_STATUS_YES.equals(banInfo.status);
+                ? new SteamWorkshop.BanInfo(null, "Workshop id not found in mod path.")
+                : (workshopDetails != null ? workshopDetails.ban() : null);
+            boolean steamBanned = banInfo != null && Boolean.TRUE.equals(banInfo.status());
             modContexts.add(new ModCtx(modId, jarFile, hash, workshopItemId, workshopDetails, banInfo, steamBanned));
         }
         for (ModCtx ctx : modContexts) {
@@ -508,7 +504,7 @@ public class Loader {
                     modDisplay = ctx.modId != null ? ctx.modId : "";
                 }
                 JarBatchApprovalProtocol.Entry.SteamBan steamBan = ctx.steamBanned
-                    ? new JarBatchApprovalProtocol.Entry.SteamBan(ctx.banInfo != null ? ctx.banInfo.reason : "")
+                    ? new JarBatchApprovalProtocol.Entry.SteamBan(ctx.banInfo != null ? ctx.banInfo.reason() : "")
                     : null;
                 ZBSVerifier.CheckResult zbsResult = zbsSignatureChecksEnabled()
                     ? ZBSVerifier.check(ctx.jarFile, ctx.hash, ctx.workshopItemId,
@@ -517,25 +513,21 @@ public class Loader {
                 if (zbsResult.verification() != null) {
                     mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
                 }
-                String zbsValid = zbsResult.valid();
-                SteamID64 zbsSID = zbsResult.sid();
-                String zbsNotice = zbsResult.notice();
-                if ("yes".equals(zbsValid)) {
-                    zbsNotice = authorDisplayName(zbsSID, knownAuthorsBySteamId);
-                }
-                JarBatchApprovalProtocol.Entry.ZbsSignature zbs = new JarBatchApprovalProtocol.Entry.ZbsSignature(
-                    "yes".equals(zbsValid),
-                    zbsSID,
-                    "unsigned".equals(zbsValid) ? "" : zbsNotice
+                SteamID64 authorID = zbsResult.sid();
+                ModFlags flags = zbsResult.flags();
+                JarBatchApprovalProtocol.Entry.ZBSignature zbs = new JarBatchApprovalProtocol.Entry.ZBSignature(
+                    flags.has(MF_VALID),
+                    authorID,
+                    flags.hasAll(MF_SIGNED, MF_VALID) ? authorDisplayName(authorID, knownAuthorsBySteamId) : zbsResult.notice()
                 );
                 String previousDecision = lookupJarDecision(approvals, ctx.hash);
                 Boolean decision = DECISION_YES.equals(previousDecision)
                     ? Boolean.TRUE
                     : (DECISION_NO.equals(previousDecision) ? Boolean.FALSE : null);
-                if (!forceApprovalDialog && !ctx.steamBanned && zbs.valid() && isAuthorTrusted(zbsSID)) {
+                if (!forceApprovalDialog && !ctx.steamBanned && zbs.valid() && isAuthorTrusted(authorID)) {
                     // Auto-approve signed mods from trusted authors
                     approvals.put(ctx.hash, DECISION_YES);
-                    storeDecision(ctx.hash, true, ctx.modId, ctx.workshopItemId, zbsSID);
+                    storeDecision(ctx.hash, true, ctx.modId, ctx.workshopItemId, authorID);
                     continue;
                 }
                 if (!forceApprovalDialog && !ctx.steamBanned) {
@@ -564,7 +556,6 @@ public class Loader {
             ModCtx ctx = modContexts.get(i);
             boolean shouldSkip = false;
             String skipReason = "";
-            String zbsValid = "";
             
             // Skip ZombieBuddy itself - it's loaded as a Java agent, not through normal mod loading
             if (jModInfo.javaPkgName().equals(myPackageName)) {
@@ -583,19 +574,20 @@ public class Loader {
             if (!shouldSkip && ctx.steamBanned) {
                 shouldSkip = true;
                 skipReason = " (Steam Workshop mod is banned"
-                    + (!Utils.isBlank(ctx.banInfo.reason) ? ": " + ctx.banInfo.reason : "")
+                    + (!Utils.isBlank(ctx.banInfo.reason()) ? ": " + ctx.banInfo.reason() : "")
                     + ", modId=" + ctx.modId + ")";
             }
 
+            ModFlags flags = ModFlags.EMPTY;
             // ZBS: skipped entirely for policy=allow-all; invalid signatures always block when checks apply.
             if (!shouldSkip && zbsSignatureChecksEnabled() && ctx.jarFile != null && ctx.hash != null) {
                 ZBSVerifier.CheckResult zbsResult = ZBSVerifier.check(ctx.jarFile, ctx.hash,
                     ctx.workshopItemId, ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById, knownAuthorsBySteamId);
-                zbsValid = zbsResult.valid();
-                if (zbsResult.verification() != null) {
+                flags = zbsResult.flags();
+                if (flags.hasAll(MF_SIGNED, MF_VALID)) {
                     mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
                 }
-                if (zbsResult.shouldBlock()) {
+                if (!flags.has(MF_VALID)) {
                     shouldSkip = true;
                     skipReason = " (" + zbsResult.blockReason() + ", modId=" + ctx.modId + ")";
                 }
@@ -614,20 +606,17 @@ public class Loader {
             // (e.g. metadata-only mod.info entries in B42 common dirs).
             if (ctx.jarFile != null) {
                 String decision = null;
-                boolean persisted = false;
                 if (ctx.hash != null) {
                     decision = approvals.get(ctx.hash);
                     if (decision != null) {
-                        persisted = true;
+                        flags = flags.with(MF_PERSIST);
                     }
                 }
                 g_jarLoadStatus.put(ctx.modId, new JavaModLoadState(
-                    !shouldSkip,
+                    flags,
                     shouldSkip ? skipReason.trim() : "loaded",
                     ctx.hash,
-                    decision,
-                    persisted,
-                    zbsValid
+                    decision
                 ));
             }
         }

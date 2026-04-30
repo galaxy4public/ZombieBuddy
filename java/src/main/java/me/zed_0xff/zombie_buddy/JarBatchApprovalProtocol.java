@@ -48,7 +48,7 @@ public final class JarBatchApprovalProtocol {
         public final String modDisplayName;
         /** ZBS signature status and signer metadata. */
         @SerializedName("zbs")
-        public final ZbsSignature zbs;
+        public final ZBSignature zbs;
         /** Nullable; null means no known Steam ban. */
         @SerializedName("steamBan")
         public final SteamBan steamBan;
@@ -64,7 +64,7 @@ public final class JarBatchApprovalProtocol {
             Date date,
             Boolean decision,
             String modDisplayName,
-            ZbsSignature zbs,
+            ZBSignature zbs,
             SteamBan steamBan,
             boolean bEarlyLoad
         ) {
@@ -75,7 +75,7 @@ public final class JarBatchApprovalProtocol {
             this.date = date;
             this.decision = decision;
             this.modDisplayName = modDisplayName != null ? modDisplayName : "";
-            this.zbs = zbs != null ? zbs : ZbsSignature.none();
+            this.zbs = zbs != null ? zbs : ZBSignature.none();
             this.steamBan = steamBan;
             this.bEarlyLoad = bEarlyLoad;
         }
@@ -86,17 +86,17 @@ public final class JarBatchApprovalProtocol {
             }
         }
 
-        public record ZbsSignature(
+        public record ZBSignature(
             boolean valid,
-            @SerializedName("authorSteamId") SteamID64 authorSteamId,
+            SteamID64 authorSteamId,
             String notice
         ) {
-            public ZbsSignature {
+            public ZBSignature {
                 notice = notice != null ? notice : "";
             }
 
-            public static ZbsSignature none() {
-                return new ZbsSignature(false, null, "");
+            public static ZBSignature none() {
+                return new ZBSignature(false, null, "");
             }
 
             public boolean invalid() {
