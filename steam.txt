@@ -68,6 +68,7 @@ Java mods enabled through ZombieBuddy have unrestricted access to your system. O
 [*] [b]macOS / Linux:[/b] ~/.zombie_buddy/mod_approvals.json
 [/list]
 If a previously-approved JAR changes on disk (hash mismatch), you will be prompted again.
+Tip: hold [b]Shift[/b] during game load to force the approval dialog to appear, even for previously approved Java mods.
 
 [h1]Java Mod Policy[/h1]
 Controls what happens when an unknown/changed JAR is seen. Pass as a [b]policy=...[/b] argument:

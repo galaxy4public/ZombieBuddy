@@ -10,7 +10,6 @@ import zombie.GameWindow;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Runs a subprocess executing {@link SwingApprovalMain} (javax.swing). If the subprocess fails,
@@ -62,25 +61,14 @@ public final class SwingModApprovalFrontend implements ModApprovalFrontend {
             pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             Logger.info("Starting batch approval subprocess: commandLine=" + pb.command()
-                + " pendingEntries=" + pending.size()
-                + " timeoutSeconds=" + Loader.g_batchApprovalTimeoutSeconds + " (0 = no timeout)");
+                + " pendingEntries=" + pending.size());
             Process p = pb.start();
-            boolean timedOut = false;
-            if (Loader.g_batchApprovalTimeoutSeconds <= 0) {
-                p.waitFor();
-            } else {
-                timedOut = !p.waitFor(Loader.g_batchApprovalTimeoutSeconds, TimeUnit.SECONDS);
-            }
-            if (timedOut) {
-                Logger.warn("Batch approval subprocess timed out after " + Loader.g_batchApprovalTimeoutSeconds + "s");
-                p.destroyForcibly();
-                return false;
-            }
+            p.waitFor();
             if (p.exitValue() != 0) {
                 Logger.info("Batch approval subprocess exited with " + p.exitValue());
                 return false;
             }
-            List<JarBatchApprovalProtocol.OutLine> lines = JarBatchApprovalProtocol.readResponse(tmpOut);
+            List<JarBatchApprovalProtocol.Entry> lines = JarBatchApprovalProtocol.readResponse(tmpOut);
             if (lines == null) {
                 Logger.warn("Batch approval response malformed");
                 return false;
@@ -89,15 +77,11 @@ public final class SwingModApprovalFrontend implements ModApprovalFrontend {
                 Logger.warn("Batch approval response row count mismatch");
                 return false;
             }
-            for (JarBatchApprovalProtocol.Entry e : pending) {
-                int matches = 0;
-                for (JarBatchApprovalProtocol.OutLine ol : lines) {
-                    if (e.modKey.equals(ol.modId) && e.sha256.equals(ol.sha256)) {
-                        matches++;
-                    }
-                }
-                if (matches != 1) {
-                    Logger.warn("Batch approval missing or duplicate row for " + e.modKey);
+            for (int i = 0; i < pending.size(); i++) {
+                JarBatchApprovalProtocol.Entry expected = pending.get(i);
+                JarBatchApprovalProtocol.Entry actual = lines.get(i);
+                if (!expected.modId.equals(actual.modId) || !expected.sha256.equals(actual.sha256)) {
+                    Logger.warn("Batch approval response row mismatch for " + expected.modId);
                     return false;
                 }
             }

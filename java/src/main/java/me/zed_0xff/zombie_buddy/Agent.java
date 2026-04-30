@@ -73,16 +73,6 @@ public class Agent {
         // Java mod UI: auto (default), swing (Swing batch + TinyFD per-mod), tinyfd, console (stdin/headless).
         Loader.configureApprovalFrontend(arguments.getOrDefault("frontend", ModApprovalFrontends.ARG_AUTO));
 
-        if (arguments.containsKey("batch_approval_timeout")) {
-            try {
-                int sec = Integer.parseInt(arguments.get("batch_approval_timeout").trim());
-                Loader.g_batchApprovalTimeoutSeconds = Math.max(0, sec);
-                Logger.info("set batch_approval_timeout to " + Loader.g_batchApprovalTimeoutSeconds + "s (0 = no timeout)");
-            } catch (NumberFormatException e) {
-                Logger.error("invalid batch_approval_timeout value: " + arguments.get("batch_approval_timeout"));
-            }
-        }
-
         // Check ZB_VERBOSITY environment variable - it overrides command line value
         String envVerbosity = System.getenv("ZB_VERBOSITY");
         if (!Utils.isBlank(envVerbosity)) {

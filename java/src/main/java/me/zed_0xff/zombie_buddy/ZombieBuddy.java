@@ -53,7 +53,7 @@ public class ZombieBuddy {
      *   reason    (string)  — "loaded" or short skip reason
      *   sha256    (string)  — JAR sha256 (may be absent if hashing failed)
      *   decision  (string)  — "yes" | "no" (absent if never decided)
-     *   persisted (boolean) — true = from ~/.zombie_buddy file, false = session only
+     *   persisted (boolean) — true when decision is present
      *   zbsValid  (string)  — "yes" | "no" | "unsigned" | "" when not checked
      */
     public static KahluaTable getJavaModStatus(String modId) {

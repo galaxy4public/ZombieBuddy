@@ -1,17 +1,35 @@
 {
-  "header": "ZB_BATCH_V6_OUT",
-  "lines": [
+  "header": "ZB_BATCH_V8_OUT",
+  "entries": [
     {
       "modId": "TestMod",
       "workshopItemId": 3709229404,
+      "jarAbsolutePath": "/path/to/mod.jar",
       "sha256": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
-      "token": "ALLOW_PERSIST",
-      "trustedAuthorSteamId": 76561198043849998
+      "date": "2026-04-01",
+      "decision": true,
+      "modDisplayName": "Test Mod Display Name",
+      "zbs": {
+        "valid": true,
+        "authorSteamId": 76561198043849998,
+        "notice": ""
+      },
+      "steamBan": null,
+      "bEarlyLoad": false
     },
     {
       "modId": "LocalMod",
+      "jarAbsolutePath": "/path/to/local.jar",
       "sha256": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-      "token": "DENY_SESSION"
+      "date": "2026-04-02",
+      "decision": false,
+      "modDisplayName": "",
+      "zbs": {
+        "valid": false,
+        "notice": ""
+      },
+      "steamBan": null,
+      "bEarlyLoad": false
     }
   ]
 }

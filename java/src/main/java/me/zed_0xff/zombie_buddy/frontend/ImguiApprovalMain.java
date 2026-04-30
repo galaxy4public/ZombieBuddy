@@ -54,7 +54,7 @@ public final class ImguiApprovalMain {
                 return;
             }
 
-            List<JarBatchApprovalProtocol.OutLine> out = runDialog(entries);
+            List<JarBatchApprovalProtocol.Entry> out = runDialog(entries);
             if (out == null) {
                 System.exit(2);
                 return;
@@ -67,7 +67,7 @@ public final class ImguiApprovalMain {
         }
     }
 
-    private static List<JarBatchApprovalProtocol.OutLine> runDialog(List<JarBatchApprovalProtocol.Entry> entries) {
+    private static List<JarBatchApprovalProtocol.Entry> runDialog(List<JarBatchApprovalProtocol.Entry> entries) {
         if (!GLFW.glfwInit()) {
             throw new IllegalStateException("GLFW initialization failed");
         }
@@ -108,7 +108,7 @@ public final class ImguiApprovalMain {
             gl3.init(GLFW.glfwGetPlatform() == 393218 ? "#version 120" : null);
             gl3.updateFontsTexture();
 
-            AtomicReference<List<JarBatchApprovalProtocol.OutLine>> result = new AtomicReference<>();
+            AtomicReference<List<JarBatchApprovalProtocol.Entry>> result = new AtomicReference<>();
             ImguiApprovalDialog dialog = new ImguiApprovalDialog(entries, result);
             standaloneIo = new StandaloneIo(window);
             standaloneIo.initCursors();

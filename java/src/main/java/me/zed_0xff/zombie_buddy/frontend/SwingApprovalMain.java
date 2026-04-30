@@ -4,7 +4,6 @@ import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 
 import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
 import me.zed_0xff.zombie_buddy.KnownAuthors;
-import me.zed_0xff.zombie_buddy.Loader;
 import me.zed_0xff.zombie_buddy.SteamWorkshop;
 import me.zed_0xff.zombie_buddy.Utils;
 
@@ -43,9 +42,12 @@ import java.awt.event.WindowEvent;
 import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -58,8 +60,8 @@ public final class SwingApprovalMain {
 
     private static final Color ZBS_ROW_OK = new Color(220, 255, 220);
     private static final Color ZBS_ROW_BAD = new Color(255, 210, 210);
-    private static final Color STEAM_BAN_UNKNOWN = new Color(184, 134, 11);
     private static final Color STEAM_BAN_NO = new Color(0, 128, 0);
+    private static final String DATE_FORMAT = "yyyy-MM-dd";
     private static final Insets HEADER_INSETS = new Insets(3, 8, 3, 8);
     private static final Insets ROW_INSETS = new Insets(0, 0, 0, 0);
     private static final int COL_MOD = 0;
@@ -115,7 +117,7 @@ public final class SwingApprovalMain {
         if (d != null && !d.trim().isEmpty()) {
             return d;
         }
-        return !Utils.isBlank(e.modId) ? e.modId : e.modKey;
+        return e.modId;
     }
 
     private static void showDialog(
@@ -123,7 +125,7 @@ public final class SwingApprovalMain {
         Path resp,
         Map<SteamID64, String> steamIdToDisplayName
     ) {
-        final boolean showTrustColumn = entries.stream().anyMatch(e -> "yes".equals(e.zbsValid));
+        final boolean showTrustColumn = shouldShowTrustColumn(entries);
         JFrame frame = new JFrame("ZombieBuddy — Java mod approval");
         frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
@@ -194,11 +196,8 @@ public final class SwingApprovalMain {
             grid.add(hTrust, c);
         }
 
-        @SuppressWarnings("unchecked")
         final JRadioButton[] allowYes = new JRadioButton[entries.size()];
-        @SuppressWarnings("unchecked")
         final JRadioButton[] allowNo = new JRadioButton[entries.size()];
-        @SuppressWarnings("unchecked")
         final JCheckBox[] trustChecks = new JCheckBox[entries.size()];
         final boolean[] initialAllowYes = new boolean[entries.size()];
         final boolean[] forceDisableAllow = new boolean[entries.size()];
@@ -207,11 +206,10 @@ public final class SwingApprovalMain {
 
         int i = 0;
         for (JarBatchApprovalProtocol.Entry e : entries) {
-            boolean zbsYes = "yes".equals(e.zbsValid);
-            boolean zbsNo = "no".equals(e.zbsValid);
-            boolean zbsUnsigned = "unsigned".equals(e.zbsValid);
-            boolean steamBanYes = "yes".equals(e.steamBanStatus);
-            boolean steamBanUnknown = "unknown".equals(e.steamBanStatus);
+            boolean zbsYes = e.zbs.valid();
+            boolean zbsNo = e.zbs.invalid();
+            boolean zbsUnsigned = e.zbs.unsigned();
+            boolean steamBanYes = e.steamBan != null;
             Color rowBg = steamBanYes ? ZBS_ROW_BAD : (zbsYes ? ZBS_ROW_OK : (zbsNo ? ZBS_ROW_BAD : null));
 
             c.gridy = i + 1;
@@ -244,11 +242,11 @@ public final class SwingApprovalMain {
             JPanel authorCell = new JPanel();
             authorCell.setLayout(new BoxLayout(authorCell, BoxLayout.PAGE_AXIS));
             applyRowBackground(authorCell, rowBg);
-            String zbsSteamId = e.zbsSteamId != null ? e.zbsSteamId.toString() : "";
+            String zbsSteamId = e.zbs.authorSteamId() != null ? e.zbs.authorSteamId().toString() : "";
             if (zbsYes && !zbsSteamId.isEmpty()) {
-                String profileUrl = SteamWorkshop.authorWorkshopUrl(e.zbsSteamId);
+                String profileUrl = SteamWorkshop.authorWorkshopUrl(e.zbs.authorSteamId());
                 String resolved = steamIdToDisplayName != null
-                    ? steamIdToDisplayName.get(e.zbsSteamId)
+                    ? steamIdToDisplayName.get(e.zbs.authorSteamId())
                     : null;
                 String linkText = !Utils.isBlank(resolved) ? resolved : zbsSteamId;
                 JLabel linkLab = new JLabel(
@@ -266,8 +264,8 @@ public final class SwingApprovalMain {
                 applyRowBackground(linkLab, rowBg);
                 authorCell.add(linkLab);
             } else if (zbsNo) {
-                String fullNotice = !Utils.isBlank(e.zbsNotice)
-                    ? e.zbsNotice
+                String fullNotice = !Utils.isBlank(e.zbs.notice())
+                    ? e.zbs.notice()
                     : "Invalid signature — JAR may have been tampered with.";
                 int nl = fullNotice.indexOf('\n');
                 String shortNotice = nl >= 0 ? fullNotice.substring(0, nl).trim() : fullNotice;
@@ -296,7 +294,7 @@ public final class SwingApprovalMain {
             c.gridx = COL_UPDATED;
             c.weightx = W_UPDATED;
             c.fill = GridBagConstraints.BOTH;
-            JLabel dateLab = new JLabel(!Utils.isBlank(e.modifiedHuman) ? e.modifiedHuman : "—");
+            JLabel dateLab = new JLabel(formatDate(e.date));
             dateLab.setHorizontalAlignment(SwingConstants.CENTER);
             applyRowBackground(dateLab, rowBg);
             grid.add(dateLab, c);
@@ -304,20 +302,18 @@ public final class SwingApprovalMain {
             c.gridx = COL_STEAM_BAN;
             c.weightx = W_STEAM_BAN;
             c.fill = GridBagConstraints.BOTH;
-            JLabel banStatusLab = new JLabel(steamBanYes ? "Yes" : (steamBanUnknown ? "Unknown" : "No"));
+            JLabel banStatusLab = new JLabel(steamBanYes ? "Yes" : "No");
             banStatusLab.setHorizontalAlignment(SwingConstants.CENTER);
-            if (steamBanUnknown) {
-                banStatusLab.setForeground(STEAM_BAN_UNKNOWN);
-            } else if (!steamBanYes) {
+            if (!steamBanYes) {
                 banStatusLab.setForeground(STEAM_BAN_NO);
             }
             applyRowBackground(banStatusLab, rowBg);
-            if (!Utils.isBlank(e.steamBanReason)) {
-                banStatusLab.setToolTipText(escapeHtml(e.steamBanReason));
+            if (e.steamBan != null && !Utils.isBlank(e.steamBan.reason())) {
+                banStatusLab.setToolTipText(escapeHtml(e.steamBan.reason()));
             }
             grid.add(banStatusLab, c);
 
-            boolean defaultYes = Loader.DECISION_YES.equals(e.priorHint);
+            boolean defaultYes = Boolean.TRUE.equals(e.decision);
             JRadioButton yesB = new JRadioButton("Yes", defaultYes);
             JRadioButton noB = new JRadioButton("No", !defaultYes);
             forceDisableAllow[i] = zbsNo || steamBanYes;
@@ -374,12 +370,6 @@ public final class SwingApprovalMain {
         scroll.setPreferredSize(new Dimension(960, 420));
         root.add(scroll, BorderLayout.CENTER);
 
-        JLabel savePersistLabel = new JLabel("Save decisions to disk (persist across game launches)");
-        JCheckBox savePersist = new JCheckBox("", true);
-        savePersistLabel.setLabelFor(savePersist);
-        JPanel savePersistRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        savePersistRow.add(savePersistLabel);
-        savePersistRow.add(savePersist);
         JLabel trustNotice = new JLabel(
             "<html><small><i>\"Trust author\" means all mods by that author are auto-allowed while their digital signature remains valid and the mod is not banned.</i></small></html>");
         trustNotice.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -387,11 +377,6 @@ public final class SwingApprovalMain {
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton ok = new JButton("OK");
         JButton cancel = new JButton("Cancel");
-        int checkboxShiftRight = Math.max(
-            0,
-            (ok.getPreferredSize().width - savePersist.getPreferredSize().width) / 2
-        );
-        savePersistRow.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, checkboxShiftRight));
         buttons.add(cancel);
         buttons.add(ok);
         Runnable updateOkEnabled = () -> {
@@ -455,7 +440,6 @@ public final class SwingApprovalMain {
 
         JPanel south = new JPanel();
         south.setLayout(new BoxLayout(south, BoxLayout.PAGE_AXIS));
-        south.add(savePersistRow);
         if (showTrustColumn) {
             south.add(Box.createVerticalStrut(6));
             south.add(trustNotice);
@@ -467,39 +451,18 @@ public final class SwingApprovalMain {
         cancel.addActionListener(ev -> System.exit(2));
         ok.addActionListener(ev -> {
             try {
-                boolean persist = savePersist.isSelected();
-                List<JarBatchApprovalProtocol.OutLine> out = new ArrayList<>(entries.size());
+                List<JarBatchApprovalProtocol.Entry> out = new ArrayList<>(entries.size());
                 for (int k = 0; k < entries.size(); k++) {
                     JarBatchApprovalProtocol.Entry e = entries.get(k);
-                    String tok;
-                    if ("no".equals(e.zbsValid) || "yes".equals(e.steamBanStatus)) {
-                        // Always deny loading; same session/persist split as other "No" rows.
-                        tok = persist
-                            ? JarBatchApprovalProtocol.TOK_DENY_PERSIST
-                            : JarBatchApprovalProtocol.TOK_DENY_SESSION;
+                    boolean allow;
+                    if (e.zbs.invalid() || e.steamBan != null) {
+                        // Always deny rows that cannot be loaded safely.
+                        allow = false;
                     } else {
-                        boolean allow = allowYes[k].isSelected();
-                        if (allow && persist) {
-                            tok = JarBatchApprovalProtocol.TOK_ALLOW_PERSIST;
-                        } else if (allow) {
-                            tok = JarBatchApprovalProtocol.TOK_ALLOW_SESSION;
-                        } else if (persist) {
-                            tok = JarBatchApprovalProtocol.TOK_DENY_PERSIST;
-                        } else {
-                            tok = JarBatchApprovalProtocol.TOK_DENY_SESSION;
-                        }
+                        allow = allowYes[k].isSelected();
                     }
-                    SteamID64 trustedAuthorSteamId = null;
-                    if (persist && trustChecks[k].isSelected() && "yes".equals(e.zbsValid)) {
-                        trustedAuthorSteamId = e.zbsSteamId;
-                    }
-                    out.add(new JarBatchApprovalProtocol.OutLine(
-                        e.modKey,
-                        e.workshopItemId,
-                        e.sha256,
-                        tok,
-                        trustedAuthorSteamId
-                    ));
+                    e.decision = allow;
+                    out.add(e);
                 }
                 JarBatchApprovalProtocol.writeResponse(resp, out);
                 System.exit(0);
@@ -520,6 +483,17 @@ public final class SwingApprovalMain {
         if (rowBg != null) {
             component.setBackground(rowBg);
         }
+    }
+
+    private static String formatDate(Date date) {
+        if (date == null) {
+            return "—";
+        }
+        return new SimpleDateFormat(DATE_FORMAT, Locale.ROOT).format(date);
+    }
+
+    private static boolean shouldShowTrustColumn(List<JarBatchApprovalProtocol.Entry> entries) {
+        return false;
     }
 
     private static void setAllowStateForTrustRow(

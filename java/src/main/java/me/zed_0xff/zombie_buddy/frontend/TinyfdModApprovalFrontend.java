@@ -6,7 +6,10 @@ import zombie.core.Core;
 import zombie.core.GameVersion;
 
 import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * LWJGL {@code TinyFileDialogs} (works when the game JVM is {@code java.awt.headless=true}).
@@ -15,6 +18,7 @@ import java.util.List;
 public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
 
     private static final String DIALOG_TITLE = "ZombieBuddy Java mod approval";
+    private static final String DATE_FORMAT = "yyyy-MM-dd";
 
     @Override
     public void approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending, JarDecisionTable disk) {
@@ -22,51 +26,41 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
             return;
         }
         for (JarBatchApprovalProtocol.Entry e : pending) {
-            JarApprovalOutcome o = promptForEntry(e);
+            Boolean allow = promptForEntry(e);
+            e.decision = Boolean.TRUE.equals(allow);
             Loader.applyBatchApprovalLines(
-                List.of(new JarBatchApprovalProtocol.OutLine(e.modKey, e.workshopItemId, e.sha256, o.toBatchToken(), null)),
+                List.of(e),
                 disk
             );
         }
     }
 
-    private static JarApprovalOutcome promptForEntry(JarBatchApprovalProtocol.Entry e) {
+    private static Boolean promptForEntry(JarBatchApprovalProtocol.Entry e) {
         File jarFile = !Utils.isBlank(e.jarAbsolutePath)
             ? new File(e.jarAbsolutePath)
             : null;
-        String modKey = e.modKey;
+        String modKey = e.modId;
         String sha256 = e.sha256;
 
         Loader.doLoadingWaitModApproval();
         try {
-            if ("no".equals(e.zbsValid)) {
-                String note = !Utils.isBlank(e.zbsNotice)
-                    ? e.zbsNotice
+            if (e.zbs.invalid()) {
+                String note = !Utils.isBlank(e.zbs.notice())
+                    ? e.zbs.notice()
                     : "Invalid ZBS — load will be denied.";
-                Boolean remember = tinyfdYesNo(
+                tinyfdYesNo(
                     "ZBS invalid — this Java mod cannot be loaded.\n\n"
                         + note
-                        + "\n\nRemember this denial across game sessions?\n\n"
-                        + "Yes — save to ~/.zombie_buddy/ as denied.\n"
-                        + "No — deny only for this session."
+                        + "\n\nIt will be denied."
                 );
-                if (remember == null) {
-                    return JarApprovalOutcome.DENY_SESSION;
-                }
-                return Boolean.TRUE.equals(remember)
-                    ? JarApprovalOutcome.DENY_PERSIST
-                    : JarApprovalOutcome.DENY_SESSION;
+                return false;
             }
 
-            String modified = (jarFile != null && jarFile.exists())
-                ? java.time.Instant.ofEpochMilli(jarFile.lastModified())
-                    .atZone(java.time.ZoneId.systemDefault())
-                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-                : "<unknown>";
+            String modified = formatDate(e.date);
             String zbsLine = "";
-            if (!Utils.isBlank(e.zbsValid)) {
-                String sid = e.zbsSteamId != null ? e.zbsSteamId.toString() : "";
-                zbsLine = "ZBS: " + e.zbsValid
+            if (e.zbs.valid() || e.zbs.invalid() || e.zbs.unsigned()) {
+                String sid = e.zbs.authorSteamId() != null ? e.zbs.authorSteamId().toString() : "";
+                zbsLine = "ZBS: " + zbsStatus(e)
                     + (!sid.isEmpty() ? " (Steam: " + sid + ")" : "")
                     + "\n\n";
             }
@@ -80,31 +74,29 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
                     + "Only allow if you trust this mod source."
             );
             if (allow == null) {
-                return JarApprovalOutcome.DENY_SESSION;
+                return false;
             }
-
-            String verb = allow ? "APPROVAL" : "DENIAL";
-            String yesHint = allow
-                ? "Yes — save to ~/.zombie_buddy/" + ModApprovalsStore.JSON_FILE_NAME + " and do not ask again."
-                : "Yes — save as denied; this JAR will be blocked without asking.";
-            String noHint = allow
-                ? "No  — allow only for this game session."
-                : "No  — deny only for this game session (ask again next launch).";
-
-            Boolean remember = tinyfdYesNo(
-                "Remember this " + verb + " across game sessions?\n\n"
-                    + "Mod: " + modKey + "\n\n"
-                    + yesHint + "\n\n"
-                    + noHint
-            );
-            boolean persist = Boolean.TRUE.equals(remember);
-            if (allow) {
-                return persist ? JarApprovalOutcome.ALLOW_PERSIST : JarApprovalOutcome.ALLOW_SESSION;
-            }
-            return persist ? JarApprovalOutcome.DENY_PERSIST : JarApprovalOutcome.DENY_SESSION;
+            return allow;
         } finally {
             Loader.doLoadingModsDefault();
         }
+    }
+
+    private static String zbsStatus(JarBatchApprovalProtocol.Entry e) {
+        if (e.zbs.valid()) {
+            return "valid";
+        }
+        if (e.zbs.invalid()) {
+            return "invalid";
+        }
+        return "unsigned";
+    }
+
+    private static String formatDate(Date date) {
+        if (date == null) {
+            return "<unknown>";
+        }
+        return new SimpleDateFormat(DATE_FORMAT, Locale.ROOT).format(date);
     }
 
     /**

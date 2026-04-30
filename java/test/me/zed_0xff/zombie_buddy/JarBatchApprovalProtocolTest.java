@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 class JarBatchApprovalProtocolTest {
@@ -32,24 +33,24 @@ class JarBatchApprovalProtocolTest {
 
         // Check first entry
         JarBatchApprovalProtocol.Entry e1 = entries.get(0);
-        assertEquals("TestMod", e1.modKey);
         assertEquals("TestMod", e1.modId);
         assertEquals(3709229404L, e1.workshopItemId.value());
         assertEquals("/path/to/mod.jar", e1.jarAbsolutePath);
         assertEquals("abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", e1.sha256);
-        assertEquals("2026-04-01", e1.modifiedHuman);
-        assertEquals("yes", e1.priorHint);
+        assertNotNull(e1.date);
+        assertEquals(Boolean.TRUE, e1.decision);
         assertEquals("Test Mod Display Name", e1.modDisplayName);
-        assertEquals("yes", e1.zbsValid);
-        assertEquals(76561198043849998L, e1.zbsSteamId.value());
-        assertEquals("no", e1.steamBanStatus);
+        assertTrue(e1.zbs.valid());
+        assertEquals(76561198043849998L, e1.zbs.authorSteamId().value());
+        assertNull(e1.steamBan);
 
-        // Check second entry (no workshopItemId, no zbsSteamId)
+        // Check second entry (no workshopItemId, no authorSteamId)
         JarBatchApprovalProtocol.Entry e2 = entries.get(1);
         assertEquals("LocalMod", e2.modId);
         assertNull(e2.workshopItemId);
-        assertNull(e2.zbsSteamId);
-        assertEquals("unsigned", e2.zbsValid);
+        assertNull(e2.zbs.authorSteamId());
+        assertFalse(e2.zbs.valid());
+        assertTrue(e2.zbs.unsigned());
     }
 
     @Test
@@ -58,25 +59,25 @@ class JarBatchApprovalProtocolTest {
         Path respPath = tempDir.resolve("response.json");
         Files.writeString(respPath, json);
 
-        List<JarBatchApprovalProtocol.OutLine> lines = JarBatchApprovalProtocol.readResponse(respPath);
+        List<JarBatchApprovalProtocol.Entry> lines = JarBatchApprovalProtocol.readResponse(respPath);
 
         assertNotNull(lines);
         assertEquals(2, lines.size());
 
         // Check first line
-        JarBatchApprovalProtocol.OutLine l1 = lines.get(0);
+        JarBatchApprovalProtocol.Entry l1 = lines.get(0);
         assertEquals("TestMod", l1.modId);
         assertEquals(3709229404L, l1.workshopItemId.value());
         assertEquals("abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", l1.sha256);
-        assertEquals("ALLOW_PERSIST", l1.token);
-        assertEquals(76561198043849998L, l1.trustedAuthorSteamId.value());
+        assertEquals(Boolean.TRUE, l1.decision);
+        assertEquals(76561198043849998L, l1.zbs.authorSteamId().value());
 
-        // Check second line (no workshopItemId, no trustedAuthorSteamId)
-        JarBatchApprovalProtocol.OutLine l2 = lines.get(1);
+        // Check second line (no workshopItemId, no authorSteamId)
+        JarBatchApprovalProtocol.Entry l2 = lines.get(1);
         assertEquals("LocalMod", l2.modId);
         assertNull(l2.workshopItemId);
-        assertEquals("DENY_SESSION", l2.token);
-        assertNull(l2.trustedAuthorSteamId);
+        assertEquals(Boolean.FALSE, l2.decision);
+        assertNull(l2.zbs.authorSteamId());
     }
 
     @Test
@@ -84,18 +85,15 @@ class JarBatchApprovalProtocolTest {
         List<JarBatchApprovalProtocol.Entry> original = new ArrayList<>();
         original.add(new JarBatchApprovalProtocol.Entry(
             "RoundTripMod",
-            "RoundTripMod",
             new WorkshopItemID(9876543210L),
             "/path/to/roundtrip.jar",
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-            "2026-04-24",
-            "no",
+            new Date(1_777_000_000_000L),
+            Boolean.FALSE,
             "Round Trip Mod",
-            "yes",
-            new SteamID64(76561198099999999L),
-            "",
-            "no",
-            ""
+            new JarBatchApprovalProtocol.Entry.ZbsSignature(true, new SteamID64(76561198099999999L), ""),
+            null,
+            false
         ));
 
         Path reqPath = tempDir.resolve("roundtrip_request.json");
@@ -104,70 +102,38 @@ class JarBatchApprovalProtocolTest {
 
         assertEquals(1, parsed.size());
         JarBatchApprovalProtocol.Entry e = parsed.get(0);
-        assertEquals("RoundTripMod", e.modKey);
+        assertEquals("RoundTripMod", e.modId);
         assertEquals(9876543210L, e.workshopItemId.value());
-        assertEquals(76561198099999999L, e.zbsSteamId.value());
+        assertEquals(76561198099999999L, e.zbs.authorSteamId().value());
     }
 
     @Test
     void responseRoundTrip_preservesData() throws IOException {
-        List<JarBatchApprovalProtocol.OutLine> original = new ArrayList<>();
-        original.add(new JarBatchApprovalProtocol.OutLine(
+        List<JarBatchApprovalProtocol.Entry> original = new ArrayList<>();
+        original.add(new JarBatchApprovalProtocol.Entry(
             "RoundTripMod",
             new WorkshopItemID(9876543210L),
+            "/path/to/roundtrip.jar",
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-            "ALLOW_PERSIST",
-            new SteamID64(76561198099999999L)
+            new Date(1_777_000_000_000L),
+            Boolean.TRUE,
+            "Round Trip Mod",
+            new JarBatchApprovalProtocol.Entry.ZbsSignature(true, new SteamID64(76561198099999999L), ""),
+            null,
+            false
         ));
 
         Path respPath = tempDir.resolve("roundtrip_response.json");
         JarBatchApprovalProtocol.writeResponse(respPath, original);
-        List<JarBatchApprovalProtocol.OutLine> parsed = JarBatchApprovalProtocol.readResponse(respPath);
+        List<JarBatchApprovalProtocol.Entry> parsed = JarBatchApprovalProtocol.readResponse(respPath);
 
         assertNotNull(parsed);
         assertEquals(1, parsed.size());
-        JarBatchApprovalProtocol.OutLine l = parsed.get(0);
+        JarBatchApprovalProtocol.Entry l = parsed.get(0);
         assertEquals("RoundTripMod", l.modId);
         assertEquals(9876543210L, l.workshopItemId.value());
-        assertEquals("ALLOW_PERSIST", l.token);
-        assertEquals(76561198099999999L, l.trustedAuthorSteamId.value());
-    }
-
-    @Test
-    void isValidToken_acceptsValidTokens() {
-        assertTrue(JarBatchApprovalProtocol.isValidToken("ALLOW_PERSIST"));
-        assertTrue(JarBatchApprovalProtocol.isValidToken("ALLOW_SESSION"));
-        assertTrue(JarBatchApprovalProtocol.isValidToken("DENY_PERSIST"));
-        assertTrue(JarBatchApprovalProtocol.isValidToken("DENY_SESSION"));
-    }
-
-    @Test
-    void isValidToken_rejectsInvalidTokens() {
-        assertFalse(JarBatchApprovalProtocol.isValidToken("INVALID"));
-        assertFalse(JarBatchApprovalProtocol.isValidToken(""));
-        assertFalse(JarBatchApprovalProtocol.isValidToken(null));
-        assertFalse(JarBatchApprovalProtocol.isValidToken("allow_persist"));
-    }
-
-    @Test
-    void readResponse_rejectsInvalidToken() throws IOException {
-        String json = """
-            {
-              "header": "ZB_BATCH_V6_OUT",
-              "lines": [
-                {
-                  "modId": "BadMod",
-                  "sha256": "hash",
-                  "token": "INVALID_TOKEN"
-                }
-              ]
-            }
-            """;
-        Path respPath = tempDir.resolve("invalid_response.json");
-        Files.writeString(respPath, json);
-
-        List<JarBatchApprovalProtocol.OutLine> result = JarBatchApprovalProtocol.readResponse(respPath);
-        assertNull(result);
+        assertEquals(Boolean.TRUE, l.decision);
+        assertEquals(76561198099999999L, l.zbs.authorSteamId().value());
     }
 
     @Test
@@ -175,13 +141,13 @@ class JarBatchApprovalProtocolTest {
         String json = """
             {
               "header": "WRONG_HEADER",
-              "lines": []
+              "entries": []
             }
             """;
         Path respPath = tempDir.resolve("bad_header_response.json");
         Files.writeString(respPath, json);
 
-        List<JarBatchApprovalProtocol.OutLine> result = JarBatchApprovalProtocol.readResponse(respPath);
+        List<JarBatchApprovalProtocol.Entry> result = JarBatchApprovalProtocol.readResponse(respPath);
         assertNull(result);
     }
 
@@ -203,11 +169,11 @@ class JarBatchApprovalProtocolTest {
     void serialize_writesNumbersNotStrings() throws IOException {
         List<JarBatchApprovalProtocol.Entry> entries = new ArrayList<>();
         entries.add(new JarBatchApprovalProtocol.Entry(
-            "NumericTest", "NumericTest",
+            "NumericTest",
             new WorkshopItemID(1234567890L),
-            "/path", "hash", "date", "", "",
-            "yes", new SteamID64(76561198000000000L), "",
-            "no", ""
+            "/path", "hash", new Date(1_777_000_000_000L), null, "",
+            new JarBatchApprovalProtocol.Entry.ZbsSignature(true, new SteamID64(76561198000000000L), ""),
+            null, false
         ));
 
         Path reqPath = tempDir.resolve("numeric_request.json");
@@ -216,8 +182,8 @@ class JarBatchApprovalProtocolTest {
 
         assertTrue(json.contains("\"workshopItemId\": 1234567890"),
             "workshopItemId should be numeric: " + json);
-        assertTrue(json.contains("\"zbsSteamId\": 76561198000000000"),
-            "zbsSteamId should be numeric: " + json);
+        assertTrue(json.contains("\"authorSteamId\": 76561198000000000"),
+            "authorSteamId should be numeric: " + json);
     }
 
     private static String loadFixture(String name) throws IOException {

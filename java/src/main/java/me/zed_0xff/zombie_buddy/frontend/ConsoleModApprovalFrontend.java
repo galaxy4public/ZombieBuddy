@@ -5,7 +5,9 @@ import me.zed_0xff.zombie_buddy.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -14,6 +16,7 @@ import java.util.Locale;
  * Intended for headless dedicated servers where Swing/TinyFD are unavailable or undesirable.
  */
 public final class ConsoleModApprovalFrontend implements ModApprovalFrontend {
+    private static final String DATE_FORMAT = "yyyy-MM-dd";
 
     private final BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
 
@@ -23,42 +26,28 @@ public final class ConsoleModApprovalFrontend implements ModApprovalFrontend {
             return;
         }
         Logger.info("Java mod approval (console): " + pending.size() + " mod(s). Answer y/n.");
-        List<JarBatchApprovalProtocol.OutLine> out = new ArrayList<>(pending.size());
+        List<JarBatchApprovalProtocol.Entry> out = new ArrayList<>(pending.size());
         for (JarBatchApprovalProtocol.Entry e : pending) {
             System.out.println();
             System.out.println("---");
-            System.out.println("Mod key:   " + e.modKey);
             System.out.println("Mod id:    " + e.modId);
             System.out.println("Workshop:  " + (e.workshopItemId != null ? e.workshopItemId.value() : "(none)"));
             System.out.println("JAR:       " + e.jarAbsolutePath);
             System.out.println("SHA-256:   " + e.sha256);
-            System.out.println("Updated:   " + e.modifiedHuman);
-            System.out.println("ZBS valid: " + (!Utils.isBlank(e.zbsValid) ? e.zbsValid : "(unknown)"));
-            if (!Utils.isBlank(e.zbsNotice)) {
-                System.out.println("ZBS note:  " + e.zbsNotice);
+            System.out.println("Updated:   " + formatDate(e.date));
+            System.out.println("ZBS valid: " + e.zbs.valid());
+            if (!Utils.isBlank(e.zbs.notice())) {
+                System.out.println("ZBS note:  " + e.zbs.notice());
             }
-            boolean persist;
-            String tok;
-            if ("no".equals(e.zbsValid)) {
-                System.out.println("ZBS invalid — load will be denied. Choose session vs persist for this denial.");
-                persist = readYesNo("Remember this denial across launches? (y = persist, n = session only)");
-                tok = persist
-                    ? JarBatchApprovalProtocol.TOK_DENY_PERSIST
-                    : JarBatchApprovalProtocol.TOK_DENY_SESSION;
+            boolean allow;
+            if (e.zbs.invalid()) {
+                System.out.println("ZBS invalid — load will be denied.");
+                allow = false;
             } else {
-                boolean allow = readYesNo("Allow this Java mod to load?");
-                persist = readYesNo("Remember this decision across launches?");
-                if (allow && persist) {
-                    tok = JarBatchApprovalProtocol.TOK_ALLOW_PERSIST;
-                } else if (allow) {
-                    tok = JarBatchApprovalProtocol.TOK_ALLOW_SESSION;
-                } else if (persist) {
-                    tok = JarBatchApprovalProtocol.TOK_DENY_PERSIST;
-                } else {
-                    tok = JarBatchApprovalProtocol.TOK_DENY_SESSION;
-                }
+                allow = readYesNo("Allow this Java mod to load?");
             }
-            out.add(new JarBatchApprovalProtocol.OutLine(e.modKey, e.workshopItemId, e.sha256, tok, null));
+            e.decision = allow;
+            out.add(e);
         }
         Loader.applyBatchApprovalLines(out, disk);
     }
@@ -89,5 +78,12 @@ public final class ConsoleModApprovalFrontend implements ModApprovalFrontend {
             }
             System.out.println("Please answer y or n.");
         }
+    }
+
+    private static String formatDate(Date date) {
+        if (date == null) {
+            return "(unknown)";
+        }
+        return new SimpleDateFormat(DATE_FORMAT, Locale.ROOT).format(date);
     }
 }

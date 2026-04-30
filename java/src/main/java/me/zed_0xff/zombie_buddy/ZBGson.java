@@ -59,6 +59,7 @@ public final class ZBGson {
     /** Pretty-printed output ({@link JarBatchApprovalProtocol}, {@link ModApprovalsStore}). */
     public static final Gson PRETTY = new GsonBuilder()
         .setPrettyPrinting()
+        .setDateFormat("yyyy-MM-dd")
         .disableHtmlEscaping()
         .registerTypeAdapter(WorkshopItemID.class, WORKSHOP_ID_ADAPTER)
         .registerTypeAdapter(SteamID64.class, STEAM_ID64_ADAPTER)

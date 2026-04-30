@@ -36,21 +36,12 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
             return;
         }
 
-        AtomicReference<List<JarBatchApprovalProtocol.OutLine>> result = new AtomicReference<>();
+        AtomicReference<List<JarBatchApprovalProtocol.Entry>> result = new AtomicReference<>();
         ImguiApprovalDialog dialog = new ImguiApprovalDialog(pending, result);
 
-        long deadline = Loader.g_batchApprovalTimeoutSeconds > 0
-                ? System.currentTimeMillis() + Loader.g_batchApprovalTimeoutSeconds * 1000L
-                : Long.MAX_VALUE;
         OwnedImguiContext imgui = createImguiContext(Display.getWindow());
         try {
             while (result.get() == null && dialog.isOpen()) {
-                if (System.currentTimeMillis() >= deadline) {
-                    Logger.warn("ImGui approval timed out; denying pending mods for session");
-                    result.compareAndSet(null, ImguiApprovalDialog.denyAll(pending));
-                    dialog.close();
-                    break;
-                }
                 pumpImguiLoadingFrame(imgui, dialog);
                 try {
                     Thread.sleep(16);
@@ -65,7 +56,7 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
             GameWindow.DoLoadingText(LOADING_MODS);
         }
 
-        List<JarBatchApprovalProtocol.OutLine> lines = result.get();
+        List<JarBatchApprovalProtocol.Entry> lines = result.get();
         if (lines == null) {
             lines = ImguiApprovalDialog.denyAll(pending);
         }

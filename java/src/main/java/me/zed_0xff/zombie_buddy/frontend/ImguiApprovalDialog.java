@@ -3,8 +3,11 @@ package me.zed_0xff.zombie_buddy.frontend;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.imageio.ImageIO;
@@ -12,11 +15,8 @@ import javax.imageio.ImageIO;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
-import me.zed_0xff.zombie_buddy.Agent;
-import me.zed_0xff.zombie_buddy.JarApprovalOutcome;
 import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
 import me.zed_0xff.zombie_buddy.Logger;
-import me.zed_0xff.zombie_buddy.ModApprovalsStore;
 import me.zed_0xff.zombie_buddy.SteamWorkshop;
 import me.zed_0xff.zombie_buddy.Utils;
 
@@ -37,21 +37,32 @@ import imgui.type.ImBoolean;
 import zombie.network.DesktopBrowser;
 
 final class ImguiApprovalDialog {
-    private static final String PRIOR_YES = "yes";
-
+    private static final String DATE_FORMAT = "yyyy-MM-dd";
+    private static final String EARLY_LOAD_NOTICE = "Requests early load";
+    private static final String EARLY_LOAD_TOOLTIP = String.join("\n",
+            "This mod wants ZombieBuddy to load its Java code during agent startup on the next launch.",
+            "Early-loaded mods run before normal Project Zomboid mod loading.",
+            "This lets the mod hook earlier game code that is otherwise already loaded.");
     private static final int ROW_OK                     = ImColor.rgba(60, 110, 60, 80);
     private static final int ROW_BAD                    = ImColor.rgba(130, 55, 55, 95);
-    private static final int STEAM_BAN_UNKNOWN          = ImColor.rgb(184, 134, 11);
     private static final int STEAM_BAN_NO               = ImColor.rgb(0, 170, 70);
     private static final int LINK                       = ImColor.rgb(80, 150, 255);
     private static final int ALLOW_CHECK_MARK           = ImColor.rgb(0, 255, 0);
     private static final int DENY_CROSS_MARK            = ImColor.rgb(255, 0, 0);
+    private static final int ALERT_TEXT                 = ImColor.rgb(236, 213, 82);
 
     private static final float BASE_FRAME_HEIGHT        = 19.0f; // vanilla UIFont.Small + 6
     private static final float DIALOG_W                 = 1024.0f;
     private static final float DIALOG_H                 = 600.0f;
     private static final float TABLE_SCROLL_H           = 420.0f;
     private static final float TABLE_ROW_MIN_HEIGHT     = 32.0f;
+
+    private static final int COL_IDX_MOD                = 0;
+    private static final int COL_IDX_AUTHOR             = 1;
+    private static final int COL_IDX_UPDATED            = 2;
+    private static final int COL_IDX_STEAM_BAN          = 3;
+    private static final int COL_IDX_ALLOW              = 4;
+    private static final int COL_IDX_TRUST_AUTHOR       = 5;
 
     private static final String COL_MOD                 = "Mod";
     private static final String COL_AUTHOR              = "Author";
@@ -71,15 +82,14 @@ final class ImguiApprovalDialog {
     private final boolean[] initialAllow;
     private final boolean[] forceDeny;
     private final String[] authorGroupKey;
-    private final ImBoolean persist = new ImBoolean(false);
     private final ImBoolean open    = new ImBoolean(true);
-    private final AtomicReference<List<JarBatchApprovalProtocol.OutLine>> result;
-    private final boolean showTrustColumn;
+    private final AtomicReference<List<JarBatchApprovalProtocol.Entry>> result;
     private static float tableRowStartY;
+    private static float tableRowHeight;
 
     ImguiApprovalDialog(
             List<JarBatchApprovalProtocol.Entry> entries,
-            AtomicReference<List<JarBatchApprovalProtocol.OutLine>> result) {
+            AtomicReference<List<JarBatchApprovalProtocol.Entry>> result) {
         this.entries = entries;
         this.result = result;
         this.allow = new ImBoolean[entries.size()];
@@ -87,12 +97,11 @@ final class ImguiApprovalDialog {
         this.initialAllow = new boolean[entries.size()];
         this.forceDeny = new boolean[entries.size()];
         this.authorGroupKey = new String[entries.size()];
-        this.showTrustColumn = entries.stream().anyMatch(e -> "yes".equals(e.zbsValid));
         for (int i = 0; i < entries.size(); i++) {
             JarBatchApprovalProtocol.Entry e = entries.get(i);
             this.initialAllow[i] = initialAllow(e);
-            this.forceDeny[i] = "no".equals(e.zbsValid) || "yes".equals(e.steamBanStatus);
-            this.authorGroupKey[i] = e.zbsSteamId != null ? e.zbsSteamId.toString() : "";
+            this.forceDeny[i] = forceDeny(e);
+            this.authorGroupKey[i] = e.zbs.authorSteamId() != null ? e.zbs.authorSteamId().toString() : "";
             this.allow[i] = new ImBoolean(this.initialAllow[i]);
             this.trustAuthor[i] = new ImBoolean(false);
         }
@@ -127,12 +136,11 @@ final class ImguiApprovalDialog {
         ImGui.separator();
 
         if (ImGui.beginChild("##zb-imgui-approval-scroll", 0.0f, scaled(TABLE_SCROLL_H), true)) {
-            int columns = showTrustColumn ? 6 : 5;
             int tableFlags = ImGuiTableFlags.Borders
                     | ImGuiTableFlags.RowBg
                     | ImGuiTableFlags.Resizable
                     | ImGuiTableFlags.SizingStretchProp;
-            if (ImGui.beginTable("##zb-imgui-approval-table", columns, tableFlags)) {
+            if (ImGui.beginTable("##zb-imgui-approval-table", 6, tableFlags)) {
                 setupTableColumns();
                 drawHeaderRow();
                 for (int i = 0; i < entries.size(); i++) {
@@ -150,33 +158,30 @@ final class ImguiApprovalDialog {
     }
 
     private void drawBottomActions() {
-        String persistLabel = "Save decisions to disk (persist across game launches)";
-        String persistTooltip = "Saved to " + approvalsFilePath();
+        String forceDialogHint = "Hold Shift during game load to force-show this dialog";
         String cancelLabel = "Cancel";
         String okLabel = "OK";
 
         float spacing       = ImGui.getStyle().getItemSpacingX();
         float paddingX      = ImGui.getStyle().getFramePaddingX();
-        float checkboxW     = ImGui.getFrameHeight();
-        float buttonH       = ImGui.getFrameHeight() * 1.35f;
-        float persistLabelW = ImGui.calcTextSize(persistLabel).x;
-        float cancelW       = ImGui.calcTextSize(cancelLabel).x + paddingX * 4.0f;
-        float okW           = Math.max(80.0f, ImGui.calcTextSize(okLabel).x + paddingX * 4.0f);
-        float persistRowW   = persistLabelW + spacing + checkboxW;
+        float buttonH       = ImGui.getFrameHeight() * 1.5f;
+        float cancelW       = ImGui.calcTextSize(cancelLabel).x + paddingX * 8.0f;
+        float okW           = cancelW;
         float buttonRowW    = cancelW + spacing + okW;
         float rightPad      = ImGui.getWindowWidth() - ImGui.getWindowContentRegionMaxX();
 
-        ImGui.setCursorPosX(Math.max(ImGui.getCursorPosX(), ImGui.getWindowWidth() - rightPad - persistRowW));
-        ImGui.text(persistLabel);
-        showTooltipIfHovered(persistTooltip);
-        ImGui.sameLine();
-        clickableCheckbox("##persist-decisions", persist);
-        showTooltipIfHovered(persistTooltip);
-        ImGui.spacing();
+        float posY = ImGui.getCursorPosY();
+        float textY = Math.max(posY, ImGui.getWindowContentRegionMaxY() - ImGui.getTextLineHeight());
+        ImGui.setCursorPosY(textY);
+        ImGui.textDisabled(forceDialogHint);
+        showTooltipIfHovered("Shows the approval dialog even for previously approved Java mods.");
 
+        float buttonY = Math.max(posY, ImGui.getWindowContentRegionMaxY() - buttonH);
+        ImGui.setCursorPosY(buttonY);
         ImGui.setCursorPosX(Math.max(ImGui.getCursorPosX(), ImGui.getWindowWidth() - rightPad - buttonRowW));
         boolean cancelClicked = clickableButton(cancelLabel, cancelW, buttonH);
-        showTooltipIfHovered("deny all for this game session");
+        showTooltipIfHovered("deny all pending Java mods");
+
         if (cancelClicked) {
             result.compareAndSet(null, denyAll(entries));
             close();
@@ -208,16 +213,19 @@ final class ImguiApprovalDialog {
     }
 
     private void drawHeaderRow() {
-        ImGui.tableNextRow(ImGuiTableRowFlags.Headers, scaled(TABLE_ROW_MIN_HEIGHT));
+        tableRowHeight = scaled(TABLE_ROW_MIN_HEIGHT);
+        ImGui.tableNextRow(ImGuiTableRowFlags.Headers, tableRowHeight);
         tableRowStartY = ImGui.getCursorPosY();
-        ImGui.tableSetColumnIndex(0); cellCenteredText(COL_MOD);
-        ImGui.tableSetColumnIndex(1); cellCenteredText(COL_AUTHOR);
-        ImGui.tableSetColumnIndex(2); cellCenteredText(COL_UPDATED);
-        ImGui.tableSetColumnIndex(3); cellCenteredText(COL_STEAM_BAN);
-        ImGui.tableSetColumnIndex(4); cellCenteredText(COL_ALLOW);
-        if (showTrustColumn) {
-            ImGui.tableSetColumnIndex(5); cellCenteredText(COL_TRUST_AUTHOR);
-        }
+        drawHeaderCell(COL_IDX_MOD, COL_MOD);
+        drawHeaderCell(COL_IDX_AUTHOR, COL_AUTHOR);
+        drawHeaderCell(COL_IDX_UPDATED, COL_UPDATED);
+        drawHeaderCell(COL_IDX_STEAM_BAN, COL_STEAM_BAN);
+        drawHeaderCell(COL_IDX_ALLOW, COL_ALLOW);
+        drawHeaderCell(COL_IDX_TRUST_AUTHOR, COL_TRUST_AUTHOR);
+    }
+
+    private static void drawHeaderCell(int columnIndex, String label) {
+        tableCell(columnIndex, () -> cellCenteredText(label));
     }
 
     private static void centeredText(String text) {
@@ -271,7 +279,12 @@ final class ImguiApprovalDialog {
     }
 
     private static void centerNextItemVertically(float itemH) {
-        ImGui.setCursorPosY(tableRowStartY + Math.max(0.0f, (scaled(TABLE_ROW_MIN_HEIGHT) - itemH) * 0.5f));
+        ImGui.setCursorPosY(tableRowStartY + Math.max(0.0f, (tableRowHeight - itemH) * 0.5f));
+    }
+
+    private static void tableCell(int columnIndex, Runnable draw) {
+        ImGui.tableSetColumnIndex(columnIndex);
+        draw.run();
     }
 
     private static float contentColumnWidth(float contentW) {
@@ -296,9 +309,7 @@ final class ImguiApprovalDialog {
         setupFixedColumn(COL_UPDATED, columnContentWidth(COL_UPDATED, e -> updatedText(e)));
         setupFixedColumn(COL_STEAM_BAN, steamBanColumnContentWidth());
         setupFixedColumn(COL_ALLOW, allowColumnContentWidth());
-        if (showTrustColumn) {
-            setupFixedColumn(COL_TRUST_AUTHOR, Math.max(ImGui.calcTextSize(COL_TRUST_AUTHOR).x, ImGui.getFrameHeight()));
-        }
+        setupFixedColumn(COL_TRUST_AUTHOR, Math.max(ImGui.calcTextSize(COL_TRUST_AUTHOR).x, ImGui.getFrameHeight()));
     }
 
     private static void setupFixedColumn(String label, float contentW) {
@@ -318,20 +329,20 @@ final class ImguiApprovalDialog {
     }
 
     private static String authorText(JarBatchApprovalProtocol.Entry e) {
-        if ("yes".equals(e.zbsValid) && e.zbsSteamId != null) {
-            return !Utils.isBlank(e.zbsNotice) ? e.zbsNotice : e.zbsSteamId.toString();
+        if (e.zbs.valid() && e.zbs.authorSteamId() != null) {
+            return !Utils.isBlank(e.zbs.notice()) ? e.zbs.notice() : e.zbs.authorSteamId().toString();
         }
-        if ("no".equals(e.zbsValid)) {
+        if (e.zbs.invalid()) {
             return "No";
         }
-        if ("unsigned".equals(e.zbsValid)) {
+        if (e.zbs.unsigned()) {
             return "(unsigned)";
         }
         return "?";
     }
 
     private static String updatedText(JarBatchApprovalProtocol.Entry e) {
-        return !Utils.isBlank(e.modifiedHuman) ? e.modifiedHuman : "-";
+        return formatDate(e.date);
     }
 
     private static float steamBanColumnContentWidth() {
@@ -346,90 +357,109 @@ final class ImguiApprovalDialog {
         return w;
     }
 
-    static List<JarBatchApprovalProtocol.OutLine> denyAll(List<JarBatchApprovalProtocol.Entry> pending) {
-        ArrayList<JarBatchApprovalProtocol.OutLine> out = new ArrayList<>(pending.size());
+    private static float rowHeight(JarBatchApprovalProtocol.Entry e) {
+        return Math.max(scaled(TABLE_ROW_MIN_HEIGHT), modCellHeight(e));
+    }
+
+    private static float modCellHeight(JarBatchApprovalProtocol.Entry e) {
+        float height = ImGui.getTextLineHeight();
+        if (e.bEarlyLoad) {
+            height += ImGui.getStyle().getItemSpacingY() + ImGui.getTextLineHeight();
+        }
+        return height;
+    }
+
+    static List<JarBatchApprovalProtocol.Entry> denyAll(List<JarBatchApprovalProtocol.Entry> pending) {
+        ArrayList<JarBatchApprovalProtocol.Entry> out = new ArrayList<>(pending.size());
         for (JarBatchApprovalProtocol.Entry e : pending) {
-            out.add(new JarBatchApprovalProtocol.OutLine(
-                    e.modKey,
-                    e.workshopItemId,
-                    e.sha256,
-                    JarApprovalOutcome.DENY_SESSION.toBatchToken(),
-                    null));
+            e.decision = false;
+            out.add(e);
         }
         return out;
     }
 
     private void drawRow(int index, JarBatchApprovalProtocol.Entry e) {
-        boolean zbsYes = "yes".equals(e.zbsValid);
-        boolean zbsNo = "no".equals(e.zbsValid);
-        boolean steamBanYes = "yes".equals(e.steamBanStatus);
+        boolean zbsYes = e.zbs.valid();
+        boolean zbsNo = e.zbs.invalid();
+        boolean steamBanYes = e.steamBan != null;
         int rowColor = steamBanYes || zbsNo ? ROW_BAD : (zbsYes ? ROW_OK : 0);
 
-        ImGui.tableNextRow(0, scaled(TABLE_ROW_MIN_HEIGHT));
+        tableRowHeight = rowHeight(e);
+        ImGui.tableNextRow(0, tableRowHeight);
         tableRowStartY = ImGui.getCursorPosY();
         if (rowColor != 0) {
             ImGui.tableSetBgColor(ImGuiTableBgTarget.RowBg0, rowColor);
         }
 
-        ImGui.tableSetColumnIndex(0);
-        drawMod(e);
-        // if (!Utils.isBlank(e.jarAbsolutePath)) {
-        //     ImGui.textWrapped(e.jarAbsolutePath);
-        // }
-
-        ImGui.tableSetColumnIndex(1);
-        drawAuthor(e);
-
-        ImGui.tableSetColumnIndex(2);
-        cellCenteredText(updatedText(e));
-
-        ImGui.tableSetColumnIndex(3);
-        drawSteamBan(e);
-
-        ImGui.tableSetColumnIndex(4);
-        drawAllow(index);
-
-        if (showTrustColumn) {
-            ImGui.tableSetColumnIndex(5);
-            boolean canTrust = zbsYes && !steamBanYes && e.zbsSteamId != null;
-            if (canTrust) {
-                centerNextItemVertically(ImGui.getFrameHeight());
-                centerNextItem(ImGui.getFrameHeight());
-                boolean before = trustAuthor[index].get();
-                if (clickableCheckbox("##trust-" + index, trustAuthor[index]) && before != trustAuthor[index].get()) {
-                    applyTrustAuthor(index, trustAuthor[index].get());
-                }
-                showTooltipIfHovered(TRUST_AUTHOR_TOOLTIP);
-            }
-        }
+        tableCell(COL_IDX_MOD, () -> drawMod(e));
+        tableCell(COL_IDX_AUTHOR, () -> drawAuthor(e));
+        tableCell(COL_IDX_UPDATED, () -> cellCenteredText(updatedText(e)));
+        tableCell(COL_IDX_STEAM_BAN, () -> drawSteamBan(e));
+        tableCell(COL_IDX_ALLOW, () -> drawAllow(index));
+        tableCell(COL_IDX_TRUST_AUTHOR, () -> drawTrustAuthor(index, e));
     }
 
     private void drawMod(JarBatchApprovalProtocol.Entry e) {
-        String name = displayName(e);
         String tooltip = modTooltip(e);
+        if (!e.bEarlyLoad) {
+            drawModTitle(e, tooltip, true);
+            return;
+        }
+
+        centerNextItemVertically(modCellHeight(e));
+        drawModTitle(e, tooltip, false);
+        drawEarlyLoadNotice(e);
+    }
+
+    private static void drawModTitle(JarBatchApprovalProtocol.Entry e, String tooltip, boolean centerInCell) {
+        String name = displayName(e);
         if (e.workshopItemId == null) {
-            cellTextWrapped(name);
+            if (centerInCell) {
+                cellTextWrapped(name);
+            } else {
+                ImGui.textWrapped(name);
+            }
             showTooltipIfHovered(tooltip);
             return;
         }
+
         String url = SteamWorkshop.workshopItemUrl(e.workshopItemId);
-        linkTextWrapped(name, url, "url: " + url + "\n" + tooltip);
+        String linkTooltip = "url: " + url + "\n" + tooltip;
+        if (centerInCell) {
+            linkTextWrapped(name, url, linkTooltip);
+        } else {
+            drawLinkTextWrapped(name, url, linkTooltip);
+        }
+    }
+
+    private static void drawEarlyLoadNotice(JarBatchApprovalProtocol.Entry e) {
+        if (!e.bEarlyLoad) {
+            return;
+        }
+        ImGui.spacing();
+        ImGui.pushStyleColor(ImGuiCol.Text, ALERT_TEXT);
+        try {
+            ImGui.textWrapped(EARLY_LOAD_NOTICE);
+        } finally {
+            ImGui.popStyleColor();
+        }
+        showTooltipIfHovered(EARLY_LOAD_TOOLTIP);
     }
 
     private void drawAuthor(JarBatchApprovalProtocol.Entry e) {
-        if ("yes".equals(e.zbsValid) && e.zbsSteamId != null) {
+        if (e.zbs.valid() && e.zbs.authorSteamId() != null) {
             centerNextItemVertically(ImGui.getTextLineHeight());
-            centeredLinkText(authorText(e), SteamWorkshop.authorWorkshopUrl(e.zbsSteamId));
+            centeredLinkText(authorText(e), SteamWorkshop.authorWorkshopUrl(e.zbs.authorSteamId()));
             return;
         }
-        if ("no".equals(e.zbsValid)) {
+        if (e.zbs.invalid()) {
             cellCenteredTextColored(1.0f, 0.25f, 0.25f, 1.0f, "Invalid signature");
-            if (!Utils.isBlank(e.zbsNotice)) {
-                showTooltipIfHovered(e.zbsNotice); // should be called after text draw
+            if (!Utils.isBlank(e.zbs.notice())) {
+                showTooltipIfHovered(e.zbs.notice()); // should be called after text draw
             }
             return;
         }
-        if ("unsigned".equals(e.zbsValid)) {
+        if (e.zbs.unsigned()) {
             cellCenteredDisabledText("(unsigned)");
             return;
         }
@@ -437,16 +467,13 @@ final class ImguiApprovalDialog {
     }
 
     private void drawSteamBan(JarBatchApprovalProtocol.Entry e) {
-        String status = Utils.isBlank(e.steamBanStatus) ? "unknown" : e.steamBanStatus;
-        if ("unknown".equals(status)) {
-            cellCenteredTextColored(STEAM_BAN_UNKNOWN, "Unknown");
-        } else if ("yes".equals(status)) {
+        if (e.steamBan != null) {
             cellCenteredTextColored(1.0f, 0.25f, 0.25f, 1.0f, "Yes");
         } else {
             cellCenteredTextColored(STEAM_BAN_NO, "No");
         }
-        if (!Utils.isBlank(e.steamBanReason)) {
-            showTooltipIfHovered(e.steamBanReason);
+        if (e.steamBan != null && !Utils.isBlank(e.steamBan.reason())) {
+            showTooltipIfHovered(e.steamBan.reason());
         }
     }
 
@@ -460,6 +487,28 @@ final class ImguiApprovalDialog {
             interactive = false;
         }
         drawAllowCheckboxes(index, interactive);
+    }
+
+    private void drawTrustAuthor(int index, JarBatchApprovalProtocol.Entry e) {
+        centerNextItemVertically(ImGui.getFrameHeight());
+        centerNextItem(ImGui.getFrameHeight());
+        if (canTrustAuthor(e)) {
+            boolean before = trustAuthor[index].get();
+            if (clickableCheckbox("##trust-" + index, trustAuthor[index]) && before != trustAuthor[index].get()) {
+                applyTrustAuthor(index, trustAuthor[index].get());
+            }
+            showTooltipIfHovered(TRUST_AUTHOR_TOOLTIP);
+            return;
+        }
+
+        trustAuthor[index].set(false);
+        ImGui.beginDisabled(true);
+        try {
+            ImGui.checkbox("##trust-" + index, trustAuthor[index]);
+        } finally {
+            ImGui.endDisabled();
+        }
+        showTooltipIfItemRectHovered(trustAuthorDisabledTooltip(e));
     }
 
     private void drawAllowCheckboxes(int index, boolean interactive) {
@@ -652,6 +701,10 @@ final class ImguiApprovalDialog {
 
     private static void linkTextWrapped(String text, String url, String tooltip) {
         centerNextItemVertically(ImGui.getTextLineHeight());
+        drawLinkTextWrapped(text, url, tooltip);
+    }
+
+    private static void drawLinkTextWrapped(String text, String url, String tooltip) {
         ImGui.pushStyleColor(ImGuiCol.Text, LINK);
         try {
             ImGui.textWrapped(text);
@@ -688,22 +741,37 @@ final class ImguiApprovalDialog {
         }
     }
 
+    private static void showTooltipIfItemRectHovered(String text) {
+        if (Utils.isBlank(text)) {
+            return;
+        }
+        if (ImGui.isMouseHoveringRect(
+                ImGui.getItemRectMinX(),
+                ImGui.getItemRectMinY(),
+                ImGui.getItemRectMaxX(),
+                ImGui.getItemRectMaxY())) {
+            ImGui.setTooltip(text);
+        }
+    }
+
     private static String modTooltip(JarBatchApprovalProtocol.Entry e) {
         StringBuilder sb = new StringBuilder();
-        if (!Utils.isBlank(e.modId)) {
-            sb.append("id:  ").append(e.modId);
+        if (e.bEarlyLoad) {
+            sb.append(EARLY_LOAD_NOTICE);
         }
-        if (!Utils.isBlank(e.jarAbsolutePath)) {
-            if (!sb.isEmpty()) {
-                sb.append('\n');
-            }
-            sb.append("jar: ").append(e.jarAbsolutePath);
-        }
+        appendTooltipLine(sb, "id:  ", e.modId);
+        appendTooltipLine(sb, "jar: ", e.jarAbsolutePath);
         return sb.toString();
     }
 
-    private static String approvalsFilePath() {
-        return Agent.configDir().resolve(ModApprovalsStore.JSON_FILE_NAME).toString();
+    private static void appendTooltipLine(StringBuilder sb, String label, String value) {
+        if (Utils.isBlank(value)) {
+            return;
+        }
+        if (!sb.isEmpty()) {
+            sb.append('\n');
+        }
+        sb.append(label).append(value);
     }
 
     private void applyTrustAuthor(int sourceIndex, boolean selected) {
@@ -728,34 +796,56 @@ final class ImguiApprovalDialog {
         allow[index].set(forceDeny[index] ? false : initialAllow[index]);
     }
 
-
-    private List<JarBatchApprovalProtocol.OutLine> buildLines() {
-        ArrayList<JarBatchApprovalProtocol.OutLine> out = new ArrayList<>(entries.size());
+    private List<JarBatchApprovalProtocol.Entry> buildLines() {
+        ArrayList<JarBatchApprovalProtocol.Entry> out = new ArrayList<>(entries.size());
         for (int i = 0; i < entries.size(); i++) {
             JarBatchApprovalProtocol.Entry e = entries.get(i);
             boolean rowAllow = allow[i].get();
-            JarApprovalOutcome outcome = rowAllow
-                    ? (persist.get() ? JarApprovalOutcome.ALLOW_PERSIST : JarApprovalOutcome.ALLOW_SESSION)
-                    : (persist.get() ? JarApprovalOutcome.DENY_PERSIST : JarApprovalOutcome.DENY_SESSION);
-            if ("no".equals(e.zbsValid) || "yes".equals(e.steamBanStatus)) {
-                outcome = persist.get() ? JarApprovalOutcome.DENY_PERSIST : JarApprovalOutcome.DENY_SESSION;
+            if (forceDeny(e)) {
+                rowAllow = false;
             }
-            boolean trust = persist.get() && trustAuthor[i].get() && "yes".equals(e.zbsValid) && e.zbsSteamId != null;
-            out.add(new JarBatchApprovalProtocol.OutLine(
-                    e.modKey,
-                    e.workshopItemId,
-                    e.sha256,
-                    outcome.toBatchToken(),
-                    trust ? e.zbsSteamId : null));
+            e.decision = rowAllow;
+            out.add(e);
         }
         return out;
     }
 
     private static boolean initialAllow(JarBatchApprovalProtocol.Entry e) {
-        if ("no".equals(e.zbsValid) || "yes".equals(e.steamBanStatus)) {
+        if (forceDeny(e)) {
             return false;
         }
-        return PRIOR_YES.equals(e.priorHint);
+        return Boolean.TRUE.equals(e.decision);
+    }
+
+    private static boolean forceDeny(JarBatchApprovalProtocol.Entry e) {
+        return e.zbs.invalid() || e.steamBan != null;
+    }
+
+    private static boolean canTrustAuthor(JarBatchApprovalProtocol.Entry e) {
+        return e.zbs.valid() && e.steamBan == null && e.zbs.authorSteamId() != null;
+    }
+
+    private static String trustAuthorDisabledTooltip(JarBatchApprovalProtocol.Entry e) {
+        if (e.steamBan != null) {
+            return "Cannot trust author: this mod has a Steam ban.";
+        }
+        if (e.zbs.invalid()) {
+            return "Cannot trust author: signature is invalid.";
+        }
+        if (e.zbs.unsigned()) {
+            return "Cannot trust author: mod is unsigned.";
+        }
+        if (e.zbs.authorSteamId() == null) {
+            return "Cannot trust author: signature has no author SteamID.";
+        }
+        return "";
+    }
+
+    private static String formatDate(Date date) {
+        if (date == null) {
+            return "-";
+        }
+        return new SimpleDateFormat(DATE_FORMAT, Locale.ROOT).format(date);
     }
 
     private static String displayName(JarBatchApprovalProtocol.Entry e) {

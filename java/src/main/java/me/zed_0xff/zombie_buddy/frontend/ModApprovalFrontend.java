@@ -7,7 +7,7 @@ import me.zed_0xff.zombie_buddy.JarDecisionTable;
 
 /**
  * UI for Java mod approvals. Implementations present {@code pending} in one batch UI if available,
- * otherwise prompt one mod at a time until every row is applied to {@code disk} / session.
+ * otherwise prompt one mod at a time until every row is applied to {@code disk}.
  */
 public interface ModApprovalFrontend {
 
