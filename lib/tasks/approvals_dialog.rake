@@ -69,7 +69,7 @@ def zbs_unsigned
 end
 
 def zb_sample_approval_entries
-  authors = JSON.load_file("authors.json")
+  authors = JSON.load_file("authors.json")['authors']
   abort "authors.json: expected a mapping with at least one entry" unless authors.is_a?(Array) && authors.any?
 
   first_author = authors.first
