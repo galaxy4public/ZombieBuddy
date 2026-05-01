@@ -779,6 +779,9 @@ public class Loader {
                         flags = flags.with(MF_PERSIST);
                     }
                 }
+                if (!shouldSkip) {
+                    flags = flags.with(MF_ACTIVE);
+                }
                 g_jarLoadStatus.put(ctx.modId, new JavaModLoadState(
                     flags,
                     shouldSkip ? skipReason.trim() : "loaded",
