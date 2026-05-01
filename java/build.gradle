@@ -363,7 +363,7 @@ tasks.withType(Test) {
     // Output test results summary
     afterSuite { desc, result ->
         if (!desc.parent) {
-            println "\n[=] ${name}: ${result.testCount} tests, ${result.successfulTestCount} successful, ${result.failedTestCount} failed"
+            println "\n[=] ${name.padRight(12)}: ${result.testCount} tests, ${result.successfulTestCount} successful, ${result.failedTestCount} failed"
         }
     }
 }
