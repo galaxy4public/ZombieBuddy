@@ -29,9 +29,12 @@ import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontend;
 import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontends;
 
 public class Loader {
-    public static Instrumentation g_instrumentation;
-    public static int g_verbosity = 0;
-    public static boolean g_forceApprovalDialog = false;
+    // Package-private: only ZombieBuddy's own classes may touch the instrumentation handle.
+    // External mods (different package) cannot access this field directly, which prevents
+    // an approved mod from gaining unrestricted bytecode manipulation of the entire JVM.
+    static Instrumentation g_instrumentation;
+    static int g_verbosity = 0;
+    static boolean g_forceApprovalDialog = false;
 
     /**
      * When {@code true} (default), a missing {@code .zbs} next to the JAR is allowed as &quot;unsigned&quot;
@@ -39,7 +42,7 @@ public class Loader {
      * When {@code false}, missing {@code .zbs} is treated like a failed signature for prompt UI and load gating.
      * Invalid signatures (present {@code .zbs} but verification fails) are always blocked when ZBS is enforced.
      */
-    public static boolean g_allowUnsignedMods = true;
+    static boolean g_allowUnsignedMods = true;
 
     private static final String POLICY_PROMPT       = "prompt";
     private static final String POLICY_DENY_NEW     = "deny-new";
@@ -791,7 +794,7 @@ public class Loader {
         // Load only the mods that should be loaded
         for (int i = 0; i < jModInfos.size(); i++) {
             if (!shouldSkipList.get(i)) {
-                loadJavaMod(jModInfos.get(i));
+                loadJavaMod(jModInfos.get(i), modContexts.get(i).hash);
             }
         }
     }
@@ -857,9 +860,12 @@ public class Loader {
     }
 
     // Patch code moved to PatchEngine.java
-    public static void loadJavaMod(JavaModInfo modInfo) {
+    // Package-private: approval checks live in loadJavaMods(); keeping this non-public
+    // prevents an external (approved) mod from calling it directly with an arbitrary JAR,
+    // bypassing ZBS verification and the decision table entirely.
+    static void loadJavaMod(JavaModInfo modInfo, String approvedHash) {
         Logger.info("------------------------------------------- loading Java mod: " + modInfo.modDir());
-        
+
         // Load JAR file
         File jarFile = modInfo.getJarFileAsFile();
         if (jarFile == null) {
@@ -867,7 +873,7 @@ public class Loader {
             Logger.info("-------------------------------------------");
             return;
         }
-        
+
         try {
             if (jarFile.exists()) {
                 if (g_known_jars.contains(jarFile)) {
@@ -881,7 +887,21 @@ public class Loader {
                         Logger.info("-------------------------------------------");
                         return;
                     }
-                    
+
+                    // TOCTOU guard: re-hash immediately before classloader add.
+                    // The approval decision was made against approvedHash; if the file
+                    // was swapped between the pre-approval scan and now, abort.
+                    if (approvedHash != null) {
+                        String currentHash = Utils.sha256Hex(jarFile);
+                        if (!approvedHash.equals(currentHash)) {
+                            Logger.error("SECURITY: JAR hash changed between approval and load for "
+                                + jarFile + " — expected " + approvedHash + ", got " + currentHash
+                                + ". Aborting load.");
+                            Logger.info("-------------------------------------------");
+                            return;
+                        }
+                    }
+
                     JarFile jf = new JarFile(jarFile);
                     g_instrumentation.appendToSystemClassLoaderSearch(jf);
                     g_known_jars.add(jarFile);
@@ -897,9 +917,9 @@ public class Loader {
             Logger.info("-------------------------------------------");
             return;
         }
-        
+
         ApplyPatchesFromPackage(modInfo.javaPkgName(), null, false);
-        
+
         Logger.info("-------------------------------------------");
     }
 
