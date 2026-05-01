@@ -30,6 +30,16 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
     private static final String LOADING_MODS = "Loading Mods";
 
+    /**
+     * Snaps an arbitrary pixel size to the nearest integer multiple of 13 —
+     * ProggyClean's native raster size — so the ImGui font atlas is never
+     * scaled by a fractional ratio (which would produce blurry/uneven glyphs).
+     */
+    static float snapFontSize(float raw) {
+        int multiple = Math.max(1, Math.round(raw / 13.0f));
+        return multiple * 13.0f;
+    }
+
     @Override
     public void approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending, JarDecisionTable disk) {
         if (pending.isEmpty()) {
@@ -162,7 +172,7 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
         private static void configureImguiStyle(long windowHandle) {
             float framebufferScale = framebufferScale(windowHandle);
             float vanillaFontSize = TextManager.instance.getFontHeight(UIFont.Small);
-            float fontSize = vanillaFontSize / framebufferScale;
+            float fontSize = snapFontSize(vanillaFontSize / framebufferScale);
             float scale = ImGui.getIO().getFontGlobalScale();
             Logger.debug("ImGui scale=" + scale
                     + ", framebufferScale=" + framebufferScale

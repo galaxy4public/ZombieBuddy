@@ -201,9 +201,7 @@ public final class ImguiApprovalMain {
             TextManager textManager = TextManager.instance;
             if (textManager != null) {
                 int fontHeight = textManager.getFontHeight(UIFont.Small);
-                if (fontHeight > 0) {
-                    return fontHeight;
-                }
+                if (fontHeight > 0) return ImguiModApprovalFrontend.snapFontSize(fontHeight);
             }
         } catch (RuntimeException ignored) {
             // Standalone approval dialog can run before PZ's font manager is initialized.
