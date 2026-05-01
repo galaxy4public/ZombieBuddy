@@ -99,7 +99,7 @@ public class LogOverlay {
                 }
             }
             lastOsdKeyState = osdKeyDown;
-        } catch (Exception e) {
+        } catch (Throwable t) {
             // Ignore - display might not be ready
         }
     }
