@@ -43,6 +43,9 @@ public final class JarBatchApprovalProtocol {
         /** Existing allow/deny decision for this exact JAR hash, if any. */
         @SerializedName("decision")
         public Boolean decision;
+        /** Loader/UI flags for this row; see {@link ModFlags}. */
+        @SerializedName("flags")
+        public int flags;
         /** Display name from mod.info {@code name=}; may be empty (UI falls back to {@link #modId}). */
         @SerializedName("modDisplayName")
         public final String modDisplayName;
@@ -53,8 +56,8 @@ public final class JarBatchApprovalProtocol {
         @SerializedName("steamBan")
         public final SteamBan steamBan;
         /** Whether this mod requests premain-time loading on next launch. */
-        @SerializedName("bEarlyLoad")
-        public final boolean bEarlyLoad;
+        @SerializedName("preload")
+        public final boolean preload;
 
         public Entry(
             String modId,
@@ -63,10 +66,11 @@ public final class JarBatchApprovalProtocol {
             String sha256,
             Date date,
             Boolean decision,
+            int flags,
             String modDisplayName,
             ZBSignature zbs,
             SteamBan steamBan,
-            boolean bEarlyLoad
+            boolean preload
         ) {
             this.modId = modId;
             this.workshopItemId = workshopItemId;
@@ -74,10 +78,11 @@ public final class JarBatchApprovalProtocol {
             this.sha256 = sha256 != null ? sha256 : "";
             this.date = date;
             this.decision = decision;
+            this.flags = flags;
             this.modDisplayName = modDisplayName != null ? modDisplayName : "";
             this.zbs = zbs != null ? zbs : ZBSignature.none();
             this.steamBan = steamBan;
-            this.bEarlyLoad = bEarlyLoad;
+            this.preload = preload;
         }
 
         public record SteamBan(String reason) {

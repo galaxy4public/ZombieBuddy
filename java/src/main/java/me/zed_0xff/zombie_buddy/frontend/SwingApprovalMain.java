@@ -1,5 +1,7 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
+import static me.zed_0xff.zombie_buddy.ModFlags.MF_PERSIST;
+import static me.zed_0xff.zombie_buddy.ModFlags.MF_TRUST_AUTHOR;
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 
 import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
@@ -373,6 +375,8 @@ public final class SwingApprovalMain {
         JLabel trustNotice = new JLabel(
             "<html><small><i>\"Trust author\" means all mods by that author are auto-allowed while their digital signature remains valid and the mod is not banned.</i></small></html>");
         trustNotice.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JCheckBox savePersist = new JCheckBox("Save decisions to disk (persist across game launches)", true);
+        savePersist.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton ok = new JButton("OK");
@@ -440,6 +444,7 @@ public final class SwingApprovalMain {
 
         JPanel south = new JPanel();
         south.setLayout(new BoxLayout(south, BoxLayout.PAGE_AXIS));
+        south.add(savePersist);
         if (showTrustColumn) {
             south.add(Box.createVerticalStrut(6));
             south.add(trustNotice);
@@ -462,6 +467,16 @@ public final class SwingApprovalMain {
                         allow = allowYes[k].isSelected();
                     }
                     e.decision = allow;
+                    if (savePersist.isSelected()) {
+                        e.flags |= MF_PERSIST;
+                    } else {
+                        e.flags &= ~MF_PERSIST;
+                    }
+                    if (savePersist.isSelected() && trustChecks[k].isSelected() && trustChecks[k].isEnabled()) {
+                        e.flags |= MF_TRUST_AUTHOR;
+                    } else {
+                        e.flags &= ~MF_TRUST_AUTHOR;
+                    }
                     out.add(e);
                 }
                 JarBatchApprovalProtocol.writeResponse(resp, out);

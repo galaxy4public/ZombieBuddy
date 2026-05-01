@@ -28,7 +28,7 @@ def zb_json_entry(h)
       "notice" => h[:zbs_notice].to_s,
     },
     "steamBan"        => h[:steam_ban_reason].to_s.empty? ? nil : { "reason" => h[:steam_ban_reason].to_s },
-    "bEarlyLoad"      => h[:b_early_load] == true,
+    "preload"      => h[:b_early_load] == true,
   }
   wid = h[:workshop_item_id]
   out["workshopItemId"] = wid.to_i if wid

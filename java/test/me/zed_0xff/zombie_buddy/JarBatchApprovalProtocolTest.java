@@ -2,6 +2,7 @@ package me.zed_0xff.zombie_buddy;
 
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
+import static me.zed_0xff.zombie_buddy.ModFlags.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
@@ -90,6 +91,7 @@ class JarBatchApprovalProtocolTest {
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             new Date(1_777_000_000_000L),
             Boolean.FALSE,
+            MF_NONE,
             "Round Trip Mod",
             new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198099999999L), ""),
             null,
@@ -117,6 +119,7 @@ class JarBatchApprovalProtocolTest {
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             new Date(1_777_000_000_000L),
             Boolean.TRUE,
+            MF_PERSIST,
             "Round Trip Mod",
             new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198099999999L), ""),
             null,
@@ -171,7 +174,7 @@ class JarBatchApprovalProtocolTest {
         entries.add(new JarBatchApprovalProtocol.Entry(
             "NumericTest",
             new WorkshopItemID(1234567890L),
-            "/path", "hash", new Date(1_777_000_000_000L), null, "",
+            "/path", "hash", new Date(1_777_000_000_000L), null, MF_NONE, "",
             new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198000000000L), ""),
             null, false
         ));

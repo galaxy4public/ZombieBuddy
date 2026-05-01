@@ -15,7 +15,7 @@
         "notice": ""
       },
       "steamBan": null,
-      "bEarlyLoad": false
+      "preload": false
     },
     {
       "modId": "LocalMod",
@@ -29,7 +29,7 @@
         "notice": ""
       },
       "steamBan": null,
-      "bEarlyLoad": false
+      "preload": false
     }
   ]
 }

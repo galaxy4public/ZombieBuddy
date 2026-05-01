@@ -31,6 +31,7 @@ import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontends;
 public class Loader {
     public static Instrumentation g_instrumentation;
     public static int g_verbosity = 0;
+    public static boolean g_forceApprovalDialog = false;
 
     /**
      * When {@code true} (default), a missing {@code .zbs} next to the JAR is allowed as &quot;unsigned&quot;
@@ -82,6 +83,8 @@ public class Loader {
 
     // Persisted entries loaded from disk - the source of truth for saving
     private static List<ModApprovalsStore.ModEntry> g_storedEntries = new ArrayList<>();
+    private static boolean g_modApprovalsDirty;
+    private static final JarDecisionTable g_sessionJarDecisions = new JarDecisionTable();
     // Author trust entries
     private static final Map<SteamID64, AuthorEntry> g_authors = new HashMap<>();
 
@@ -126,6 +129,12 @@ public class Loader {
     private static Boolean lookupJarDecision(JarDecisionTable disk, String sha256) {
         if (sha256 == null) return null;
         return disk.get(sha256);
+    }
+
+    private static void applySessionDecisions(JarDecisionTable approvals) {
+        for (String hash : g_sessionJarDecisions.hashes()) {
+            approvals.put(hash, g_sessionJarDecisions.get(hash));
+        }
     }
 
     /**
@@ -180,6 +189,33 @@ public class Loader {
         return table;
     }
 
+    private static boolean isDecisionStored(String jarHash, Boolean decision) {
+        if (jarHash == null || decision == null) return false;
+        for (ModApprovalsStore.ModEntry entry : g_storedEntries) {
+            if (jarHash.equals(entry.jarHash) && entry.decision == decision) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<ModApprovalsStore.ModEntry> copyStoredEntries(List<ModApprovalsStore.ModEntry> entries) {
+        List<ModApprovalsStore.ModEntry> copy = new ArrayList<>();
+        if (entries == null) return copy;
+        for (ModApprovalsStore.ModEntry entry : entries) {
+            if (entry == null) continue;
+            copy.add(new ModApprovalsStore.ModEntry(
+                entry.id,
+                entry.workshopId,
+                entry.jarHash,
+                entry.decision,
+                entry.time,
+                entry.authorId
+            ));
+        }
+        return copy;
+    }
+
     /**
      * Add or update a decision in g_storedEntries (for persistence).
      * Updates existing entry with matching jarHash, or adds a new one.
@@ -194,6 +230,7 @@ public class Loader {
                 if (!Utils.isBlank(modId)) e.id = modId;
                 if (workshopId != null) e.workshopId = workshopId;
                 if (authorId != null) e.authorId = authorId;
+                g_modApprovalsDirty = true;
                 return;
             }
         }
@@ -206,6 +243,7 @@ public class Loader {
             null,
             authorId
         ));
+        g_modApprovalsDirty = true;
     }
 
     private static void mergeAuthorKeysFromVerification(
@@ -298,7 +336,13 @@ public class Loader {
             if (entry == null || entry.decision == null || Utils.isBlank(entry.sha256)) continue;
             boolean allow = entry.decision;
             disk.put(entry.sha256, allow);
-            storeDecision(entry.sha256, allow, entry.modId, entry.workshopItemId, null);
+            g_sessionJarDecisions.put(entry.sha256, allow);
+            if ((entry.flags & MF_PERSIST) != 0) {
+                storeDecision(entry.sha256, allow, entry.modId, entry.workshopItemId, null);
+            }
+            if ((entry.flags & MF_PERSIST) != 0 && (entry.flags & MF_TRUST_AUTHOR) != 0 && entry.zbs.valid()) {
+                storeTrustedAuthor(entry.zbs.authorSteamId());
+            }
         }
     }
 
@@ -308,6 +352,21 @@ public class Loader {
         }
         AuthorEntry ae = g_authors.get(sid);
         return ae != null && ae.trust;
+    }
+
+    private static void storeTrustedAuthor(SteamID64 sid) {
+        if (sid == null) {
+            return;
+        }
+        g_authors.compute(sid, (k, existing) -> {
+            String name = existing != null ? existing.name : null;
+            Set<String> keys = new LinkedHashSet<>();
+            if (existing != null && existing.keys != null) {
+                keys.addAll(existing.keys);
+            }
+            return new AuthorEntry(k, true, keys, name);
+        });
+        g_modApprovalsDirty = true;
     }
 
     private static void untrustAuthorForBannedMod(
@@ -341,6 +400,7 @@ public class Loader {
         AuthorEntry author = g_authors.get(uploaderID);
         if (author != null && author.trust) {
             author.trust = false;
+            g_modApprovalsDirty = true;
             Logger.warn("Removed trusted-author flag for " + uploaderID + " because banned mod was detected: " + modId);
         }
     }
@@ -414,11 +474,16 @@ public class Loader {
         ModApprovalsStore.FileData fileData = ModApprovalsStore.load();
         // Store entries for persistence and build lookup table
         g_storedEntries = new ArrayList<>(fileData.mods);
-        int storedEntriesCountBefore = g_storedEntries.size();
+        g_modApprovalsDirty = false;
+        List<ModApprovalsStore.ModEntry> storedEntriesBefore = copyStoredEntries(g_storedEntries);
         JarDecisionTable approvals = buildJarDecisionTable(g_storedEntries);
-        JarDecisionTable approvalsBefore = approvals.copy();
-        boolean forceApprovalDialog = isForceApprovalDialogRequested();
-        if (forceApprovalDialog) {
+        if (!g_forceApprovalDialog) {
+            checkShiftKey();
+        }
+        if (!g_forceApprovalDialog) {
+            applySessionDecisions(approvals);
+        }
+        if (g_forceApprovalDialog) {
             Logger.info("Shift held during game load; forcing Java mod approval dialog.");
         }
         Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthorsBySteamId = KnownAuthors.loadAuthors();
@@ -491,6 +556,7 @@ public class Loader {
                 if (structuralOnlySkip.get(i)) continue;
                 ModCtx ctx = modContexts.get(i);
                 if (ctx.hash == null) continue;
+
                 JavaModInfo jModInfo = jModInfos.get(i);
                 Date date = (ctx.jarFile != null && ctx.jarFile.exists())
                     ? new Date(ctx.jarFile.lastModified())
@@ -512,18 +578,18 @@ public class Loader {
                 SteamID64 authorID = zbsResult.sid();
                 ModFlags flags = zbsResult.flags();
                 JarBatchApprovalProtocol.Entry.ZBSignature zbs = new JarBatchApprovalProtocol.Entry.ZBSignature(
-                    flags.has(MF_VALID),
+                    flags.hasAll(MF_SIGNED, MF_VALID),
                     authorID,
                     flags.hasAll(MF_SIGNED, MF_VALID) ? authorDisplayName(authorID, knownAuthorsBySteamId) : zbsResult.notice()
                 );
                 Boolean decision = lookupJarDecision(approvals, ctx.hash);
-                if (!forceApprovalDialog && !ctx.steamBanned && zbs.valid() && isAuthorTrusted(authorID)) {
+                if (!g_forceApprovalDialog && !ctx.steamBanned && zbs.valid() && isAuthorTrusted(authorID)) {
                     // Auto-approve signed mods from trusted authors
                     approvals.put(ctx.hash, Boolean.TRUE);
                     storeDecision(ctx.hash, true, ctx.modId, ctx.workshopItemId, authorID);
                     continue;
                 }
-                if (!forceApprovalDialog && !ctx.steamBanned) {
+                if (!g_forceApprovalDialog && !ctx.steamBanned) {
                     if (decision != null) continue;
                 }
                 batchEntries.add(new JarBatchApprovalProtocol.Entry(
@@ -533,6 +599,7 @@ public class Loader {
                     ctx.hash,
                     date,
                     decision,
+                    isDecisionStored(ctx.hash, decision) ? MF_PERSIST : MF_NONE,
                     modDisplay,
                     zbs,
                     steamBan,
@@ -541,6 +608,7 @@ public class Loader {
             }
             if (!batchEntries.isEmpty()) {
                 approvalFrontend().approvePendingMods(batchEntries, approvals);
+                g_forceApprovalDialog = false; // reset after one batch, can be re-triggered by holding Shift on next load
             }
         }
 
@@ -601,7 +669,7 @@ public class Loader {
                 Boolean decision = null;
                 if (ctx.hash != null) {
                     decision = approvals.get(ctx.hash);
-                    if (decision != null) {
+                    if (isDecisionStored(ctx.hash, decision)) {
                         flags = flags.with(MF_PERSIST);
                     }
                 }
@@ -615,9 +683,10 @@ public class Loader {
         }
 
         // Save if anything changed
-        if (!approvalsBefore.equals(approvals)
-            || !authorsBefore.equals(g_authors)
-            || g_storedEntries.size() != storedEntriesCountBefore) {
+        if (g_modApprovalsDirty
+            && (!storedEntriesBefore.equals(g_storedEntries)
+                || !authorsBefore.equals(g_authors)
+                || g_storedEntries.size() != storedEntriesBefore.size())) {
             ModApprovalsStore.FileData dataToSave = new ModApprovalsStore.FileData();
             dataToSave.mods = new ArrayList<>(g_storedEntries);
             dataToSave.authors = new ArrayList<>(g_authors.values());
@@ -653,17 +722,21 @@ public class Loader {
         }
     }
 
-    private static boolean isForceApprovalDialogRequested() {
+    private static void checkShiftKey() {
         try {
             long window = Display.getWindow();
             if (window == 0) {
-                return false;
+                return;
             }
-            return GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS
-                    || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
+            if(GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS) {
+                g_forceApprovalDialog = true;
+            }
         } catch (Throwable t) {
-            return false;
         }
+    }
+
+    static {
+        Callbacks.onDisplayCreate.register(Loader::checkShiftKey);
     }
 
     public static void printModList(ArrayList<JavaModInfo> jModInfos) {

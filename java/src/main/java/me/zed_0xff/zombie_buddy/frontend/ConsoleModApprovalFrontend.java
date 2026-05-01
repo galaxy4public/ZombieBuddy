@@ -1,5 +1,7 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
+import static me.zed_0xff.zombie_buddy.ModFlags.MF_PERSIST;
+
 import me.zed_0xff.zombie_buddy.*;
 
 import java.io.BufferedReader;
@@ -47,6 +49,7 @@ public final class ConsoleModApprovalFrontend implements ModApprovalFrontend {
                 allow = readYesNo("Allow this Java mod to load?");
             }
             e.decision = allow;
+            e.flags |= MF_PERSIST;
             out.add(e);
         }
         Loader.applyBatchApprovalLines(out, disk);

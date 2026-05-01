@@ -1,5 +1,7 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
+import static me.zed_0xff.zombie_buddy.ModFlags.MF_PERSIST;
+
 import me.zed_0xff.zombie_buddy.*;
 
 import zombie.core.Core;
@@ -27,7 +29,11 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
         }
         for (JarBatchApprovalProtocol.Entry e : pending) {
             Boolean allow = promptForEntry(e);
-            e.decision = Boolean.TRUE.equals(allow);
+            if (allow == null) {
+                continue;
+            }
+            e.decision = allow;
+            e.flags |= MF_PERSIST;
             Loader.applyBatchApprovalLines(
                 List.of(e),
                 disk

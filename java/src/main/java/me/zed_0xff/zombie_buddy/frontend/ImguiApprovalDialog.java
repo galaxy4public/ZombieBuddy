@@ -1,5 +1,7 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
+import static me.zed_0xff.zombie_buddy.ModFlags.*;
+
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -79,6 +81,7 @@ final class ImguiApprovalDialog {
     private final List<JarBatchApprovalProtocol.Entry> entries;
     private final ImBoolean[] allow;
     private final ImBoolean[] trustAuthor;
+    private final ImBoolean persistDecisions = new ImBoolean(false);
     private final boolean[] initialAllow;
     private final boolean[] forceDeny;
     private final String[] authorGroupKey;
@@ -159,24 +162,42 @@ final class ImguiApprovalDialog {
 
     private void drawBottomActions() {
         String forceDialogHint = "Hold Shift during game load to force-show this dialog";
+        String persistLabel = "Save decisions to disk (persist across game launches)";
+        String persistTooltip = "When disabled, choices apply only to this game launch.";
         String cancelLabel = "Cancel";
         String okLabel = "OK";
 
         float spacing       = ImGui.getStyle().getItemSpacingX();
         float paddingX      = ImGui.getStyle().getFramePaddingX();
+        float checkboxW     = ImGui.getFrameHeight();
         float buttonH       = ImGui.getFrameHeight() * 1.5f;
         float cancelW       = ImGui.calcTextSize(cancelLabel).x + paddingX * 8.0f;
         float okW           = cancelW;
+        float persistLabelW = ImGui.calcTextSize(persistLabel).x;
+        float persistRowW   = persistLabelW + spacing + checkboxW;
         float buttonRowW    = cancelW + spacing + okW;
         float rightPad      = ImGui.getWindowWidth() - ImGui.getWindowContentRegionMaxX();
 
         float posY = ImGui.getCursorPosY();
-        float textY = Math.max(posY, ImGui.getWindowContentRegionMaxY() - ImGui.getTextLineHeight());
-        ImGui.setCursorPosY(textY);
+        float leftX = ImGui.getWindowContentRegionMinX();
+        float contentBottomY = ImGui.getWindowContentRegionMaxY();
+        float textY = Math.max(posY, contentBottomY - ImGui.getTextLineHeight());
+        float buttonY = Math.max(posY, contentBottomY - buttonH);
+        float persistY = Math.max(posY, buttonY - ImGui.getFrameHeight() - spacing);
+        float persistX = Math.max(leftX, ImGui.getWindowWidth() - rightPad - persistRowW);
+
+        ImGui.setCursorPos(leftX, textY);
         ImGui.textDisabled(forceDialogHint);
         showTooltipIfHovered("Shows the approval dialog even for previously approved Java mods.");
 
-        float buttonY = Math.max(posY, ImGui.getWindowContentRegionMaxY() - buttonH);
+        ImGui.setCursorPos(persistX, persistY);
+        ImGui.text(persistLabel);
+        showTooltipIfHovered(persistTooltip);
+        ImGui.sameLine();
+        ImGui.setCursorPosX(persistX + persistLabelW + spacing);
+        clickableCheckbox("##persist-decisions", persistDecisions);
+        showTooltipIfHovered(persistTooltip);
+
         ImGui.setCursorPosY(buttonY);
         ImGui.setCursorPosX(Math.max(ImGui.getCursorPosX(), ImGui.getWindowWidth() - rightPad - buttonRowW));
         boolean cancelClicked = clickableButton(cancelLabel, cancelW, buttonH);
@@ -363,7 +384,7 @@ final class ImguiApprovalDialog {
 
     private static float modCellHeight(JarBatchApprovalProtocol.Entry e) {
         float height = ImGui.getTextLineHeight();
-        if (e.bEarlyLoad) {
+        if (e.preload) {
             height += ImGui.getStyle().getItemSpacingY() + ImGui.getTextLineHeight();
         }
         return height;
@@ -401,7 +422,7 @@ final class ImguiApprovalDialog {
 
     private void drawMod(JarBatchApprovalProtocol.Entry e) {
         String tooltip = modTooltip(e);
-        if (!e.bEarlyLoad) {
+        if (!e.preload) {
             drawModTitle(e, tooltip, true);
             return;
         }
@@ -433,7 +454,7 @@ final class ImguiApprovalDialog {
     }
 
     private static void drawEarlyLoadNotice(JarBatchApprovalProtocol.Entry e) {
-        if (!e.bEarlyLoad) {
+        if (!e.preload) {
             return;
         }
         ImGui.spacing();
@@ -756,7 +777,7 @@ final class ImguiApprovalDialog {
 
     private static String modTooltip(JarBatchApprovalProtocol.Entry e) {
         StringBuilder sb = new StringBuilder();
-        if (e.bEarlyLoad) {
+        if (e.preload) {
             sb.append(EARLY_LOAD_NOTICE);
         }
         appendTooltipLine(sb, "id:  ", e.modId);
@@ -805,6 +826,16 @@ final class ImguiApprovalDialog {
                 rowAllow = false;
             }
             e.decision = rowAllow;
+            if (persistDecisions.get()) {
+                e.flags |= MF_PERSIST;
+            } else {
+                e.flags &= ~MF_PERSIST;
+            }
+            if (persistDecisions.get() && trustAuthor[i].get() && canTrustAuthor(e)) {
+                e.flags |= MF_TRUST_AUTHOR;
+            } else {
+                e.flags &= ~MF_TRUST_AUTHOR;
+            }
             out.add(e);
         }
         return out;
