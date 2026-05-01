@@ -85,6 +85,8 @@ public class Loader {
     private static List<ModApprovalsStore.ModEntry> g_storedEntries = new ArrayList<>();
     private static boolean g_modApprovalsDirty;
     private static final JarDecisionTable g_sessionJarDecisions = new JarDecisionTable();
+    private static Config g_config = new Config();
+    private static boolean g_configDirty;
     // Author trust entries
     private static final Map<SteamID64, AuthorEntry> g_authors = new HashMap<>();
 
@@ -216,6 +218,21 @@ public class Loader {
         return copy;
     }
 
+    private static List<AuthorEntry> copyAuthorsWithoutTrust(Map<SteamID64, AuthorEntry> authors) {
+        List<AuthorEntry> out = new ArrayList<>();
+        if (authors == null) return out;
+        for (AuthorEntry author : authors.values()) {
+            if (author == null) continue;
+            out.add(new AuthorEntry(
+                author.id,
+                false,
+                author.keys != null ? new LinkedHashSet<>(author.keys) : null,
+                author.name
+            ));
+        }
+        return out;
+    }
+
     /**
      * Add or update a decision in g_storedEntries (for persistence).
      * Updates existing entry with matching jarHash, or adds a new one.
@@ -296,6 +313,41 @@ public class Loader {
         }
     }
 
+    private static void applyTrustedAuthorsFromConfig(Map<SteamID64, AuthorEntry> authors, Config config) {
+        if (authors == null || config == null || Utils.isBlank(config.trustedAuthors())) {
+            return;
+        }
+        for (SteamID64 sid : config.trustedAuthors()) {
+            if (sid == null) {
+                continue;
+            }
+            authors.compute(sid, (k, existing) -> {
+                String name = existing != null ? existing.name : null;
+                Set<String> keys = new LinkedHashSet<>();
+                if (existing != null && existing.keys != null) {
+                    keys.addAll(existing.keys);
+                }
+                return new AuthorEntry(k, true, keys, name);
+            });
+        }
+    }
+
+    private static void migrateTrustedAuthorsToConfig(List<AuthorEntry> authors) {
+        if (Utils.isBlank(authors)) {
+            return;
+        }
+        Config config = g_config;
+        for (AuthorEntry author : authors) {
+            if (author != null && author.trust && author.id != null) {
+                config = config.withTrustedAuthor(author.id);
+            }
+        }
+        if (!config.equals(g_config)) {
+            g_config = config;
+            g_configDirty = true;
+        }
+    }
+
     private static boolean isJarAllowedByPolicy(String modId, JavaModInfo jModInfo, JarDecisionTable disk, String hash) {
         File jarFile = jModInfo != null ? jModInfo.getJarFileAsFile() : null;
         if (hash == null) return false;
@@ -347,16 +399,17 @@ public class Loader {
     }
 
     private static boolean isAuthorTrusted(SteamID64 sid) {
-        if (sid == null) {
-            return false;
-        }
-        AuthorEntry ae = g_authors.get(sid);
-        return ae != null && ae.trust;
+        return g_config.trustsAuthor(sid);
     }
 
     private static void storeTrustedAuthor(SteamID64 sid) {
         if (sid == null) {
             return;
+        }
+        Config nextConfig = g_config.withTrustedAuthor(sid);
+        if (!nextConfig.equals(g_config)) {
+            g_config = nextConfig;
+            g_configDirty = true;
         }
         g_authors.compute(sid, (k, existing) -> {
             String name = existing != null ? existing.name : null;
@@ -367,6 +420,21 @@ public class Loader {
             return new AuthorEntry(k, true, keys, name);
         });
         g_modApprovalsDirty = true;
+    }
+
+    private static void removeTrustedAuthor(SteamID64 sid) {
+        if (sid == null) {
+            return;
+        }
+        Config nextConfig = g_config.withoutTrustedAuthor(sid);
+        if (!nextConfig.equals(g_config)) {
+            g_config = nextConfig;
+            g_configDirty = true;
+        }
+        AuthorEntry author = g_authors.get(sid);
+        if (author != null && author.trust) {
+            g_authors.put(sid, new AuthorEntry(sid, false, author.keys, author.name));
+        }
     }
 
     private static void untrustAuthorForBannedMod(
@@ -398,9 +466,8 @@ public class Loader {
             return;
         }
         AuthorEntry author = g_authors.get(uploaderID);
-        if (author != null && author.trust) {
-            author.trust = false;
-            g_modApprovalsDirty = true;
+        if (author != null && isAuthorTrusted(uploaderID)) {
+            removeTrustedAuthor(uploaderID);
             Logger.warn("Removed trusted-author flag for " + uploaderID + " because banned mod was detected: " + modId);
         }
     }
@@ -472,6 +539,8 @@ public class Loader {
         ArrayList<Boolean> shouldSkipList = new ArrayList<>();
         ArrayList<String> skipReasons = new ArrayList<>();
         ModApprovalsStore.FileData fileData = ModApprovalsStore.load();
+        g_config = Config.load();
+        g_configDirty = false;
         // Store entries for persistence and build lookup table
         g_storedEntries = new ArrayList<>(fileData.mods);
         g_modApprovalsDirty = false;
@@ -488,6 +557,7 @@ public class Loader {
         }
         Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthorsBySteamId = KnownAuthors.loadAuthors();
         Map<SteamID64, AuthorEntry> authorsBefore = new HashMap<>();
+        migrateTrustedAuthorsToConfig(fileData.authors);
         g_authors.clear();
         for (AuthorEntry ae : fileData.authors) {
             if (ae.id != null) {
@@ -496,6 +566,7 @@ public class Loader {
             }
         }
         mergeKnownAuthors(g_authors, knownAuthorsBySteamId);
+        applyTrustedAuthorsFromConfig(g_authors, g_config);
 
         // Structural-only skip flags (must match the policy loop below) — used to batch all PROMPT dialogs.
         ArrayList<Boolean> structuralOnlySkip = new ArrayList<>();
@@ -689,8 +760,11 @@ public class Loader {
                 || g_storedEntries.size() != storedEntriesBefore.size())) {
             ModApprovalsStore.FileData dataToSave = new ModApprovalsStore.FileData();
             dataToSave.mods = new ArrayList<>(g_storedEntries);
-            dataToSave.authors = new ArrayList<>(g_authors.values());
+            dataToSave.authors = copyAuthorsWithoutTrust(g_authors);
             ModApprovalsStore.save(dataToSave);
+        }
+        if (g_configDirty) {
+            Config.save(g_config);
         }
         
         if (!shouldSkipList.isEmpty()) {
