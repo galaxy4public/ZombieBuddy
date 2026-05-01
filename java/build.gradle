@@ -441,3 +441,63 @@ tasks.named('test', Test) {
         file("${buildDir}/.test-completed").createNewFile()
     }
 }
+
+// Signs ../authors.json in-place.
+// Canonical form: file bytes with the "signature" hex value replaced by "".
+// Signed payload: "ZBAuthors:" + sha256hex(canonical_bytes).
+// Private key: -PzbsPrivateKeyFile=<path-to-ed25519-private.der>
+task signAuthorsJson {
+    description = 'Sign ../authors.json in-place with Ed25519'
+    group = 'signing'
+
+    def authorsFile = file('../authors.json')
+    inputs.file(authorsFile)
+    outputs.file(authorsFile)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        def keyPath = project.findProperty('zbsPrivateKeyFile')?.toString()?.trim()
+        if (!keyPath) {
+            throw new GradleException('signAuthorsJson: no zbsPrivateKeyFile')
+        }
+        def keyFile = file(keyPath)
+        if (!keyFile.isFile()) {
+            throw new GradleException("signAuthorsJson: key file not found: ${keyFile}")
+        }
+
+        def content = authorsFile.getText('UTF-8')
+        def sigPattern = ~/(?s)("signature"\s*:\s*")([0-9a-fA-F]*)(")/
+
+        if (!sigPattern.matcher(content).find()) {
+            throw new GradleException('signAuthorsJson: no "signature" field found in authors.json')
+        }
+
+        // Canonical: same bytes but signature value cleared to ""
+        def canonical = content.replaceFirst(sigPattern, '$1$3')
+        def digest = java.security.MessageDigest.getInstance('SHA-256')
+        def canonicalBytes = canonical.getBytes('UTF-8')
+        digest.update(canonicalBytes)
+        def sha256Hex = digest.digest().collect { String.format('%02x', it & 0xff) }.join('')
+
+        def msgBytes = "ZBAuthors:${sha256Hex}".getBytes('UTF-8')
+
+        def pkcs8 = keyFile.bytes
+        try {
+            def pkInfo = org.bouncycastle.asn1.pkcs.PrivateKeyInfo.getInstance(pkcs8)
+            def asym  = org.bouncycastle.crypto.util.PrivateKeyFactory.createKey(pkInfo)
+            def priv  = (org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters) asym
+            def pubHex = priv.generatePublicKey().getEncoded().collect { String.format('%02x', it & 0xff) }.join('')
+
+            def signer = new org.bouncycastle.crypto.signers.Ed25519Signer()
+            signer.init(true, priv)
+            signer.update(msgBytes, 0, msgBytes.length)
+            def sigHex = signer.generateSignature().collect { String.format('%02x', it & 0xff) }.join('')
+
+            def signed = content.replaceFirst(sigPattern, "\$1${sigHex}\$3")
+            authorsFile.setText(signed, 'UTF-8')
+            logger.lifecycle("authors.json signed (pubkey: ${pubHex})")
+        } finally {
+            Arrays.fill(pkcs8, (byte) 0)
+        }
+    }
+}
