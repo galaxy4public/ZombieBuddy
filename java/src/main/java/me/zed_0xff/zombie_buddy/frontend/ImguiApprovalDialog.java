@@ -121,7 +121,7 @@ final class ImguiApprovalDialog {
             this.initialAllow[i] = initialAllow(e);
             this.forceDeny[i] = forceDeny(e);
             this.allow[i] = new ImBoolean(this.initialAllow[i]);
-            this.trustAuthor[i] = new ImBoolean(canTrustAuthor(e) && (e.flags & MF_TRUST_AUTHOR) != 0);
+            this.trustAuthor[i] = new ImBoolean(canTrustAuthor(e) && e.flags.has(MF_TRUST_AUTHOR));
         }
     }
 
@@ -399,7 +399,7 @@ final class ImguiApprovalDialog {
 
     private static float modCellHeight(JarBatchApprovalProtocol.Entry e) {
         float height = ImGui.getTextLineHeight();
-        if (e.preload) {
+        if (e.flags.has(MF_PRELOAD)) {
             height += ImGui.getStyle().getItemSpacingY() + ImGui.getTextLineHeight();
         }
         return height;
@@ -409,7 +409,7 @@ final class ImguiApprovalDialog {
         ArrayList<JarBatchApprovalProtocol.Entry> out = new ArrayList<>(pending.size());
         for (JarBatchApprovalProtocol.Entry e : pending) {
             e.decision = false;
-            e.flags &= ~(MF_PERSIST | MF_TRUST_AUTHOR);
+            e.flags = e.flags.without(MF_PERSIST | MF_TRUST_AUTHOR);
             out.add(e);
         }
         return out;
@@ -438,7 +438,7 @@ final class ImguiApprovalDialog {
 
     private void drawMod(JarBatchApprovalProtocol.Entry e) {
         String tooltip = modTooltip(e);
-        if (!e.preload) {
+        if (!e.flags.has(MF_PRELOAD)) {
             drawModTitle(e, tooltip, true);
             return;
         }
@@ -470,7 +470,7 @@ final class ImguiApprovalDialog {
     }
 
     private static void drawPreloadNotice(JarBatchApprovalProtocol.Entry e) {
-        if (!e.preload) {
+        if (!e.flags.has(MF_PRELOAD)) {
             return;
         }
         ImGui.spacing();
@@ -793,7 +793,7 @@ final class ImguiApprovalDialog {
 
     private static String modTooltip(JarBatchApprovalProtocol.Entry e) {
         StringBuilder sb = new StringBuilder();
-        if (e.preload) {
+        if (e.flags.has(MF_PRELOAD)) {
             sb.append(PRELOAD_NOTICE);
         }
         appendTooltipLine(sb, "id:  ", e.modId);
@@ -843,14 +843,14 @@ final class ImguiApprovalDialog {
             }
             e.decision = rowAllow;
             if (persistDecisions.get()) {
-                e.flags |= MF_PERSIST;
+                e.flags = e.flags.with(MF_PERSIST);
             } else {
-                e.flags &= ~MF_PERSIST;
+                e.flags = e.flags.without(MF_PERSIST);
             }
             if (persistDecisions.get() && trustAuthor[i].get() && canTrustAuthor(e)) {
-                e.flags |= MF_TRUST_AUTHOR;
+                e.flags = e.flags.with(MF_TRUST_AUTHOR);
             } else {
-                e.flags &= ~MF_TRUST_AUTHOR;
+                e.flags = e.flags.without(MF_TRUST_AUTHOR);
             }
             out.add(e);
         }

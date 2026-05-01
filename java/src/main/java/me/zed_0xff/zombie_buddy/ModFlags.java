@@ -27,4 +27,8 @@ public record ModFlags(int value) {
     public ModFlags with(int flag) {
         return new ModFlags(value | flag);
     }
+
+    public ModFlags without(int flag) {
+        return new ModFlags(value & ~flag);
+    }
 }

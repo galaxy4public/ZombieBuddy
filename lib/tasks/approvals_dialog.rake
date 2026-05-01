@@ -5,6 +5,7 @@ require "json"
 ZB_SWING_APPROVAL_MAIN = "me.zed_0xff.zombie_buddy.frontend.SwingApprovalMain"
 ZB_IMGUI_APPROVAL_MAIN = "me.zed_0xff.zombie_buddy.frontend.ImguiApprovalMain"
 ZB_BATCH_HEADER = "ZB_BATCH_V8"
+MF_PRELOAD = 1 << 5
 
 def zb_find_java
   if (h = ENV["JAVA_HOME"]) && !h.empty?
@@ -18,6 +19,7 @@ end
 def zb_json_entry(h)
   out = {
     "modId"           => h[:mod_id],
+    "javaPkgName"     => h[:java_pkg_name].to_s,
     "jarAbsolutePath" => h[:jar_path].to_s,
     "sha256"          => h[:sha256].to_s,
     "date"            => h[:date].to_s,
@@ -28,7 +30,7 @@ def zb_json_entry(h)
       "notice" => h[:zbs_notice].to_s,
     },
     "steamBan"        => h[:steam_ban_reason].to_s.empty? ? nil : { "reason" => h[:steam_ban_reason].to_s },
-    "preload"      => h[:preload] == true,
+    "flags"           => (h[:flags] || 0).to_i,
   }
   wid = h[:workshop_item_id]
   out["workshopItemId"] = wid.to_i if wid
@@ -84,19 +86,21 @@ def zb_sample_approval_entries
   3.times.map do |i|
     {
       mod_id: "DemoModOk#{i}_id",
+      java_pkg_name: "com.demo.ok#{i}",
       workshop_item_id: mods[i][0],
       jar_path: "/tmp/DemoModOk#{i}/media/java/client/DemoModOk.jar",
       sha256: hex64,
       date: "2026-01-01",
       decision: i == 1 ? true : nil,
       mod_display_name: mods[i][1],
-      preload: i == 1,
+      flags: i == 1 ? MF_PRELOAD : 0,
       steam_ban_reason: "",
       **zbs_signed(first_author)
     }
   end + [
       {
         mod_id: "DemoModBad_id",
+        java_pkg_name: "com.demo.bad",
         jar_path: "/tmp/DemoModBad/media/java/client/DemoModBad.jar",
         sha256: "b" * 64,
         date: "2026-01-02",
@@ -107,6 +111,7 @@ def zb_sample_approval_entries
       },
       {
         mod_id: "DemoModBanned",
+        java_pkg_name: "com.demo.banned",
         workshop_item_id: 3_000_000_000_100,
         jar_path: "/tmp/DemoModBanned/media/java/client/DemoModBanned.jar",
         sha256: "d" * 64,
@@ -118,6 +123,7 @@ def zb_sample_approval_entries
       },
       {
         mod_id: "DemoModLegacy",
+        java_pkg_name: "com.demo.legacy",
         jar_path: "/tmp/DemoModLegacy/media/java/client/DemoModLegacy.jar",
         sha256: "c" * 64,
         date: "2024-12-01",

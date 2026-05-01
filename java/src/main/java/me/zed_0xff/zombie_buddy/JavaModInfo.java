@@ -19,14 +19,15 @@ public record JavaModInfo(
     String javaPkgName,  // Package name
     String zbVersionMin, // Minimum ZombieBuddy version required
     String zbVersionMax, // Maximum ZombieBuddy version required
-    String displayName   // From {@code name=} in mod.info; may be null
+    String displayName,  // From {@code name=} in mod.info; may be null
+    boolean javaPreload  // From {@code javaPreload=true} in mod.info; both this and MANIFEST.MF ZB-Preload must be set
 ) {
     /** Project Zomboid Steam app id used in Workshop paths: .../content/108600/<publishedfileid>/... */
     private static final Pattern WORKSHOP_ITEM_ID_IN_PATH = Pattern.compile("/content/" + SteamWorkshop.PZ_APP_ID + "/([0-9]+)/", Pattern.CASE_INSENSITIVE);
     private static final Pattern WORKSHOP_ITEM_ID_IN_TXT  = Pattern.compile("^id=([0-9]+)$");
 
     public JavaModInfo(File modDir, File modInfoFile) {
-        this(modDir, modInfoFile, null, null, null, null, null);
+        this(modDir, modInfoFile, null, null, null, null, null, false);
     }
     
     public boolean hasJarFile() {
@@ -105,7 +106,8 @@ public record JavaModInfo(
         String javaPkgName,
         String zbVersionMin,
         String zbVersionMax,
-        String displayName
+        String displayName,
+        boolean javaPreload
     ) {}
 
     private static boolean isEmpty(String s) {
@@ -163,7 +165,8 @@ public record JavaModInfo(
             javaPkgName,
             zbVersionMin,
             zbVersionMax,
-            parsed.displayName()
+            parsed.displayName(),
+            parsed.javaPreload()
         );
     }
 
@@ -184,6 +187,7 @@ public record JavaModInfo(
         String zbVersionMin = null;
         String zbVersionMax = null;
         String displayName = null;
+        boolean javaPreload = false;
 
         try (var reader = new java.io.BufferedReader(new java.io.FileReader(modInfoFile))) {
             String line;
@@ -222,6 +226,8 @@ public record JavaModInfo(
                     if (displayName == null && !value.isEmpty()) {
                         displayName = value;
                     }
+                } else if (lowerLine.startsWith("javapreload=")) {
+                    javaPreload = "true".equalsIgnoreCase(value);
                 }
             }
         } catch (Exception e) {
@@ -229,7 +235,7 @@ public record JavaModInfo(
             return null;
         }
 
-        return new ParsedValues(jarFilePath, javaPkgName, zbVersionMin, zbVersionMax, displayName);
+        return new ParsedValues(jarFilePath, javaPkgName, zbVersionMin, zbVersionMax, displayName, javaPreload);
     }
     
     /**
@@ -314,6 +320,26 @@ public record JavaModInfo(
             return null;
         }
         return parseMerged(new File(commonDirPath), new File(versionDirPath));
+    }
+
+    /**
+     * Returns true when the JAR's {@code META-INF/MANIFEST.MF} contains {@code ZB-Preload: true}.
+     * Callers must verify the JAR's ZBS signature before trusting this value.
+     */
+    public static boolean hasManifestPreload(File jarFile) {
+        if (jarFile == null || !jarFile.isFile()) {
+            return false;
+        }
+        try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jarFile, false)) {
+            java.util.jar.Manifest mf = jf.getManifest();
+            if (mf == null) {
+                return false;
+            }
+            String val = mf.getMainAttributes().getValue("ZB-Preload");
+            return "true".equalsIgnoreCase(val != null ? val.trim() : null);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

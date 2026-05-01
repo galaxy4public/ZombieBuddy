@@ -2,6 +2,7 @@ package me.zed_0xff.zombie_buddy;
 
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
+import me.zed_0xff.zombie_buddy.ModFlags;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -30,6 +31,9 @@ public final class JarBatchApprovalProtocol {
         /** Mod id from mod.info {@code id=}. */
         @SerializedName("modId")
         public final String modId;
+        /** Java package name from mod.info {@code javaPkgName=}; used as the preload config key. */
+        @SerializedName("javaPkgName")
+        public final String javaPkgName;
         /** Nullable workshop item id for this row. */
         @SerializedName("workshopItemId")
         public final WorkshopItemID workshopItemId;
@@ -45,7 +49,7 @@ public final class JarBatchApprovalProtocol {
         public Boolean decision;
         /** Loader/UI flags for this row; see {@link ModFlags}. */
         @SerializedName("flags")
-        public int flags;
+        public ModFlags flags = ModFlags.EMPTY;
         /** Display name from mod.info {@code name=}; may be empty (UI falls back to {@link #modId}). */
         @SerializedName("modDisplayName")
         public final String modDisplayName;
@@ -55,9 +59,6 @@ public final class JarBatchApprovalProtocol {
         /** Nullable; null means no known Steam ban. */
         @SerializedName("steamBan")
         public final SteamBan steamBan;
-        /** Whether this mod requests premain-time loading on next launch. */
-        @SerializedName("preload")
-        public final boolean preload;
 
         public Entry(
             String modId,
@@ -66,23 +67,23 @@ public final class JarBatchApprovalProtocol {
             String sha256,
             Date date,
             Boolean decision,
-            int flags,
+            ModFlags flags,
             String modDisplayName,
             ZBSignature zbs,
             SteamBan steamBan,
-            boolean preload
+            String javaPkgName
         ) {
             this.modId = modId;
+            this.javaPkgName = javaPkgName != null ? javaPkgName : "";
             this.workshopItemId = workshopItemId;
             this.jarAbsolutePath = jarAbsolutePath != null ? jarAbsolutePath : "";
             this.sha256 = sha256 != null ? sha256 : "";
             this.date = date;
             this.decision = decision;
-            this.flags = flags;
+            this.flags = flags != null ? flags : ModFlags.EMPTY;
             this.modDisplayName = modDisplayName != null ? modDisplayName : "";
             this.zbs = zbs != null ? zbs : ZBSignature.none();
             this.steamBan = steamBan;
-            this.preload = preload;
         }
 
         public record SteamBan(String reason) {

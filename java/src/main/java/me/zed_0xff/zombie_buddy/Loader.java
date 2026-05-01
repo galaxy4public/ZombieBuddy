@@ -20,7 +20,6 @@ import java.util.Set;
 import org.lwjgl.glfw.GLFW;
 import org.lwjglx.opengl.Display;
 import zombie.GameWindow;
-import zombie.core.znet.SteamUtils;
 import zombie.gameStates.ChooseGameInfo;
 
 import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontend;
@@ -33,6 +32,9 @@ public class Loader {
     static Instrumentation g_instrumentation;
     static int g_verbosity = 0;
     static boolean g_forceApprovalDialog = false;
+
+    // called by Patch_GameWindow.Patch_DoLoadingText
+    public static boolean g_hasDoLoadingText = false;
 
     /**
      * When {@code true} (default), a missing {@code .zbs} next to the JAR is allowed as &quot;unsigned&quot;
@@ -119,14 +121,6 @@ public class Loader {
         }
     }
 
-    public static void doLoadingWaitModApproval() {
-        GameWindow.DoLoadingText(LOADING_WAIT_JAVA_MOD_APPROVAL);
-    }
-
-    public static void doLoadingModsDefault() {
-        GameWindow.DoLoadingText(LOADING_MODS);
-    }
-
     private static Boolean lookupJarDecision(JarDecisionTable disk, String sha256) {
         if (sha256 == null) return null;
         return disk.get(sha256);
@@ -174,11 +168,6 @@ public class Loader {
         }
         return out;
     }
-
-    /** Shown on the loading screen while batch or native approval UI is blocking. */
-    private static final String LOADING_WAIT_JAVA_MOD_APPROVAL = "Waiting for Java mods approval…";
-    /** Restores the same label the game uses while loading mods (see {@link GameWindow#DoLoadingText}). */
-    private static final String LOADING_MODS = "Loading Mods";
 
     private static JarDecisionTable buildJarDecisionTable(List<ModApprovalsStore.ModEntry> mods) {
         JarDecisionTable table = new JarDecisionTable();
@@ -274,13 +263,6 @@ public class Loader {
         return false;
     }
 
-    /**
-     * Path to the ZombieBuddy JAR on disk (for spawning a non-headless child JVM). Returns null if not running from a plain JAR file.
-     */
-    public static String getZombieBuddyJarPathForSubprocess() {
-        return Utils.getZombieBuddyJarPath();
-    }
-
     public static void applyBatchApprovalLines(List<JarBatchApprovalProtocol.Entry> entries, JarDecisionTable disk) {
         if (entries == null) return;
         for (JarBatchApprovalProtocol.Entry entry : entries) {
@@ -288,15 +270,22 @@ public class Loader {
             boolean allow = entry.decision;
             disk.put(entry.sha256, allow);
             g_sessionJarDecisions.put(entry.sha256, allow);
-            if ((entry.flags & MF_PERSIST) != 0) {
+            if (entry.flags.has(MF_PERSIST)) {
                 storeDecision(entry.sha256, allow, entry.modId, entry.workshopItemId,
                     entry.zbs.valid() ? entry.zbs.authorSteamId() : null);
             }
-            if ((entry.flags & MF_PERSIST) != 0 && entry.zbs.valid() && entry.zbs.authorSteamId() != null) {
-                if ((entry.flags & MF_TRUST_AUTHOR) != 0) {
+            if (entry.flags.has(MF_PERSIST) && entry.zbs.valid() && entry.zbs.authorSteamId() != null) {
+                if (entry.flags.has(MF_TRUST_AUTHOR)) {
                     storeTrustedAuthor(entry.zbs.authorSteamId());
                 } else if (entry.steamBan == null && isAuthorTrusted(entry.zbs.authorSteamId())) {
                     removeTrustedAuthor(entry.zbs.authorSteamId());
+                }
+            }
+            if (entry.flags.has(MF_PRELOAD) && !Utils.isBlank(entry.javaPkgName) && !Utils.isBlank(entry.jarAbsolutePath)) {
+                if (allow) {
+                    storePreloadMod(entry.javaPkgName, entry.jarAbsolutePath);
+                } else {
+                    removePreloadMod(entry.javaPkgName);
                 }
             }
         }
@@ -325,6 +314,49 @@ public class Loader {
         if (!nextConfig.equals(g_config)) {
             g_config = nextConfig;
             g_configDirty = true;
+        }
+    }
+
+    private static void storePreloadMod(String javaPkgName, String jarPath) {
+        Config nextConfig = g_config.withPreloadMod(javaPkgName, jarPath);
+        if (!nextConfig.equals(g_config)) {
+            g_config = nextConfig;
+            g_configDirty = true;
+        }
+    }
+
+    private static void removePreloadMod(String javaPkgName) {
+        Config nextConfig = g_config.withoutPreloadMod(javaPkgName);
+        if (!nextConfig.equals(g_config)) {
+            g_config = nextConfig;
+            g_configDirty = true;
+        }
+    }
+
+    static void preloadMods() {
+        Config config = Config.load();
+        if (config.preloadMods().isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, String> e : config.preloadMods().entrySet()) {
+            String javaPkgName = e.getKey();
+            String jarPath = e.getValue();
+            File jarFile = new File(jarPath);
+            if (!jarFile.isFile()) {
+                Logger.warn("Preload pkg '" + javaPkgName + "': JAR not found at " + jarPath);
+                continue;
+            }
+            if (g_known_jars.contains(jarFile)) {
+                Logger.info("Preload pkg '" + javaPkgName + "' already on classpath, skipping.");
+                continue;
+            }
+            try {
+                g_instrumentation.appendToSystemClassLoaderSearch(new java.util.jar.JarFile(jarFile));
+                g_known_jars.add(jarFile);
+                Logger.info("Preloaded pkg '" + javaPkgName + "' from " + jarPath);
+            } catch (Exception ex) {
+                Logger.error("Failed to preload pkg '" + javaPkgName + "': " + ex);
+            }
         }
     }
 
@@ -544,9 +576,12 @@ public class Loader {
                 if (!g_forceApprovalDialog && !ctx.steamBanned) {
                     if (decision != null) continue;
                 }
-                int entryFlags = isDecisionStored(ctx.hash, decision) ? MF_PERSIST : MF_NONE;
+                ModFlags entryFlags = new ModFlags(isDecisionStored(ctx.hash, decision) ? MF_PERSIST : MF_NONE);
                 if (zbs.valid() && authorID != null && isAuthorTrusted(authorID) && !ctx.steamBanned) {
-                    entryFlags |= MF_TRUST_AUTHOR;
+                    entryFlags = entryFlags.with(MF_TRUST_AUTHOR);
+                }
+                if (jModInfo.javaPreload() && zbs.valid() && JavaModInfo.hasManifestPreload(ctx.jarFile)) {
+                    entryFlags = entryFlags.with(MF_PRELOAD);
                 }
                 batchEntries.add(new JarBatchApprovalProtocol.Entry(
                     ctx.modId,
@@ -559,11 +594,22 @@ public class Loader {
                     modDisplay,
                     zbs,
                     steamBan,
-                    false
+                    jModInfo.javaPkgName()
                 ));
             }
             if (!batchEntries.isEmpty()) {
-                approvalFrontend().approvePendingMods(batchEntries, approvals);
+                if (g_hasDoLoadingText) {
+                    GameWindow.DoLoadingText("Waiting for Java mods approval…");
+                }
+                List<JarBatchApprovalProtocol.Entry> decided = batchEntries;
+                try {
+                    decided = approvalFrontend().approvePendingMods(batchEntries);
+                } finally {
+                    if (g_hasDoLoadingText) {
+                        GameWindow.DoLoadingText("Loading Mods");
+                    }
+                }
+                applyBatchApprovalLines(decided, approvals);
                 g_forceApprovalDialog = false; // reset after one batch, can be re-triggered by holding Shift on next load
             }
         }

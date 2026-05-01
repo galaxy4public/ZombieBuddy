@@ -1,15 +1,12 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
-import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
-import me.zed_0xff.zombie_buddy.JarDecisionTable;
-import me.zed_0xff.zombie_buddy.Loader;
-import me.zed_0xff.zombie_buddy.Logger;
-
-import zombie.GameWindow;
-
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+
+import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
+import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Utils;
 
 /**
  * Runs a subprocess executing {@link SwingApprovalMain} (javax.swing). If the subprocess fails,
@@ -17,27 +14,25 @@ import java.util.Locale;
  */
 public final class SwingModApprovalFrontend implements ModApprovalFrontend {
 
-    private static final String LOADING_WAIT_JAVA_MOD_APPROVAL = "Waiting for Java mods approval…";
-    private static final String LOADING_MODS = "Loading Mods";
-
     @Override
-    public void approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending, JarDecisionTable disk) {
+    public List<JarBatchApprovalProtocol.Entry> approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending) {
         if (pending.isEmpty()) {
-            return;
+            return pending;
         }
-        if (runSwingSubprocessBatch(pending, disk)) {
-            return;
+        List<JarBatchApprovalProtocol.Entry> result = runSwingSubprocessBatch(pending);
+        if (result == null) {
+            Logger.warn("Swing batch approval failed or unavailable (" + pending.size() + " pending mods)");
+            return pending;
         }
-        Logger.warn("Swing batch approval failed or unavailable (" + pending.size() + " pending mods)");
+        return result;
     }
 
-    private boolean runSwingSubprocessBatch(List<JarBatchApprovalProtocol.Entry> pending, JarDecisionTable disk) {
-        String jarPath = Loader.getZombieBuddyJarPathForSubprocess();
+    private List<JarBatchApprovalProtocol.Entry> runSwingSubprocessBatch(List<JarBatchApprovalProtocol.Entry> pending) {
+        String jarPath = Utils.getZombieBuddyJarPath();
         if (jarPath == null) {
             Logger.warn("Batch approval skipped: ZombieBuddy not loaded from a JAR (or path unknown)");
-            return false;
+            return null;
         }
-        GameWindow.DoLoadingText(LOADING_WAIT_JAVA_MOD_APPROVAL);
         Path tmpIn = null;
         Path tmpOut = null;
         try {
@@ -66,32 +61,30 @@ public final class SwingModApprovalFrontend implements ModApprovalFrontend {
             p.waitFor();
             if (p.exitValue() != 0) {
                 Logger.info("Batch approval subprocess exited with " + p.exitValue());
-                return false;
+                return null;
             }
             List<JarBatchApprovalProtocol.Entry> lines = JarBatchApprovalProtocol.readResponse(tmpOut);
             if (lines == null) {
                 Logger.warn("Batch approval response malformed");
-                return false;
+                return null;
             }
             if (lines.size() != pending.size()) {
                 Logger.warn("Batch approval response row count mismatch");
-                return false;
+                return null;
             }
             for (int i = 0; i < pending.size(); i++) {
                 JarBatchApprovalProtocol.Entry expected = pending.get(i);
                 JarBatchApprovalProtocol.Entry actual = lines.get(i);
                 if (!expected.modId.equals(actual.modId) || !expected.sha256.equals(actual.sha256)) {
                     Logger.warn("Batch approval response row mismatch for " + expected.modId);
-                    return false;
+                    return null;
                 }
             }
-            Loader.applyBatchApprovalLines(lines, disk);
-            return true;
+            return lines;
         } catch (Exception e) {
             Logger.error("Batch approval subprocess failed: " + e);
-            return false;
+            return null;
         } finally {
-            GameWindow.DoLoadingText(LOADING_MODS);
             try {
                 if (tmpIn != null) {
                     java.nio.file.Files.deleteIfExists(tmpIn);

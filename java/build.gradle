@@ -401,9 +401,15 @@ task test_patched(type: Test) {
     // Format: <path>:<package_name>
     def patchesJarPath = testpatchesJar.archiveFile.get().asFile.absolutePath
     def patchesPackageName = "me.zed_0xff.zombie_buddy.testpatches"
-    jvmArgs = [
-        "-javaagent:${shadowJar.archiveFile.get().asFile.absolutePath}=patches_jar=${patchesJarPath}:${patchesPackageName},verbosity=2"
-    ]
+
+    // Gson must be on the bootstrap classpath so it is visible when premain() runs.
+    // Deferred to doFirst so the configuration is fully resolved before we iterate.
+    doFirst {
+        def gsonJar = configurations.runtimeClasspath.find { it.name.contains("gson") }
+        if (!gsonJar) throw new GradleException("gson jar not found in runtimeClasspath")
+        jvmArgs "-Xbootclasspath/a:${gsonJar}"
+        jvmArgs "-javaagent:${shadowJar.archiveFile.get().asFile.absolutePath}=patches_jar=${patchesJarPath}:${patchesPackageName},verbosity=2"
+    }
 }
 
 // Unit tests (test/ source set) - e.g. AccessorTest, VersionCheckTest, PatchTest

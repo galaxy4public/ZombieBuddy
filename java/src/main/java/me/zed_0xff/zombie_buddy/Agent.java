@@ -140,6 +140,7 @@ public class Agent {
         }
 
         Logger.info("Agent installed.");
+        Loader.preloadMods();
     }
 
     public static boolean isExperimental() {

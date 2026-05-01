@@ -2,6 +2,7 @@ package me.zed_0xff.zombie_buddy;
 
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
+import me.zed_0xff.zombie_buddy.ModFlags;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -15,6 +16,26 @@ import java.io.IOException;
 public final class ZBGson {
 
     private ZBGson() {}
+
+    private static final TypeAdapter<ModFlags> MOD_FLAGS_ADAPTER = new TypeAdapter<>() {
+        @Override
+        public void write(JsonWriter out, ModFlags value) throws IOException {
+            if (value == null) {
+                out.value(0);
+            } else {
+                out.value(value.value());
+            }
+        }
+
+        @Override
+        public ModFlags read(JsonReader in) throws IOException {
+            if (in.peek() == JsonToken.NULL) {
+                in.nextNull();
+                return ModFlags.EMPTY;
+            }
+            return new ModFlags(in.nextInt());
+        }
+    };
 
     private static final TypeAdapter<WorkshopItemID> WORKSHOP_ID_ADAPTER = new TypeAdapter<>() {
         @Override
@@ -61,6 +82,7 @@ public final class ZBGson {
         .setPrettyPrinting()
         .setDateFormat("yyyy-MM-dd")
         .disableHtmlEscaping()
+        .registerTypeAdapter(ModFlags.class, MOD_FLAGS_ADAPTER)
         .registerTypeAdapter(WorkshopItemID.class, WORKSHOP_ID_ADAPTER)
         .registerTypeAdapter(SteamID64.class, STEAM_ID64_ADAPTER)
         .create();

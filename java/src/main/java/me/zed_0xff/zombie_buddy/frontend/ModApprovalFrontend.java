@@ -3,16 +3,16 @@ package me.zed_0xff.zombie_buddy.frontend;
 import java.util.List;
 
 import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
-import me.zed_0xff.zombie_buddy.JarDecisionTable;
 
 /**
- * UI for Java mod approvals. Implementations present {@code pending} in one batch UI if available,
- * otherwise prompt one mod at a time until every row is applied to {@code disk}.
+ * UI for Java mod approvals. Implementations present {@code pending} to the user and return
+ * the decided entries (may be the same list mutated in-place or a new list). Never returns null.
  */
 public interface ModApprovalFrontend {
 
     /**
-     * Apply approval decisions for every entry in {@code pending}. Empty list is a no-op.
+     * Collect approval decisions for every entry in {@code pending} and return the decided list.
+     * Empty {@code pending} must return an empty list.
      */
-    void approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending, JarDecisionTable disk);
+    List<JarBatchApprovalProtocol.Entry> approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending);
 }

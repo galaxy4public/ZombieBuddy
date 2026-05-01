@@ -21,68 +21,57 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
     private static final String DATE_FORMAT = "yyyy-MM-dd";
 
     @Override
-    public void approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending, JarDecisionTable disk) {
+    public List<JarBatchApprovalProtocol.Entry> approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending) {
         if (pending.isEmpty()) {
-            return;
+            return pending;
         }
         for (JarBatchApprovalProtocol.Entry e : pending) {
             Boolean allow = promptForEntry(e);
-            if (allow == null) {
-                continue;
+            if (allow != null) {
+                e.decision = allow;
             }
-            e.decision = allow;
-            Loader.applyBatchApprovalLines(
-                List.of(e),
-                disk
-            );
         }
+        return pending;
     }
 
     private static Boolean promptForEntry(JarBatchApprovalProtocol.Entry e) {
         File jarFile = !Utils.isBlank(e.jarAbsolutePath)
             ? new File(e.jarAbsolutePath)
             : null;
-        String modKey = e.modId;
-        String sha256 = e.sha256;
 
-        Loader.doLoadingWaitModApproval();
-        try {
-            if (e.zbs.invalid()) {
-                String note = !Utils.isBlank(e.zbs.notice())
-                    ? e.zbs.notice()
-                    : "Invalid ZBS — load will be denied.";
-                tinyfdYesNo(
-                    "ZBS invalid — this Java mod cannot be loaded.\n\n"
-                        + note
-                        + "\n\nIt will be denied."
-                );
-                return false;
-            }
-
-            String modified = formatDate(e.date);
-            String zbsLine = "";
-            if (e.zbs.valid() || e.zbs.invalid() || e.zbs.unsigned()) {
-                String sid = e.zbs.authorSteamId() != null ? e.zbs.authorSteamId().toString() : "";
-                zbsLine = "ZBS: " + zbsStatus(e)
-                    + (!sid.isEmpty() ? " (Steam: " + sid + ")" : "")
-                    + "\n\n";
-            }
-            Boolean allow = tinyfdYesNo(
-                "Allow Java mod to load?\n\n"
-                    + zbsLine
-                    + "Mod: " + modKey + "\n\n"
-                    + "JAR: " + jarFile + "\n\n"
-                    + "Modified: " + modified + "\n\n"
-                    + "SHA-256: " + sha256 + "\n\n"
-                    + "Only allow if you trust this mod source."
+        if (e.zbs.invalid()) {
+            String note = !Utils.isBlank(e.zbs.notice())
+                ? e.zbs.notice()
+                : "Invalid ZBS — load will be denied.";
+            tinyfdYesNo(
+                "ZBS invalid — this Java mod cannot be loaded.\n\n"
+                    + note
+                    + "\n\nIt will be denied."
             );
-            if (allow == null) {
-                return false;
-            }
-            return allow;
-        } finally {
-            Loader.doLoadingModsDefault();
+            return false;
         }
+
+        String modified = formatDate(e.date);
+        String zbsLine = "";
+        if (e.zbs.valid() || e.zbs.invalid() || e.zbs.unsigned()) {
+            String sid = e.zbs.authorSteamId() != null ? e.zbs.authorSteamId().toString() : "";
+            zbsLine = "ZBS: " + zbsStatus(e)
+                + (!sid.isEmpty() ? " (Steam: " + sid + ")" : "")
+                + "\n\n";
+        }
+        Boolean allow = tinyfdYesNo(
+            "Allow Java mod to load?\n\n"
+                + zbsLine
+                + "Mod: " + e.modId + "\n\n"
+                + "JAR: " + jarFile + "\n\n"
+                + "Modified: " + modified + "\n\n"
+                + "SHA-256: " + e.sha256 + "\n\n"
+                + "Only allow if you trust this mod source."
+        );
+        if (allow == null) {
+            return false;
+        }
+        return allow;
     }
 
     private static String zbsStatus(JarBatchApprovalProtocol.Entry e) {

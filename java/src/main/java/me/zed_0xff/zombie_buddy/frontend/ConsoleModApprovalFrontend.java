@@ -8,7 +8,6 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -23,12 +22,11 @@ public final class ConsoleModApprovalFrontend implements ModApprovalFrontend {
     private final BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
 
     @Override
-    public void approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending, JarDecisionTable disk) {
+    public List<JarBatchApprovalProtocol.Entry> approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending) {
         if (pending.isEmpty()) {
-            return;
+            return pending;
         }
         Logger.info("Java mod approval (console): " + pending.size() + " mod(s). Answer y/n.");
-        List<JarBatchApprovalProtocol.Entry> out = new ArrayList<>(pending.size());
         for (JarBatchApprovalProtocol.Entry e : pending) {
             System.out.println();
             System.out.println("---");
@@ -50,13 +48,12 @@ public final class ConsoleModApprovalFrontend implements ModApprovalFrontend {
             }
             e.decision = allow;
             if (readYesNo("Save this decision to disk?")) {
-                e.flags |= MF_PERSIST;
+                e.flags = e.flags.with(MF_PERSIST);
             } else {
-                e.flags &= ~MF_PERSIST;
+                e.flags = e.flags.without(MF_PERSIST);
             }
-            out.add(e);
         }
-        Loader.applyBatchApprovalLines(out, disk);
+        return pending;
     }
 
     private boolean readYesNo(String prompt) {

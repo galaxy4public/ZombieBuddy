@@ -1,25 +1,23 @@
 package me.zed_0xff.zombie_buddy.frontend;
 
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
+import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
+import me.zed_0xff.zombie_buddy.Logger;
+
 import imgui.ImDrawData;
 import imgui.ImFontConfig;
 import imgui.ImGui;
 import imgui.ImGuiIO;
 import imgui.flag.ImGuiMouseCursor;
 import imgui.gl3.ImGuiImplGl3;
-import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
-import me.zed_0xff.zombie_buddy.JarDecisionTable;
-import me.zed_0xff.zombie_buddy.Loader;
-import me.zed_0xff.zombie_buddy.Logger;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
 import org.lwjglx.opengl.Display;
-import zombie.GameWindow;
 import zombie.core.opengl.RenderThread;
 import zombie.ui.TextManager;
 import zombie.ui.UIFont;
-
-import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Proof-of-concept approval dialog using Project Zomboid's bundled ImGui renderer.
@@ -28,8 +26,6 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@code Core.imGui} are disabled. It still reuses PZ's bundled imgui-java GL3 backend.
  */
 public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
-    private static final String LOADING_MODS = "Loading Mods";
-
     /**
      * Snaps an arbitrary pixel size to the nearest integer multiple of 13 —
      * ProggyClean's native raster size — so the ImGui font atlas is never
@@ -41,9 +37,9 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
     }
 
     @Override
-    public void approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending, JarDecisionTable disk) {
+    public List<JarBatchApprovalProtocol.Entry> approvePendingMods(List<JarBatchApprovalProtocol.Entry> pending) {
         if (pending.isEmpty()) {
-            return;
+            return pending;
         }
 
         AtomicReference<List<JarBatchApprovalProtocol.Entry>> result = new AtomicReference<>();
@@ -63,14 +59,10 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
             }
         } finally {
             closeImguiContext(imgui);
-            GameWindow.DoLoadingText(LOADING_MODS);
         }
 
         List<JarBatchApprovalProtocol.Entry> lines = result.get();
-        if (lines == null) {
-            lines = ImguiApprovalDialog.denyAll(pending);
-        }
-        Loader.applyBatchApprovalLines(lines, disk);
+        return lines != null ? lines : ImguiApprovalDialog.denyAll(pending);
     }
 
     private static OwnedImguiContext createImguiContext(long windowHandle) {

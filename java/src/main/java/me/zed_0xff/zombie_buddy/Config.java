@@ -83,6 +83,24 @@ public record Config(
         return new Config(out, preloadMods);
     }
 
+    public Config withPreloadMod(String javaPkgName, String jarPath) {
+        if (Utils.isBlank(javaPkgName) || Utils.isBlank(jarPath)) {
+            return this;
+        }
+        Map<String, String> out = new LinkedHashMap<>(preloadMods);
+        out.put(javaPkgName, jarPath);
+        return new Config(trustedAuthors, out);
+    }
+
+    public Config withoutPreloadMod(String javaPkgName) {
+        if (Utils.isBlank(javaPkgName) || !preloadMods.containsKey(javaPkgName)) {
+            return this;
+        }
+        Map<String, String> out = new LinkedHashMap<>(preloadMods);
+        out.remove(javaPkgName);
+        return new Config(trustedAuthors, out);
+    }
+
     private static List<SteamID64> normalizeTrustedAuthors(List<SteamID64> input) {
         LinkedHashSet<SteamID64> out = new LinkedHashSet<>();
         if (input != null) {

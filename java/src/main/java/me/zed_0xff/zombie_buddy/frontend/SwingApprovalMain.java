@@ -350,7 +350,7 @@ public final class SwingApprovalMain {
 
             boolean canTrustThisAuthor = showTrustColumn && zbsYes && !steamBanYes
                 && (zbsSteamId.isEmpty() || !authorsWithBannedMods.contains(zbsSteamId));
-            JCheckBox trustCb = new JCheckBox("", canTrustThisAuthor && (e.flags & MF_TRUST_AUTHOR) != 0);
+            JCheckBox trustCb = new JCheckBox("", canTrustThisAuthor && e.flags.has(MF_TRUST_AUTHOR));
             trustCb.setEnabled(canTrustThisAuthor);
             if (!canTrustThisAuthor && showTrustColumn && zbsYes && !zbsSteamId.isEmpty()
                     && authorsWithBannedMods.contains(zbsSteamId)) {
@@ -488,14 +488,14 @@ public final class SwingApprovalMain {
                     }
                     e.decision = allow;
                     if (savePersist.isSelected()) {
-                        e.flags |= MF_PERSIST;
+                        e.flags = e.flags.with(MF_PERSIST);
                     } else {
-                        e.flags &= ~MF_PERSIST;
+                        e.flags = e.flags.without(MF_PERSIST);
                     }
                     if (savePersist.isSelected() && trustChecks[k].isSelected() && trustChecks[k].isEnabled()) {
-                        e.flags |= MF_TRUST_AUTHOR;
+                        e.flags = e.flags.with(MF_TRUST_AUTHOR);
                     } else {
-                        e.flags &= ~MF_TRUST_AUTHOR;
+                        e.flags = e.flags.without(MF_TRUST_AUTHOR);
                     }
                     out.add(e);
                 }
