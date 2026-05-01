@@ -9,11 +9,13 @@ import java.lang.ClassLoader;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarFile;
 import java.util.List;
 import java.util.Map;
@@ -91,7 +93,7 @@ public class Loader {
     private static Config g_config = new Config();
     private static boolean g_configDirty;
     // Author trust entries
-    private static final Map<SteamID64, AuthorEntry> g_authors = new HashMap<>();
+    private static final Map<SteamID64, AuthorEntry> g_authors = new ConcurrentHashMap<>();
 
     private static final Object g_approvalFrontendLock = new Object();
     private static volatile ModApprovalFrontend g_approvalFrontend;
@@ -162,7 +164,7 @@ public class Loader {
         }
     }
 
-    private static final Map<String, JavaModLoadState> g_jarLoadStatus = new HashMap<>();
+    private static final Map<String, JavaModLoadState> g_jarLoadStatus = new ConcurrentHashMap<>();
 
     static JavaModLoadState getJarLoadState(String modId) {
         return modId == null ? null : g_jarLoadStatus.get(modId);
@@ -316,6 +318,34 @@ public class Loader {
         }
     }
 
+    private static Map<SteamID64, KnownAuthors.AuthorEntry> buildMergedKnownAuthors(
+        Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
+    ) {
+        if (Utils.isBlank(g_authors)) return knownAuthors;
+        Map<SteamID64, KnownAuthors.AuthorEntry> merged = new LinkedHashMap<>(knownAuthors);
+        for (Map.Entry<SteamID64, AuthorEntry> entry : g_authors.entrySet()) {
+            SteamID64 sid = entry.getKey();
+            AuthorEntry stored = entry.getValue();
+            if (sid == null || Utils.isBlank(stored.keys)) continue;
+            merged.compute(sid, (k, existing) -> {
+                KnownAuthors.AuthorEntry out = new KnownAuthors.AuthorEntry();
+                out.id = k;
+                if (existing != null) {
+                    out.name = existing.name;
+                    out.keys = new ArrayList<>(existing.keys != null ? existing.keys : Collections.emptyList());
+                } else {
+                    out.name = stored.name;
+                    out.keys = new ArrayList<>();
+                }
+                for (String key : stored.keys) {
+                    if (!out.keys.contains(key)) out.keys.add(key);
+                }
+                return out;
+            });
+        }
+        return merged;
+    }
+
     private static void applyTrustedAuthorsFromConfig(Map<SteamID64, AuthorEntry> authors, Config config) {
         if (authors == null || config == null || Utils.isBlank(config.trustedAuthors())) {
             return;
@@ -459,7 +489,7 @@ public class Loader {
             workshopItemId != null,
             g_allowUnsignedMods,
             workshopDetailsById,
-            knownAuthorsBySteamId
+            buildMergedKnownAuthors(knownAuthorsBySteamId)
         );
         if (zbsResult.verification() != null) {
             mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
@@ -644,7 +674,8 @@ public class Loader {
                     : null;
                 ZBSVerifier.CheckResult zbsResult = zbsSignatureChecksEnabled()
                     ? ZBSVerifier.check(ctx.jarFile, ctx.hash, ctx.workshopItemId,
-                        ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById, knownAuthorsBySteamId)
+                        ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById,
+                        buildMergedKnownAuthors(knownAuthorsBySteamId))
                     : ZBSVerifier.CheckResult.DISABLED;
                 if (zbsResult.verification() != null) {
                     mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
@@ -717,7 +748,8 @@ public class Loader {
             // ZBS: skipped entirely for policy=allow-all; invalid signatures always block when checks apply.
             if (!shouldSkip && zbsSignatureChecksEnabled() && ctx.jarFile != null && ctx.hash != null) {
                 ZBSVerifier.CheckResult zbsResult = ZBSVerifier.check(ctx.jarFile, ctx.hash,
-                    ctx.workshopItemId, ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById, knownAuthorsBySteamId);
+                    ctx.workshopItemId, ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById,
+                    buildMergedKnownAuthors(knownAuthorsBySteamId));
                 flags = zbsResult.flags();
                 if (flags.hasAll(MF_SIGNED, MF_VALID)) {
                     mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());

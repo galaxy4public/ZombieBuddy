@@ -191,12 +191,19 @@ public final class SelfUpdater {
                 JarEntry e = entries.nextElement();
                 if (e.isDirectory()) continue;
 
+                // Must read entry fully before getCertificates() returns non-null
                 try (InputStream is = jar.getInputStream(e)) {
                     is.readAllBytes();
                 }
 
+                String name = e.getName();
+                boolean isMeta = name.startsWith("META-INF/");
                 Certificate[] certs = e.getCertificates();
-                if (certs != null) {
+                if (certs == null || certs.length == 0) {
+                    if (!isMeta) {
+                        throw new SecurityException("Unsigned entry: " + name);
+                    }
+                } else if (signer == null) {
                     signer = certs;
                 }
             }
