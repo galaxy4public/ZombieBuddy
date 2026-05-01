@@ -8,8 +8,10 @@ import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.imageio.ImageIO;
@@ -40,10 +42,10 @@ import zombie.network.DesktopBrowser;
 
 final class ImguiApprovalDialog {
     private static final String DATE_FORMAT = "yyyy-MM-dd";
-    private static final String EARLY_LOAD_NOTICE = "Requests early load";
-    private static final String EARLY_LOAD_TOOLTIP = String.join("\n",
+    private static final String PRELOAD_NOTICE = "[Preload]";
+    private static final String PRELOAD_TOOLTIP = String.join("\n",
             "This mod wants ZombieBuddy to load its Java code during agent startup on the next launch.",
-            "Early-loaded mods run before normal Project Zomboid mod loading.",
+            "Preloaded mods run before normal Project Zomboid mod loading.",
             "This lets the mod hook earlier game code that is otherwise already loaded.");
     private static final int ROW_OK                     = ImColor.rgba(60, 110, 60, 80);
     private static final int ROW_BAD                    = ImColor.rgba(130, 55, 55, 95);
@@ -85,6 +87,7 @@ final class ImguiApprovalDialog {
     private final boolean[] initialAllow;
     private final boolean[] forceDeny;
     private final String[] authorGroupKey;
+    private final Set<String> authorsWithBannedMods;
     private final ImBoolean open    = new ImBoolean(true);
     private final AtomicReference<List<JarBatchApprovalProtocol.Entry>> result;
     private static float tableRowStartY;
@@ -100,13 +103,25 @@ final class ImguiApprovalDialog {
         this.initialAllow = new boolean[entries.size()];
         this.forceDeny = new boolean[entries.size()];
         this.authorGroupKey = new String[entries.size()];
+
+        // Pass 1: build authorGroupKey and compute which authors have any banned mod in the batch.
+        Set<String> withBanned = new HashSet<>();
+        for (int i = 0; i < entries.size(); i++) {
+            JarBatchApprovalProtocol.Entry e = entries.get(i);
+            this.authorGroupKey[i] = e.zbs.authorSteamId() != null ? e.zbs.authorSteamId().toString() : "";
+            if (e.steamBan != null && !this.authorGroupKey[i].isEmpty()) {
+                withBanned.add(this.authorGroupKey[i]);
+            }
+        }
+        this.authorsWithBannedMods = withBanned;
+
+        // Pass 2: initialize per-row state using the complete authorsWithBannedMods set.
         for (int i = 0; i < entries.size(); i++) {
             JarBatchApprovalProtocol.Entry e = entries.get(i);
             this.initialAllow[i] = initialAllow(e);
             this.forceDeny[i] = forceDeny(e);
-            this.authorGroupKey[i] = e.zbs.authorSteamId() != null ? e.zbs.authorSteamId().toString() : "";
             this.allow[i] = new ImBoolean(this.initialAllow[i]);
-            this.trustAuthor[i] = new ImBoolean(false);
+            this.trustAuthor[i] = new ImBoolean(canTrustAuthor(e) && (e.flags & MF_TRUST_AUTHOR) != 0);
         }
     }
 
@@ -394,6 +409,7 @@ final class ImguiApprovalDialog {
         ArrayList<JarBatchApprovalProtocol.Entry> out = new ArrayList<>(pending.size());
         for (JarBatchApprovalProtocol.Entry e : pending) {
             e.decision = false;
+            e.flags &= ~(MF_PERSIST | MF_TRUST_AUTHOR);
             out.add(e);
         }
         return out;
@@ -429,7 +445,7 @@ final class ImguiApprovalDialog {
 
         centerNextItemVertically(modCellHeight(e));
         drawModTitle(e, tooltip, false);
-        drawEarlyLoadNotice(e);
+        drawPreloadNotice(e);
     }
 
     private static void drawModTitle(JarBatchApprovalProtocol.Entry e, String tooltip, boolean centerInCell) {
@@ -453,18 +469,18 @@ final class ImguiApprovalDialog {
         }
     }
 
-    private static void drawEarlyLoadNotice(JarBatchApprovalProtocol.Entry e) {
+    private static void drawPreloadNotice(JarBatchApprovalProtocol.Entry e) {
         if (!e.preload) {
             return;
         }
         ImGui.spacing();
         ImGui.pushStyleColor(ImGuiCol.Text, ALERT_TEXT);
         try {
-            ImGui.textWrapped(EARLY_LOAD_NOTICE);
+            ImGui.textWrapped(PRELOAD_NOTICE);
         } finally {
             ImGui.popStyleColor();
         }
-        showTooltipIfHovered(EARLY_LOAD_TOOLTIP);
+        showTooltipIfHovered(PRELOAD_TOOLTIP);
     }
 
     private void drawAuthor(JarBatchApprovalProtocol.Entry e) {
@@ -778,7 +794,7 @@ final class ImguiApprovalDialog {
     private static String modTooltip(JarBatchApprovalProtocol.Entry e) {
         StringBuilder sb = new StringBuilder();
         if (e.preload) {
-            sb.append(EARLY_LOAD_NOTICE);
+            sb.append(PRELOAD_NOTICE);
         }
         appendTooltipLine(sb, "id:  ", e.modId);
         appendTooltipLine(sb, "jar: ", e.jarAbsolutePath);
@@ -852,13 +868,19 @@ final class ImguiApprovalDialog {
         return e.zbs.invalid() || e.steamBan != null;
     }
 
-    private static boolean canTrustAuthor(JarBatchApprovalProtocol.Entry e) {
-        return e.zbs.valid() && e.steamBan == null && e.zbs.authorSteamId() != null;
+    private boolean canTrustAuthor(JarBatchApprovalProtocol.Entry e) {
+        if (!e.zbs.valid() || e.steamBan != null || e.zbs.authorSteamId() == null) {
+            return false;
+        }
+        return !authorsWithBannedMods.contains(e.zbs.authorSteamId().toString());
     }
 
-    private static String trustAuthorDisabledTooltip(JarBatchApprovalProtocol.Entry e) {
+    private String trustAuthorDisabledTooltip(JarBatchApprovalProtocol.Entry e) {
         if (e.steamBan != null) {
             return "Cannot trust author: this mod has a Steam ban.";
+        }
+        if (e.zbs.authorSteamId() != null && authorsWithBannedMods.contains(e.zbs.authorSteamId().toString())) {
+            return "Cannot trust author: they have a banned mod in this batch.";
         }
         if (e.zbs.invalid()) {
             return "Cannot trust author: signature is invalid.";

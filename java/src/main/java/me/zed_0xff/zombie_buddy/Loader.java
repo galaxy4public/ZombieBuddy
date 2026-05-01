@@ -9,12 +9,9 @@ import java.lang.ClassLoader;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarFile;
 import java.util.List;
@@ -26,7 +23,6 @@ import zombie.GameWindow;
 import zombie.core.znet.SteamUtils;
 import zombie.gameStates.ChooseGameInfo;
 
-import me.zed_0xff.zombie_buddy.ModApprovalsStore.AuthorEntry;
 import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontend;
 import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontends;
 
@@ -92,8 +88,6 @@ public class Loader {
     private static final JarDecisionTable g_sessionJarDecisions = new JarDecisionTable();
     private static Config g_config = new Config();
     private static boolean g_configDirty;
-    // Author trust entries
-    private static final Map<SteamID64, AuthorEntry> g_authors = new ConcurrentHashMap<>();
 
     private static final Object g_approvalFrontendLock = new Object();
     private static volatile ModApprovalFrontend g_approvalFrontend;
@@ -223,21 +217,6 @@ public class Loader {
         return copy;
     }
 
-    private static List<AuthorEntry> copyAuthorsWithoutTrust(Map<SteamID64, AuthorEntry> authors) {
-        List<AuthorEntry> out = new ArrayList<>();
-        if (authors == null) return out;
-        for (AuthorEntry author : authors.values()) {
-            if (author == null) continue;
-            out.add(new AuthorEntry(
-                author.id,
-                false,
-                author.keys != null ? new LinkedHashSet<>(author.keys) : null,
-                author.name
-            ));
-        }
-        return out;
-    }
-
     /**
      * Add or update a decision in g_storedEntries (for persistence).
      * Updates existing entry with matching jarHash, or adds a new one.
@@ -266,119 +245,6 @@ public class Loader {
             authorId
         ));
         g_modApprovalsDirty = true;
-    }
-
-    private static void mergeAuthorKeysFromVerification(
-        Map<SteamID64, AuthorEntry> authors,
-        ZBSVerifier.Verification zbs
-    ) {
-        if (authors == null || zbs == null || zbs.sid == null || Utils.isBlank(zbs.profileKeys)) {
-            return;
-        }
-        authors.compute(zbs.sid, (k, existing) -> {
-            boolean trust = existing != null && existing.trust;
-            String name = existing != null ? existing.name : null;
-            Set<String> keys = new LinkedHashSet<>();
-            if (existing != null) {
-                keys.addAll(existing.keys);
-            }
-            keys.addAll(zbs.profileKeys);
-            return new AuthorEntry(k, trust, keys, name);
-        });
-    }
-
-    private static void mergeKnownAuthors(
-        Map<SteamID64, AuthorEntry> authors,
-        Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
-    ) {
-        if (authors == null || Utils.isBlank(knownAuthors)) {
-            return;
-        }
-        for (Map.Entry<SteamID64, KnownAuthors.AuthorEntry> entry : knownAuthors.entrySet()) {
-            KnownAuthors.AuthorEntry known = entry.getValue();
-            SteamID64 sid = entry.getKey();
-            if (sid == null || known == null) {
-                continue;
-            }
-            authors.compute(sid, (k, existing) -> {
-                boolean trust = existing != null && existing.trust;
-                String name = existing != null ? existing.name : null;
-                if (Utils.isBlank(name) && !Utils.isBlank(known.name)) {
-                    name = known.name;
-                }
-                Set<String> keys = new LinkedHashSet<>();
-                if (known.keys != null) {
-                    keys.addAll(known.keys);
-                }
-                if (existing != null) {
-                    keys.addAll(existing.keys);
-                }
-                return new AuthorEntry(k, trust, keys, name);
-            });
-        }
-    }
-
-    private static Map<SteamID64, KnownAuthors.AuthorEntry> buildMergedKnownAuthors(
-        Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
-    ) {
-        if (Utils.isBlank(g_authors)) return knownAuthors;
-        Map<SteamID64, KnownAuthors.AuthorEntry> merged = new LinkedHashMap<>(knownAuthors);
-        for (Map.Entry<SteamID64, AuthorEntry> entry : g_authors.entrySet()) {
-            SteamID64 sid = entry.getKey();
-            AuthorEntry stored = entry.getValue();
-            if (sid == null || Utils.isBlank(stored.keys)) continue;
-            merged.compute(sid, (k, existing) -> {
-                KnownAuthors.AuthorEntry out = new KnownAuthors.AuthorEntry();
-                out.id = k;
-                if (existing != null) {
-                    out.name = existing.name;
-                    out.keys = new ArrayList<>(existing.keys != null ? existing.keys : Collections.emptyList());
-                } else {
-                    out.name = stored.name;
-                    out.keys = new ArrayList<>();
-                }
-                for (String key : stored.keys) {
-                    if (!out.keys.contains(key)) out.keys.add(key);
-                }
-                return out;
-            });
-        }
-        return merged;
-    }
-
-    private static void applyTrustedAuthorsFromConfig(Map<SteamID64, AuthorEntry> authors, Config config) {
-        if (authors == null || config == null || Utils.isBlank(config.trustedAuthors())) {
-            return;
-        }
-        for (SteamID64 sid : config.trustedAuthors()) {
-            if (sid == null) {
-                continue;
-            }
-            authors.compute(sid, (k, existing) -> {
-                String name = existing != null ? existing.name : null;
-                Set<String> keys = new LinkedHashSet<>();
-                if (existing != null && existing.keys != null) {
-                    keys.addAll(existing.keys);
-                }
-                return new AuthorEntry(k, true, keys, name);
-            });
-        }
-    }
-
-    private static void migrateTrustedAuthorsToConfig(List<AuthorEntry> authors) {
-        if (Utils.isBlank(authors)) {
-            return;
-        }
-        Config config = g_config;
-        for (AuthorEntry author : authors) {
-            if (author != null && author.trust && author.id != null) {
-                config = config.withTrustedAuthor(author.id);
-            }
-        }
-        if (!config.equals(g_config)) {
-            g_config = config;
-            g_configDirty = true;
-        }
     }
 
     private static boolean isJarAllowedByPolicy(String modId, JavaModInfo jModInfo, JarDecisionTable disk, String hash) {
@@ -423,10 +289,15 @@ public class Loader {
             disk.put(entry.sha256, allow);
             g_sessionJarDecisions.put(entry.sha256, allow);
             if ((entry.flags & MF_PERSIST) != 0) {
-                storeDecision(entry.sha256, allow, entry.modId, entry.workshopItemId, null);
+                storeDecision(entry.sha256, allow, entry.modId, entry.workshopItemId,
+                    entry.zbs.valid() ? entry.zbs.authorSteamId() : null);
             }
-            if ((entry.flags & MF_PERSIST) != 0 && (entry.flags & MF_TRUST_AUTHOR) != 0 && entry.zbs.valid()) {
-                storeTrustedAuthor(entry.zbs.authorSteamId());
+            if ((entry.flags & MF_PERSIST) != 0 && entry.zbs.valid() && entry.zbs.authorSteamId() != null) {
+                if ((entry.flags & MF_TRUST_AUTHOR) != 0) {
+                    storeTrustedAuthor(entry.zbs.authorSteamId());
+                } else if (entry.steamBan == null && isAuthorTrusted(entry.zbs.authorSteamId())) {
+                    removeTrustedAuthor(entry.zbs.authorSteamId());
+                }
             }
         }
     }
@@ -444,15 +315,6 @@ public class Loader {
             g_config = nextConfig;
             g_configDirty = true;
         }
-        g_authors.compute(sid, (k, existing) -> {
-            String name = existing != null ? existing.name : null;
-            Set<String> keys = new LinkedHashSet<>();
-            if (existing != null && existing.keys != null) {
-                keys.addAll(existing.keys);
-            }
-            return new AuthorEntry(k, true, keys, name);
-        });
-        g_modApprovalsDirty = true;
     }
 
     private static void removeTrustedAuthor(SteamID64 sid) {
@@ -463,10 +325,6 @@ public class Loader {
         if (!nextConfig.equals(g_config)) {
             g_config = nextConfig;
             g_configDirty = true;
-        }
-        AuthorEntry author = g_authors.get(sid);
-        if (author != null && author.trust) {
-            g_authors.put(sid, new AuthorEntry(sid, false, author.keys, author.name));
         }
     }
 
@@ -489,17 +347,10 @@ public class Loader {
             workshopItemId != null,
             g_allowUnsignedMods,
             workshopDetailsById,
-            buildMergedKnownAuthors(knownAuthorsBySteamId)
+            knownAuthorsBySteamId
         );
-        if (zbsResult.verification() != null) {
-            mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
-        }
         SteamID64 uploaderID = zbsResult.uploaderID();
-        if (uploaderID == null) {
-            return;
-        }
-        AuthorEntry author = g_authors.get(uploaderID);
-        if (author != null && isAuthorTrusted(uploaderID)) {
+        if (uploaderID != null && isAuthorTrusted(uploaderID)) {
             removeTrustedAuthor(uploaderID);
             Logger.warn("Removed trusted-author flag for " + uploaderID + " because banned mod was detected: " + modId);
         }
@@ -511,10 +362,6 @@ public class Loader {
     ) {
         if (sid == null) {
             return "";
-        }
-        AuthorEntry stored = g_authors.get(sid);
-        if (stored != null && !Utils.isBlank(stored.name)) {
-            return stored.name;
         }
         KnownAuthors.AuthorEntry known = knownAuthors != null ? knownAuthors.get(sid) : null;
         return known != null && !Utils.isBlank(known.name) ? known.name : sid.toString();
@@ -589,17 +436,6 @@ public class Loader {
             Logger.info("Shift held during game load; forcing Java mod approval dialog.");
         }
         Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthorsBySteamId = KnownAuthors.loadAuthors();
-        Map<SteamID64, AuthorEntry> authorsBefore = new HashMap<>();
-        migrateTrustedAuthorsToConfig(fileData.authors);
-        g_authors.clear();
-        for (AuthorEntry ae : fileData.authors) {
-            if (ae.id != null) {
-                authorsBefore.put(ae.id, new AuthorEntry(ae.id, ae.trust, new LinkedHashSet<>(ae.keys), ae.name));
-                g_authors.put(ae.id, new AuthorEntry(ae.id, ae.trust, new LinkedHashSet<>(ae.keys), ae.name));
-            }
-        }
-        mergeKnownAuthors(g_authors, knownAuthorsBySteamId);
-        applyTrustedAuthorsFromConfig(g_authors, g_config);
 
         // Structural-only skip flags (must match the policy loop below) — used to batch all PROMPT dialogs.
         ArrayList<Boolean> structuralOnlySkip = new ArrayList<>();
@@ -655,6 +491,15 @@ public class Loader {
         }
 
         if (POLICY_PROMPT.equals(g_jarPolicy)) {
+            // Late Shift re-check: on first boot the display window may not exist when
+            // checkShiftKey() runs above (before workshop/ZBS work). By the time we reach
+            // here the window is more likely to be ready, so try once more.
+            if (!g_forceApprovalDialog) {
+                checkShiftKey();
+                if (g_forceApprovalDialog) {
+                    Logger.info("Shift held during game load (late detection); forcing Java mod approval dialog.");
+                }
+            }
             ArrayList<JarBatchApprovalProtocol.Entry> batchEntries = new ArrayList<>();
             for (int i = 0; i < jModInfos.size(); i++) {
                 if (structuralOnlySkip.get(i)) continue;
@@ -675,11 +520,8 @@ public class Loader {
                 ZBSVerifier.CheckResult zbsResult = zbsSignatureChecksEnabled()
                     ? ZBSVerifier.check(ctx.jarFile, ctx.hash, ctx.workshopItemId,
                         ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById,
-                        buildMergedKnownAuthors(knownAuthorsBySteamId))
+                        knownAuthorsBySteamId)
                     : ZBSVerifier.CheckResult.DISABLED;
-                if (zbsResult.verification() != null) {
-                    mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
-                }
                 SteamID64 authorID = zbsResult.sid();
                 ModFlags flags = zbsResult.flags();
                 JarBatchApprovalProtocol.Entry.ZBSignature zbs = new JarBatchApprovalProtocol.Entry.ZBSignature(
@@ -688,14 +530,23 @@ public class Loader {
                     flags.hasAll(MF_SIGNED, MF_VALID) ? authorDisplayName(authorID, knownAuthorsBySteamId) : zbsResult.notice()
                 );
                 Boolean decision = lookupJarDecision(approvals, ctx.hash);
+                if (decision == null) {
+                    // When force-dialog skips applySessionDecisions, still surface session decisions
+                    // so the user sees their earlier choices pre-filled in the dialog.
+                    decision = g_sessionJarDecisions.get(ctx.hash);
+                }
                 if (!g_forceApprovalDialog && !ctx.steamBanned && zbs.valid() && isAuthorTrusted(authorID)) {
-                    // Auto-approve signed mods from trusted authors
+                    // Auto-approve for this session only — trusted-author approvals are not persisted
+                    // because the trust comes from the author record, not the specific JAR hash.
                     approvals.put(ctx.hash, Boolean.TRUE);
-                    storeDecision(ctx.hash, true, ctx.modId, ctx.workshopItemId, authorID);
                     continue;
                 }
                 if (!g_forceApprovalDialog && !ctx.steamBanned) {
                     if (decision != null) continue;
+                }
+                int entryFlags = isDecisionStored(ctx.hash, decision) ? MF_PERSIST : MF_NONE;
+                if (zbs.valid() && authorID != null && isAuthorTrusted(authorID) && !ctx.steamBanned) {
+                    entryFlags |= MF_TRUST_AUTHOR;
                 }
                 batchEntries.add(new JarBatchApprovalProtocol.Entry(
                     ctx.modId,
@@ -704,7 +555,7 @@ public class Loader {
                     ctx.hash,
                     date,
                     decision,
-                    isDecisionStored(ctx.hash, decision) ? MF_PERSIST : MF_NONE,
+                    entryFlags,
                     modDisplay,
                     zbs,
                     steamBan,
@@ -749,11 +600,8 @@ public class Loader {
             if (!shouldSkip && zbsSignatureChecksEnabled() && ctx.jarFile != null && ctx.hash != null) {
                 ZBSVerifier.CheckResult zbsResult = ZBSVerifier.check(ctx.jarFile, ctx.hash,
                     ctx.workshopItemId, ctx.workshopItemId != null, g_allowUnsignedMods, workshopDetailsById,
-                    buildMergedKnownAuthors(knownAuthorsBySteamId));
+                    knownAuthorsBySteamId);
                 flags = zbsResult.flags();
-                if (flags.hasAll(MF_SIGNED, MF_VALID)) {
-                    mergeAuthorKeysFromVerification(g_authors, zbsResult.verification());
-                }
                 if (!flags.has(MF_VALID)) {
                     shouldSkip = true;
                     skipReason = " (" + zbsResult.blockReason() + ", modId=" + ctx.modId + ")";
@@ -781,6 +629,12 @@ public class Loader {
                 }
                 if (!shouldSkip) {
                     flags = flags.with(MF_ACTIVE);
+                } else {
+                    // A loaded JAR cannot be unloaded — preserve MF_ACTIVE if it was previously set.
+                    JavaModLoadState prev = g_jarLoadStatus.get(ctx.modId);
+                    if (prev != null && prev.flags.has(MF_ACTIVE)) {
+                        flags = flags.with(MF_ACTIVE);
+                    }
                 }
                 g_jarLoadStatus.put(ctx.modId, new JavaModLoadState(
                     flags,
@@ -794,11 +648,9 @@ public class Loader {
         // Save if anything changed
         if (g_modApprovalsDirty
             && (!storedEntriesBefore.equals(g_storedEntries)
-                || !authorsBefore.equals(g_authors)
                 || g_storedEntries.size() != storedEntriesBefore.size())) {
             ModApprovalsStore.FileData dataToSave = new ModApprovalsStore.FileData();
             dataToSave.mods = new ArrayList<>(g_storedEntries);
-            dataToSave.authors = copyAuthorsWithoutTrust(g_authors);
             ModApprovalsStore.save(dataToSave);
         }
         if (g_configDirty) {

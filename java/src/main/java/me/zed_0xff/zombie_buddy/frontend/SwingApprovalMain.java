@@ -48,9 +48,11 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Standalone entry point for a non-headless JVM: shows one Swing window listing
@@ -127,7 +129,13 @@ public final class SwingApprovalMain {
         Path resp,
         Map<SteamID64, String> steamIdToDisplayName
     ) {
-        final boolean showTrustColumn = shouldShowTrustColumn(entries);
+        final Set<String> authorsWithBannedMods = new HashSet<>();
+        for (JarBatchApprovalProtocol.Entry e : entries) {
+            if (e.steamBan != null && e.zbs.authorSteamId() != null) {
+                authorsWithBannedMods.add(e.zbs.authorSteamId().toString());
+            }
+        }
+        final boolean showTrustColumn = shouldShowTrustColumn(entries, authorsWithBannedMods);
         JFrame frame = new JFrame("ZombieBuddy — Java mod approval");
         frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
@@ -340,8 +348,14 @@ public final class SwingApprovalMain {
             c.fill = GridBagConstraints.BOTH;
             grid.add(radios, c);
 
-            JCheckBox trustCb = new JCheckBox("", false);
-            trustCb.setEnabled(showTrustColumn && zbsYes && !steamBanYes);
+            boolean canTrustThisAuthor = showTrustColumn && zbsYes && !steamBanYes
+                && (zbsSteamId.isEmpty() || !authorsWithBannedMods.contains(zbsSteamId));
+            JCheckBox trustCb = new JCheckBox("", canTrustThisAuthor && (e.flags & MF_TRUST_AUTHOR) != 0);
+            trustCb.setEnabled(canTrustThisAuthor);
+            if (!canTrustThisAuthor && showTrustColumn && zbsYes && !zbsSteamId.isEmpty()
+                    && authorsWithBannedMods.contains(zbsSteamId)) {
+                trustCb.setToolTipText("Cannot trust author: they have a banned mod in this batch.");
+            }
             applyRowBackground(trustCb, rowBg);
             trustChecks[i] = trustCb;
             authorGroupKey[i] = zbsSteamId;
@@ -375,7 +389,7 @@ public final class SwingApprovalMain {
         JLabel trustNotice = new JLabel(
             "<html><small><i>\"Trust author\" means all mods by that author are auto-allowed while their digital signature remains valid and the mod is not banned.</i></small></html>");
         trustNotice.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JCheckBox savePersist = new JCheckBox("Save decisions to disk (persist across game launches)", true);
+        JCheckBox savePersist = new JCheckBox("Save decisions to disk (persist across game launches)", false);
         savePersist.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -439,6 +453,12 @@ public final class SwingApprovalMain {
                 }
                 updateOkEnabled.run();
             });
+        }
+        // Apply initial allow state for rows where trust author was pre-checked from stored state.
+        for (int idx = 0; idx < entries.size(); idx++) {
+            if (trustChecks[idx].isSelected() && trustChecks[idx].isEnabled()) {
+                setAllowStateForTrustRow(idx, true, initialAllowYes, forceDisableAllow, allowYes, allowNo);
+            }
         }
         updateOkEnabled.run();
 
@@ -507,7 +527,14 @@ public final class SwingApprovalMain {
         return new SimpleDateFormat(DATE_FORMAT, Locale.ROOT).format(date);
     }
 
-    private static boolean shouldShowTrustColumn(List<JarBatchApprovalProtocol.Entry> entries) {
+    private static boolean shouldShowTrustColumn(
+            List<JarBatchApprovalProtocol.Entry> entries, Set<String> authorsWithBannedMods) {
+        for (JarBatchApprovalProtocol.Entry e : entries) {
+            if (e.zbs.valid() && e.steamBan == null && e.zbs.authorSteamId() != null
+                    && !authorsWithBannedMods.contains(e.zbs.authorSteamId().toString())) {
+                return true;
+            }
+        }
         return false;
     }
 

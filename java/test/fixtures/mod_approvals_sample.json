@@ -1,5 +1,5 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "mods": [
     {
       "id": "TestMod1",
@@ -21,22 +21,6 @@
       "id": "LocalMod",
       "jar_hash": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
       "decision": true
-    }
-  ],
-  "authors": [
-    {
-      "id": 76561198043849998,
-      "trust": true,
-      "keys": [
-        "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
-      ],
-      "name": "TrustedAuthor"
-    },
-    {
-      "id": 76561198012345678,
-      "trust": false,
-      "keys": [],
-      "name": "UntrustedAuthor"
     }
   ]
 }

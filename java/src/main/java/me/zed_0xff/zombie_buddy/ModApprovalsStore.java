@@ -7,13 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 import com.google.gson.annotations.SerializedName;
 
@@ -21,7 +16,7 @@ import com.google.gson.annotations.SerializedName;
  * Persistent Java-mod JAR allow/deny decisions under {@code ~/.zombie_buddy/}.
  * JSON shape:
  * {
- *   "formatVersion": 1,
+ *   "formatVersion": 2,
  *   "mods": [
  *     {
  *       "id": "ZBetterModList",
@@ -31,9 +26,6 @@ import com.google.gson.annotations.SerializedName;
  *       "time": "2026-04-01T12:34:56Z",
  *       "author_id": 76561198043849998
  *     }
- *   ],
- *   "authors": [
- *     { "id": 76561198043849998, "trust": true, "keys": [ "…64 hex Ed25519 pubkey(s)…" ], "name": "..." }
  *   ]
  * }
  */
@@ -41,7 +33,7 @@ public final class ModApprovalsStore {
 
     public static final String JSON_FILE_NAME = "mod_approvals.json";
     public static final String LEGACY_TXT_FILE_NAME = "java_mod_approvals.txt";
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
 
     private ModApprovalsStore() {}
 
@@ -49,12 +41,9 @@ public final class ModApprovalsStore {
     public static final class FileData {
         @SerializedName("formatVersion")
         public int formatVersion = FORMAT_VERSION;
-        
+
         @SerializedName("mods")
         public List<ModEntry> mods = new ArrayList<>();
-        
-        @SerializedName("authors")
-        public List<AuthorEntry> authors = new ArrayList<>();
     }
 
     /** A single mod approval entry. */
@@ -105,51 +94,6 @@ public final class ModApprovalsStore {
         }
     }
 
-    /** Per SteamID64: trust flag and optional Ed25519 pubkey hex strings. */
-    public static final class AuthorEntry {
-        @SerializedName("id")
-        public SteamID64 id;
-        
-        @SerializedName("trust")
-        public boolean trust;
-        
-        @SerializedName("keys")
-        public Set<String> keys = new LinkedHashSet<>();
-        
-        @SerializedName("name")
-        public String name;
-
-        public AuthorEntry() {}
-
-        public AuthorEntry(SteamID64 id, boolean trust, Set<String> keys, String name) {
-            this.id = id;
-            this.trust = trust;
-            this.name = name != null && !name.trim().isEmpty() ? name.trim() : null;
-            if (keys != null) {
-                for (String k : keys) {
-                    if (!Utils.isBlank(k)) {
-                        this.keys.add(k.trim().toLowerCase(Locale.ROOT));
-                    }
-                }
-            }
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof AuthorEntry other)) return false;
-            return trust == other.trust 
-                && Objects.equals(id, other.id)
-                && keys.equals(other.keys) 
-                && Objects.equals(name, other.name);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(id, trust, keys, name);
-        }
-    }
-
     static Path jsonPath() {
         return Agent.configDir().resolve(JSON_FILE_NAME);
     }
@@ -170,9 +114,7 @@ public final class ModApprovalsStore {
                     if (loaded != null) {
                         data = loaded;
                         if (data.mods == null) data.mods = new ArrayList<>();
-                        if (data.authors == null) data.authors = new ArrayList<>();
-                        Logger.info("Java mod approvals read from " + jp + ": " + data.mods.size()
-                            + " mod(s), " + data.authors.size() + " author(s)");
+                        Logger.info("Java mod approvals read from " + jp + ": " + data.mods.size() + " mod(s)");
                     }
                 }
             }
@@ -190,23 +132,8 @@ public final class ModApprovalsStore {
         try {
             Path jp = jsonPath();
             Files.createDirectories(jp.getParent());
-            
-            // Resolve author names
-            Map<SteamID64, String> knownNames = KnownAuthors.loadSteamIdToDisplayName();
-            if (knownNames != null) {
-                for (AuthorEntry ae : data.authors) {
-                    if (ae.id != null && (Utils.isBlank(ae.name))) {
-                        String resolved = knownNames.get(ae.id);
-                        if (!Utils.isBlank(resolved)) {
-                            ae.name = resolved;
-                        }
-                    }
-                }
-            }
-            
             Utils.writeFileAtomic(jp, ZBGson.PRETTY.toJson(data), StandardCharsets.UTF_8);
-            Logger.info("Java mod approvals written to " + jp + ": " + data.mods.size()
-                + " mod(s), " + data.authors.size() + " author(s)");
+            Logger.info("Java mod approvals written to " + jp + ": " + data.mods.size() + " mod(s)");
         } catch (Exception e) {
             Logger.error("Could not save Java mod approvals: " + e);
         }

@@ -28,7 +28,7 @@ def zb_json_entry(h)
       "notice" => h[:zbs_notice].to_s,
     },
     "steamBan"        => h[:steam_ban_reason].to_s.empty? ? nil : { "reason" => h[:steam_ban_reason].to_s },
-    "preload"      => h[:b_early_load] == true,
+    "preload"      => h[:preload] == true,
   }
   wid = h[:workshop_item_id]
   out["workshopItemId"] = wid.to_i if wid
@@ -90,7 +90,7 @@ def zb_sample_approval_entries
       date: "2026-01-01",
       decision: i == 1 ? true : nil,
       mod_display_name: mods[i][1],
-      b_early_load: i == 1,
+      preload: i == 1,
       steam_ban_reason: "",
       **zbs_signed(first_author)
     }

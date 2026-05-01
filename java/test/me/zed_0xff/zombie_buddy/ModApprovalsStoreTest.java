@@ -11,8 +11,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 class ModApprovalsStoreTest {
 
@@ -21,9 +19,8 @@ class ModApprovalsStoreTest {
         String json = loadFixture("mod_approvals_sample.json");
         ModApprovalsStore.FileData data = ZBGson.PRETTY.fromJson(json, ModApprovalsStore.FileData.class);
 
-        assertEquals(1, data.formatVersion);
+        assertEquals(2, data.formatVersion);
         assertEquals(3, data.mods.size());
-        assertEquals(2, data.authors.size());
 
         // Check first mod
         ModApprovalsStore.ModEntry mod1 = data.mods.get(0);
@@ -45,25 +42,12 @@ class ModApprovalsStoreTest {
         assertNull(mod3.workshopId);
         assertNull(mod3.authorId);
         assertTrue(mod3.decision);
-
-        // Check authors
-        ModApprovalsStore.AuthorEntry ae1 = findAuthorById(data, 76561198043849998L);
-        assertNotNull(ae1);
-        assertEquals(76561198043849998L, ae1.id.value());
-        assertTrue(ae1.trust);
-        assertEquals("TrustedAuthor", ae1.name);
-        assertEquals(1, ae1.keys.size());
-        assertTrue(ae1.keys.contains("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
-
-        ModApprovalsStore.AuthorEntry ae2 = findAuthorById(data, 76561198012345678L);
-        assertNotNull(ae2);
-        assertFalse(ae2.trust);
     }
 
     @Test
     void roundTrip_preservesData() {
         ModApprovalsStore.FileData original = new ModApprovalsStore.FileData();
-        
+
         ModApprovalsStore.ModEntry mod = new ModApprovalsStore.ModEntry(
             "RoundTripMod",
             new WorkshopItemID(9876543210L),
@@ -74,17 +58,11 @@ class ModApprovalsStoreTest {
         );
         original.mods.add(mod);
 
-        Set<String> keys = new LinkedHashSet<>();
-        keys.add("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
-        original.authors.add(new ModApprovalsStore.AuthorEntry(
-            new SteamID64(76561198099999999L), true, keys, "RoundTripAuthor"));
-
         String json = ZBGson.PRETTY.toJson(original);
         ModApprovalsStore.FileData parsed = ZBGson.PRETTY.fromJson(json, ModApprovalsStore.FileData.class);
 
         assertEquals(original.formatVersion, parsed.formatVersion);
         assertEquals(original.mods.size(), parsed.mods.size());
-        assertEquals(original.authors.size(), parsed.authors.size());
 
         ModApprovalsStore.ModEntry parsedMod = parsed.mods.get(0);
         assertEquals(mod.id, parsedMod.id);
@@ -93,11 +71,6 @@ class ModApprovalsStoreTest {
         assertEquals(mod.decision, parsedMod.decision);
         assertEquals(mod.time, parsedMod.time);
         assertEquals(mod.authorId.value(), parsedMod.authorId.value());
-
-        ModApprovalsStore.AuthorEntry parsedAuthor = findAuthorById(parsed, 76561198099999999L);
-        assertNotNull(parsedAuthor);
-        assertEquals("RoundTripAuthor", parsedAuthor.name);
-        assertTrue(parsedAuthor.trust);
     }
 
     @Test
@@ -111,24 +84,18 @@ class ModApprovalsStoreTest {
             null,
             new SteamID64(76561198000000000L)
         ));
-        data.authors.add(new ModApprovalsStore.AuthorEntry(
-            new SteamID64(76561198000000000L), true, null, "TestAuthor"));
 
         String json = ZBGson.PRETTY.toJson(data);
-        
+
         // workshop_id should be a number, not a quoted string
-        assertTrue(json.contains("\"workshop_id\": 1234567890"), 
+        assertTrue(json.contains("\"workshop_id\": 1234567890"),
             "workshop_id should be numeric: " + json);
         assertFalse(json.contains("\"workshop_id\": \"1234567890\""),
             "workshop_id should not be a string: " + json);
-        
+
         // author_id in mods should be a number
         assertTrue(json.contains("\"author_id\": 76561198000000000"),
             "author_id should be numeric: " + json);
-        
-        // id in authors should be a number
-        assertTrue(json.contains("\"id\": 76561198000000000"),
-            "author id should be numeric: " + json);
     }
 
     @Test
@@ -152,15 +119,6 @@ class ModApprovalsStoreTest {
         assertNull(mod.workshopId);
         assertNull(mod.authorId);
         assertNull(mod.time);
-    }
-
-    private static ModApprovalsStore.AuthorEntry findAuthorById(ModApprovalsStore.FileData data, long id) {
-        for (ModApprovalsStore.AuthorEntry ae : data.authors) {
-            if (ae.id != null && ae.id.value() == id) {
-                return ae;
-            }
-        }
-        return null;
     }
 
     private static String loadFixture(String name) throws IOException {

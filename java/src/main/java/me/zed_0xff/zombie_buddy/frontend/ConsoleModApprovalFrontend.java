@@ -49,7 +49,11 @@ public final class ConsoleModApprovalFrontend implements ModApprovalFrontend {
                 allow = readYesNo("Allow this Java mod to load?");
             }
             e.decision = allow;
-            e.flags |= MF_PERSIST;
+            if (readYesNo("Save this decision to disk?")) {
+                e.flags |= MF_PERSIST;
+            } else {
+                e.flags &= ~MF_PERSIST;
+            }
             out.add(e);
         }
         Loader.applyBatchApprovalLines(out, disk);
