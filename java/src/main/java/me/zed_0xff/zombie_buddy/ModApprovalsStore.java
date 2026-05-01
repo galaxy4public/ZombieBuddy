@@ -204,7 +204,7 @@ public final class ModApprovalsStore {
                 }
             }
             
-            Files.writeString(jp, ZBGson.PRETTY.toJson(data), StandardCharsets.UTF_8);
+            Utils.writeFileAtomic(jp, ZBGson.PRETTY.toJson(data), StandardCharsets.UTF_8);
             Logger.info("Java mod approvals written to " + jp + ": " + data.mods.size()
                 + " mod(s), " + data.authors.size() + " author(s)");
         } catch (Exception e) {

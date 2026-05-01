@@ -5,7 +5,7 @@ import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -116,9 +116,7 @@ public final class JarBatchApprovalProtocol {
 
     public static void writeRequest(Path path, List<Entry> entries) throws IOException {
         List<Entry> safe = entries == null ? Collections.emptyList() : entries;
-        try (Writer w = Files.newBufferedWriter(path)) {
-            JSON.toJson(new RequestEnvelope(HDR_REQ, safe), w);
-        }
+        Utils.writeFileAtomic(path, JSON.toJson(new RequestEnvelope(HDR_REQ, safe)), StandardCharsets.UTF_8);
     }
 
     public static List<Entry> readRequest(Path path) throws IOException {
@@ -133,9 +131,7 @@ public final class JarBatchApprovalProtocol {
 
     public static void writeResponse(Path path, List<Entry> entries) throws IOException {
         List<Entry> safe = entries == null ? Collections.emptyList() : entries;
-        try (Writer w = Files.newBufferedWriter(path)) {
-            JSON.toJson(new ResponseEnvelope(HDR_RESP, safe), w);
-        }
+        Utils.writeFileAtomic(path, JSON.toJson(new ResponseEnvelope(HDR_RESP, safe)), StandardCharsets.UTF_8);
     }
 
     public static List<Entry> readResponse(Path path) throws IOException {

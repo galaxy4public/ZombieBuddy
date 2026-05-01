@@ -2,8 +2,14 @@ package me.zed_0xff.zombie_buddy;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.Charset;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.Collection;
 import java.util.Collections;
@@ -168,6 +174,28 @@ public final class Utils {
             sb.append(String.format(fmt, bytes[i]));
         }
         return sb.toString();
+    }
+
+    /**
+     * Writes {@code content} to {@code target} atomically: writes to a sibling temp file first,
+     * then renames. Readers see either the old complete file or the new complete file, never a
+     * partial write. Falls back to a non-atomic move if the OS/filesystem doesn't support it.
+     */
+    public static void writeFileAtomic(Path target, String content, Charset charset) throws IOException {
+        Path dir = target.getParent();
+        if (dir != null) Files.createDirectories(dir);
+        Path tmp = Files.createTempFile(dir, target.getFileName().toString(), ".tmp");
+        try {
+            Files.writeString(tmp, content, charset);
+            try {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            Files.deleteIfExists(tmp);
+            throw e;
+        }
     }
 
     /**

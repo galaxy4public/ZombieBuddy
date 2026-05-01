@@ -163,7 +163,7 @@ public final class KnownAuthors {
     private static void writeCache(String body) {
         try {
             Files.createDirectories(Agent.configDir());
-            Files.writeString(cachePath(), body, StandardCharsets.UTF_8);
+            Utils.writeFileAtomic(cachePath(), body, StandardCharsets.UTF_8);
         } catch (IOException e) {
             Logger.warn("Could not write author names cache: " + e.getMessage());
         }

@@ -54,7 +54,7 @@ public record Config(
         try {
             Path path = jsonPath();
             Files.createDirectories(path.getParent());
-            Files.writeString(path, ZBGson.PRETTY.toJson(config != null ? config : new Config()), StandardCharsets.UTF_8);
+            Utils.writeFileAtomic(path, ZBGson.PRETTY.toJson(config != null ? config : new Config()), StandardCharsets.UTF_8);
             Logger.info("ZombieBuddy config written to " + path);
         } catch (Exception e) {
             Logger.error("Could not save config: " + e);
