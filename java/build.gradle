@@ -11,6 +11,9 @@ def rawGameClasspath = project.findProperty('gameClasspath')?.toString()?.trim()
 if (!rawGameClasspath) {
     rawGameClasspath = System.getenv('PZ_CLASSPATH')?.trim()
 }
+if (!rawGameClasspath) {
+    rawGameClasspath = System.getProperty("pz.classpath")
+}
 def GAME_CLASSPATH = []
 if (rawGameClasspath) {
     GAME_CLASSPATH = rawGameClasspath.split(',').collect { path -> file(path.trim()) }

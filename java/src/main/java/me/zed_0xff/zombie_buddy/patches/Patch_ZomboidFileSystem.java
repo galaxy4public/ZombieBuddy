@@ -38,9 +38,9 @@ public class Patch_ZomboidFileSystem {
         public static void enter(ArrayList<String> mods, @Patch.Local("t0") long t0) {
             Logger.info("ZomboidFileSystem.loadMods(" + mods.size() + " mods) ...");
             long loaderStartNs = System.nanoTime();
-            Loader.loadJavaMods(mods);
+            Loader.loadMods(mods);
             long loaderElapsedMs = (System.nanoTime() - loaderStartNs) / 1_000_000L;
-            if ( loaderElapsedMs > 1000 ) Logger.info("Loader.loadJavaMods() took " + loaderElapsedMs + " ms");
+            if ( loaderElapsedMs > 1000 ) Logger.info("Loader.loadMods() took " + loaderElapsedMs + " ms");
             t0 = System.nanoTime();
         }
 

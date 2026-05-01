@@ -93,9 +93,7 @@ public final class ZBSVerifier {
             Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById,
             Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
     ) {
-        SteamID64 uploaderID = steamModeEnabled
-            ? SteamWorkshop.getUploaderID(workshopItemId, workshopDetailsById)
-            : null;
+        SteamID64 uploaderID = steamModeEnabled ? SteamWorkshop.getUploaderID(workshopItemId, workshopDetailsById) : null;
         File zbsFile = new File(jarFile.getAbsolutePath() + ".zbs");
 
         if (!zbsFile.isFile()) {

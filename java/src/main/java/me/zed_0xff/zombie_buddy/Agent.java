@@ -87,11 +87,11 @@ public class Agent {
         // fails to expose via annotation at this point (in zbspec), so expose manually
         Exposer.exposeClass(ZombieBuddy.class);
 
-        Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches", null, true);
+        Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches", null);
 
         // Load experimental patches if enabled
         if (isExperimental()) {
-            Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches.experimental", null, true);
+            Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches.experimental", null);
         }
         
         if( arguments.containsKey("patches_jar")) {
@@ -120,7 +120,7 @@ public class Agent {
             }
 
             for (PatchesJarEntry entry : patchesJarEntries) {
-                loadPatchesFromJar(entry.jarPath, entry.packageName);
+                Loader.loadPatchesFromJar(entry.jarPath, entry.packageName);
             }
         }
         
@@ -160,29 +160,6 @@ public class Agent {
         if (arguments.containsKey("exit_after_game_init")) {
             Logger.info("Exiting after game init as requested.");
             Core.getInstance().quit();
-        }
-    }
-    
-    private static void loadPatchesFromJar(String jarPath, String packageName) {
-        try {
-            File jarFile = new File(jarPath);
-            if (!jarFile.exists()) {
-                Logger.error("patches_jar file not found: " + jarPath);
-                return;
-            }
-            
-            // Add JAR to classpath
-            JarFile jf = new JarFile(jarFile);
-            Loader.g_instrumentation.appendToSystemClassLoaderSearch(jf);
-            Loader.g_known_jars.add(jarFile);
-            Logger.info("added patches JAR to classpath: " + jarFile);
-            
-            // Scan for patches in the specified package
-            Loader.ApplyPatchesFromPackage(packageName, null, true);
-
-        } catch (Exception e) {
-            Logger.error("Error loading patches from JAR " + jarPath + ": " + e.getMessage());
-            e.printStackTrace();
         }
     }
     

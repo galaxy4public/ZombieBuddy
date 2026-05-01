@@ -129,9 +129,8 @@ public final class PatchEngine {
      * Apply patches from a package using ByteBuddy.
      * @param packageName the package containing @Patch classes
      * @param modLoader the class loader for the mod (null for system loader)
-     * @param isPreMain reserved for future use
      */
-    public static void applyPatches(String packageName, ClassLoader modLoader, boolean isPreMain) {
+    public static void applyPatches(String packageName, ClassLoader modLoader) {
         List<Class<?>> patches = collectPatches(packageName, modLoader);
         if (patches.isEmpty()) {
             Logger.info("no patches in package " + packageName);

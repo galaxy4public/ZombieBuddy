@@ -51,24 +51,29 @@ public record JavaModInfo(
      * @return typed Workshop item id, or {@code null} when not a Workshop-installed mod path.
      */
     public WorkshopItemID getWorkshopItemID() {
-        if (modDir == null) {
-            return null;
-        }
+        if (modDir == null) return null;
+        WorkshopItemID id = workshopItemIdFromPath(modDir.getAbsolutePath());
+        if (id != null) return id;
         String p = modDir.getAbsolutePath().replace('\\', '/');
-        Matcher m = WORKSHOP_ITEM_ID_IN_PATH.matcher(p + "/");
-        if (m.find()) {
-            try {
-                return new WorkshopItemID(Long.parseLong(m.group(1)));
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
         if (p.toLowerCase(Locale.ROOT).contains("/workshop/")) {
             File dir = modDir;
             for (int ascent = 0; ascent < 4 && dir != null; ascent++) {
                 dir = dir.getParentFile();
             }
             return dir == null ? null : workshopItemIdFromWorkshopTxtIn(dir);
+        }
+        return null;
+    }
+
+    /** Extracts the Steam Workshop item ID from any absolute path string. */
+    static WorkshopItemID workshopItemIdFromPath(String absolutePath) {
+        if (absolutePath == null) return null;
+        String p = absolutePath.replace('\\', '/');
+        Matcher m = WORKSHOP_ITEM_ID_IN_PATH.matcher(p + "/");
+        if (m.find()) {
+            try {
+                return new WorkshopItemID(Long.parseLong(m.group(1)));
+            } catch (NumberFormatException ignored) {}
         }
         return null;
     }
