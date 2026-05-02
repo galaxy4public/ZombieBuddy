@@ -109,12 +109,12 @@ Extract to your Project Zomboid mods directory:
 ### 3. Copy files to the game directory
 
 **macOS and Linux**:
-- Copy `ZombieBuddy.jar` from the mod's `build/libs/` directory to:
+- Copy `ZombieBuddy.jar` from the mod's `libs/` directory to:
   - **macOS**: `~/Library/Application Support/Steam/steamapps/common/ProjectZomboid/Project Zomboid.app/Contents/Java/`
   - **Linux**: The equivalent Java directory in your Steam installation (typically `~/.steam/steam/steamapps/common/ProjectZomboid/projectzomboid/`)
 
 **Windows**:
-- Copy **both** `ZombieBuddy.jar` and `zbNative.dll` from the mod's `build/libs/` directory to the game directory:
+- Copy **both** `ZombieBuddy.jar` and `zbNative.dll` from the mod's `libs/` directory to the game directory:
   - Typically: `C:\Program Files (x86)\Steam\steamapps\common\ProjectZomboid\`
   - Or wherever your Steam installation is located
 
