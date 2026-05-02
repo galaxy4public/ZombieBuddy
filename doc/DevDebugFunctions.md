@@ -2,6 +2,18 @@
 
 Global Lua helpers exposed by ZombieBuddy for inspecting and manipulating Java/Lua objects. Use from the in-game Lua console or from mod scripts.
 
+> **Note:** ZombieBuddy must be loaded with **experimental mode** enabled.
+>
+> macOS / Linux:
+> ```
+> -javaagent:ZombieBuddy.jar=experimental --
+> ```
+> Windows:
+> ```
+> -agentlib:zbNative=experimental --
+> ```
+> See [CommandLine.md](CommandLine.md) for full parameter reference.
+
 For other Lua APIs (Events, Watches, Status), see [LuaAPI.md](LuaAPI.md).
 
 ---
