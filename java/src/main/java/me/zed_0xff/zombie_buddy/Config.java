@@ -11,17 +11,15 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
-import com.google.gson.annotations.SerializedName;
-
 public record Config(
-    @SerializedName("trusted_authors") List<SteamID64> trustedAuthors,
-    @SerializedName("preload_mods") Map<String, String> preloadMods
+    List<SteamID64> trusted_authors,
+    Map<String, String> preload_mods
 ) {
     public static final String JSON_FILE_NAME = "config.json";
 
     public Config {
-        trustedAuthors = normalizeTrustedAuthors(trustedAuthors);
-        preloadMods = normalizePreloadMods(preloadMods);
+        trusted_authors = normalizeTrustedAuthors(trusted_authors);
+        preload_mods = normalizePreloadMods(preload_mods);
     }
 
     public Config() {
@@ -62,43 +60,43 @@ public record Config(
     }
 
     public boolean trustsAuthor(SteamID64 authorId) {
-        return authorId != null && trustedAuthors.contains(authorId);
+        return authorId != null && trusted_authors.contains(authorId);
     }
 
     public Config withTrustedAuthor(SteamID64 authorId) {
-        if (authorId == null || trustedAuthors.contains(authorId)) {
+        if (authorId == null || trusted_authors.contains(authorId)) {
             return this;
         }
-        List<SteamID64> out = new ArrayList<>(trustedAuthors);
+        List<SteamID64> out = new ArrayList<>(trusted_authors);
         out.add(authorId);
-        return new Config(out, preloadMods);
+        return new Config(out, preload_mods);
     }
 
     public Config withoutTrustedAuthor(SteamID64 authorId) {
-        if (authorId == null || !trustedAuthors.contains(authorId)) {
+        if (authorId == null || !trusted_authors.contains(authorId)) {
             return this;
         }
-        List<SteamID64> out = new ArrayList<>(trustedAuthors);
+        List<SteamID64> out = new ArrayList<>(trusted_authors);
         out.remove(authorId);
-        return new Config(out, preloadMods);
+        return new Config(out, preload_mods);
     }
 
     public Config withPreloadMod(String javaPkgName, String jarPath) {
         if (Utils.isBlank(javaPkgName) || Utils.isBlank(jarPath)) {
             return this;
         }
-        Map<String, String> out = new LinkedHashMap<>(preloadMods);
+        Map<String, String> out = new LinkedHashMap<>(preload_mods);
         out.put(javaPkgName, jarPath);
-        return new Config(trustedAuthors, out);
+        return new Config(trusted_authors, out);
     }
 
     public Config withoutPreloadMod(String javaPkgName) {
-        if (Utils.isBlank(javaPkgName) || !preloadMods.containsKey(javaPkgName)) {
+        if (Utils.isBlank(javaPkgName) || !preload_mods.containsKey(javaPkgName)) {
             return this;
         }
-        Map<String, String> out = new LinkedHashMap<>(preloadMods);
+        Map<String, String> out = new LinkedHashMap<>(preload_mods);
         out.remove(javaPkgName);
-        return new Config(trustedAuthors, out);
+        return new Config(trusted_authors, out);
     }
 
     private static List<SteamID64> normalizeTrustedAuthors(List<SteamID64> input) {

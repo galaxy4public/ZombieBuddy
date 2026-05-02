@@ -393,14 +393,14 @@ public class Loader {
     }
 
     static void preloadMods() {
-        if (g_config.preloadMods().isEmpty()) {
+        if (g_config.preload_mods().isEmpty()) {
             return;
         }
 
         // First pass: validate and collect entries
         record PreloadEntry(String javaPkgName, String jarPath, File jarFile, String hash, WorkshopItemID workshopItemId) {}
         List<PreloadEntry> entries = new ArrayList<>();
-        for (Map.Entry<String, String> e : g_config.preloadMods().entrySet()) {
+        for (Map.Entry<String, String> e : g_config.preload_mods().entrySet()) {
             String javaPkgName = e.getKey();
             String jarPath = e.getValue();
             Logger.info("Preloading pkg '" + javaPkgName + "' from " + jarPath);
