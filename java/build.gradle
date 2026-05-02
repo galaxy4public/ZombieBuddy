@@ -79,7 +79,6 @@ shadowJar {
     exclude 'META-INF/*.MF'
     exclude 'META-INF/versions/**'
     exclude '*.dll'
-    exclude '*.dlz'
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
@@ -410,8 +409,10 @@ task test_patched(type: Test) {
     doFirst {
         def gsonJar = configurations.runtimeClasspath.find { it.name.contains("gson") }
         if (!gsonJar) throw new GradleException("gson jar not found in runtimeClasspath")
-        jvmArgs "-Xbootclasspath/a:${gsonJar}"
-        jvmArgs "-javaagent:${shadowJar.archiveFile.get().asFile.absolutePath}=patches_jar=${patchesJarPath}:${patchesPackageName},verbosity=2"
+        def bcJar = configurations.runtimeClasspath.find { it.name.contains("bcprov") }
+        if (!bcJar) throw new GradleException("bouncycastle jar not found in runtimeClasspath")
+        jvmArgs "-Xbootclasspath/a:${gsonJar}${File.pathSeparator}${bcJar}"
+        jvmArgs "-javaagent:${shadowJar.archiveFile.get().asFile.absolutePath}=patches_jar=${patchesJarPath}:${patchesPackageName},verbosity=2,config_dir=.config"
     }
 }
 

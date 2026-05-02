@@ -1,5 +1,8 @@
 package me.zed_0xff.zombie_buddy;
 
+import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontend;
+import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontends;
+
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
 import static me.zed_0xff.zombie_buddy.ModFlags.*;
@@ -9,21 +12,20 @@ import java.lang.ClassLoader;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarFile;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.lwjgl.glfw.GLFW;
 import org.lwjglx.opengl.Display;
 import zombie.GameWindow;
 import zombie.gameStates.ChooseGameInfo;
-
-import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontend;
-import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontends;
 
 public class Loader {
     // Package-private: only ZombieBuddy's own classes may touch the instrumentation handle.
@@ -35,6 +37,8 @@ public class Loader {
 
     // called by Patch_GameWindow.Patch_DoLoadingText
     public static boolean g_hasDoLoadingText = false;
+    // set when a new preload mod entry is stored during loadMods (i.e., after premain preload phase)
+    static String g_newPreloadModID = null;
 
     /**
      * When {@code true} (default), a missing {@code .zbs} next to the JAR is allowed as &quot;unsigned&quot;
@@ -57,7 +61,7 @@ public class Loader {
     private static volatile String g_jarPolicy = POLICY_PROMPT;
     private static volatile boolean g_jarPolicyLocked = false;
 
-    public static synchronized void setPolicy(String value) {
+    static synchronized void setPolicy(String value) {
         if (g_jarPolicyLocked) {
             Logger.warn("Ignoring attempt to change policy (already locked at '" + g_jarPolicy + "')");
             return;
@@ -72,7 +76,7 @@ public class Loader {
         Logger.info("Policy set to '" + g_jarPolicy + "' (locked)");
     }
 
-    public static String getPolicy() {
+    static String getPolicy() {
         return g_jarPolicy;
     }
 
@@ -108,8 +112,9 @@ public class Loader {
         return r != ZBSVerifier.CheckResult.DISABLED && !r.flags().has(MF_VALID);
     }
 
-    static Set<String> g_known_classes = new HashSet<>();
-    static Set<File> g_known_jars = new HashSet<>();
+            static final Set<File>   g_known_jars     = new HashSet<>(); // used by PatchEngine
+    private static final Set<String> g_known_classes  = new HashSet<>();
+    private static final Set<String> g_known_packages = new HashSet<>();
 
     // Persisted entries loaded from disk - the source of truth for saving
     private static List<ModApprovalsStore.ModEntry> g_storedEntries = new ArrayList<>();
@@ -123,8 +128,14 @@ public class Loader {
     /** Set in {@link #configureApprovalFrontend}; resolved lazily — do not touch LWJGL during agent {@code premain}. */
     private static String g_approvalFrontendConfig = ModApprovalFrontends.ARG_AUTO;
 
+    /** Called from {@link Agent#premain} to load config from disk before any mod loading. */
+    static void initConfig() {
+        g_config = Config.load();
+        g_configDirty = false;
+    }
+
     /** Called from {@link Agent#premain} with {@code frontend=...} (default {@code auto}). */
-    public static void configureApprovalFrontend(String value) {
+    static void configureApprovalFrontend(String value) {
         String v = value == null ? "" : value.trim();
         synchronized (g_approvalFrontendLock) {
             g_approvalFrontendConfig = v.isEmpty() ? ModApprovalFrontends.ARG_AUTO : v;
@@ -165,35 +176,22 @@ public class Loader {
      * the UI. Keyed by modId; for multi-dir B42 mods the version-dir entry
      * (which typically carries the JAR) overwrites the common-dir one.
      */
-    static final class JavaModLoadState {
-        final ModFlags flags;
-        final String reason;      // "loaded" or a short skip reason
-        final String sha256;      // JAR sha256, null if no JAR
-        final Boolean decision;   // true = allow, false = deny, null = undecided
+    static record JavaModLoadState (
+            String id,
+            ModFlags flags,
+            String reason,      // "loaded" or a short skip reason
+            String sha256,      // JAR sha256, null if no JAR
+            Boolean decision    // true = allow, false = deny, null = undecided
+    ) {}
 
-        JavaModLoadState(ModFlags flags, String reason, String sha256, Boolean decision) {
-            this.flags = flags;
-            this.reason = reason;
-            this.sha256 = sha256;
-            this.decision = decision;
-        }
-    }
-
+    // key is jar pathname
     private static final Map<String, JavaModLoadState> g_jarLoadStatus = new ConcurrentHashMap<>();
 
-    static JavaModLoadState getJarLoadState(String modId) {
-        return modId == null ? null : g_jarLoadStatus.get(modId);
-    }
-
-    static ArrayList<String> getActiveJavaMods() {
-        ArrayList<String> out = new ArrayList<>();
-        for (Map.Entry<String, JavaModLoadState> entry : g_jarLoadStatus.entrySet()) {
-            JavaModLoadState state = entry.getValue();
-            if (state != null && state.flags.has(MF_ACTIVE)) {
-                out.add(entry.getKey());
-            }
-        }
-        return out;
+    // returns readonly snapshot
+    static List<JavaModLoadState> getActiveJavaMods() {
+        return g_jarLoadStatus.values().stream()
+            .filter(s -> s.flags().has(MF_ACTIVE))
+            .toList();
     }
 
     private static JarDecisionTable buildJarDecisionTable(List<ModApprovalsStore.ModEntry> mods) {
@@ -290,7 +288,7 @@ public class Loader {
         return false;
     }
 
-    public static void applyBatchApprovalLines(List<JarBatchApprovalProtocol.Entry> entries, JarDecisionTable disk) {
+    static void applyBatchApprovalLines(List<JarBatchApprovalProtocol.Entry> entries, JarDecisionTable disk) {
         if (entries == null) return;
         for (JarBatchApprovalProtocol.Entry entry : entries) {
             if (entry == null || entry.decision == null || Utils.isBlank(entry.sha256)) continue;
@@ -304,21 +302,25 @@ public class Loader {
             if (entry.flags.has(MF_PERSIST) && entry.zbs.valid() && entry.zbs.authorSteamId() != null) {
                 if (entry.flags.has(MF_TRUST_AUTHOR)) {
                     storeTrustedAuthor(entry.zbs.authorSteamId());
-                } else if (entry.steamBan == null && isAuthorTrusted(entry.zbs.authorSteamId())) {
+                } else if (isAuthorTrusted(entry.zbs.authorSteamId())) {
+                    // 'trust author' checkbox unchecked
                     removeTrustedAuthor(entry.zbs.authorSteamId());
                 }
             }
             if (entry.flags.has(MF_PRELOAD) && !Utils.isBlank(entry.javaPkgName) && !Utils.isBlank(entry.jarAbsolutePath)) {
                 if (allow) {
-                    storePreloadMod(entry.javaPkgName, entry.jarAbsolutePath);
+                    PreloadMods.add(entry);
                 } else {
-                    removePreloadMod(entry.javaPkgName);
+                    PreloadMods.remove(entry.javaPkgName);
                 }
             }
         }
     }
 
     private static boolean isAuthorTrusted(SteamID64 sid) {
+        if (sid == null) {
+            return false;
+        }
         return g_config.trustsAuthor(sid);
     }
 
@@ -344,37 +346,67 @@ public class Loader {
         }
     }
 
-    private static void storePreloadMod(String javaPkgName, String jarPath) {
-        Config nextConfig = g_config.withPreloadMod(javaPkgName, jarPath);
-        if (!nextConfig.equals(g_config)) {
-            g_config = nextConfig;
-            g_configDirty = true;
-        }
-    }
+    private static final class PreloadMods {
+        private static final String MANIFEST_ATTR = "ZB-Preload";
 
-    private static void removePreloadMod(String javaPkgName) {
-        Config nextConfig = g_config.withoutPreloadMod(javaPkgName);
-        if (!nextConfig.equals(g_config)) {
-            g_config = nextConfig;
-            g_configDirty = true;
+        private static void add(String modId, String javaPkgName, String jarAbsolutePath) {
+            Config nextConfig = g_config.withPreloadMod(javaPkgName, jarAbsolutePath);
+            if (!nextConfig.equals(g_config)) {
+                g_config = nextConfig;
+                g_configDirty = true;
+                g_newPreloadModID = modId;
+            }
+        }
+
+        private static void add(JarBatchApprovalProtocol.Entry entry) {
+            add(entry.modId, entry.javaPkgName, entry.jarAbsolutePath);
+        }
+
+        private static void remove(String javaPkgName) {
+            Config nextConfig = g_config.withoutPreloadMod(javaPkgName);
+            if (!nextConfig.equals(g_config)) {
+                g_config = nextConfig;
+                g_configDirty = true;
+            }
+        }
+
+        /**
+         * Returns true when the JAR's {@code META-INF/MANIFEST.MF} contains {@code ZB-Preload: true}.
+         * Callers must verify the JAR's ZBS signature before trusting this value.
+         */
+        static boolean hasManifestPreload(File jarFile) {
+            if (jarFile == null || !jarFile.isFile()) {
+                return false;
+            }
+            try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jarFile, false)) {
+                java.util.jar.Manifest mf = jf.getManifest();
+                if (mf == null) {
+                    return false;
+                }
+                String val = mf.getMainAttributes().getValue(MANIFEST_ATTR);
+                return "true".equalsIgnoreCase(val != null ? val.trim() : null);
+            } catch (Exception e) {
+                return false;
+            }
         }
     }
 
     static void preloadMods() {
-        Config config = Config.load();
-        if (config.preloadMods().isEmpty()) {
+        if (g_config.preloadMods().isEmpty()) {
             return;
         }
 
         // First pass: validate and collect entries
         record PreloadEntry(String javaPkgName, String jarPath, File jarFile, String hash, WorkshopItemID workshopItemId) {}
         List<PreloadEntry> entries = new ArrayList<>();
-        for (Map.Entry<String, String> e : config.preloadMods().entrySet()) {
+        for (Map.Entry<String, String> e : g_config.preloadMods().entrySet()) {
             String javaPkgName = e.getKey();
             String jarPath = e.getValue();
+            Logger.info("Preloading pkg '" + javaPkgName + "' from " + jarPath);
             File jarFile = new File(jarPath);
             if (!jarFile.isFile()) {
                 Logger.warn("Preload pkg '" + javaPkgName + "': JAR not found at " + jarPath);
+                PreloadMods.remove(javaPkgName);
                 continue;
             }
             if (g_known_jars.contains(jarFile)) {
@@ -383,6 +415,12 @@ public class Loader {
             }
             if (!validatePackageInJar(jarFile, javaPkgName)) {
                 Logger.warn("Preload pkg '" + javaPkgName + "': package not found in JAR " + jarPath + "; skipping.");
+                PreloadMods.remove(javaPkgName);
+                continue;
+            }
+            if (!PreloadMods.hasManifestPreload(jarFile)) {
+                Logger.warn("Preload pkg '" + javaPkgName + "': JAR manifest missing '" + PreloadMods.MANIFEST_ATTR + "' entry in " + jarPath + "; skipping.");
+                PreloadMods.remove(javaPkgName);
                 continue;
             }
             entries.add(new PreloadEntry(javaPkgName, jarPath, jarFile, Utils.sha256Hex(jarFile),
@@ -397,9 +435,14 @@ public class Loader {
             ZBSVerifier.CheckResult zbsResult = zbsCheck(entry.jarFile(), entry.hash(), entry.workshopItemId(), zbsCtx);
             if (zbsBlocked(zbsResult)) {
                 Logger.warn("Preload pkg '" + entry.javaPkgName() + "': ZBS check failed (" + zbsResult.blockReason() + "); skipping.");
+                PreloadMods.remove(entry.javaPkgName());
                 continue;
             }
-            loadPatchesFromJar(entry.jarPath(), entry.javaPkgName());
+            loadJar(entry.jarPath(), entry.javaPkgName(), entry.hash());
+        }
+        if (g_configDirty) {
+            Config.save(g_config);
+            g_configDirty = false;
         }
     }
 
@@ -480,7 +523,7 @@ public class Loader {
                 // B42+
                 // follow lua engine logic, load common dir first, then version dir
                 // so version dir could override common dir
-                JavaModInfo jModInfoCommon = JavaModInfo.parse(mod.getCommonDir());
+                JavaModInfo jModInfoCommon  = JavaModInfo.parse(mod.getCommonDir());
                 JavaModInfo jModInfoVersion = JavaModInfo.parse(mod.getVersionDir());
 
                 if (jModInfoCommon != null) {
@@ -520,8 +563,6 @@ public class Loader {
         ArrayList<Boolean> shouldSkipList = new ArrayList<>();
         ArrayList<String> skipReasons = new ArrayList<>();
         ModApprovalsStore.FileData fileData = ModApprovalsStore.load();
-        g_config = Config.load();
-        g_configDirty = false;
         // Store entries for persistence and build lookup table
         g_storedEntries = new ArrayList<>(fileData.mods);
         g_modApprovalsDirty = false;
@@ -628,6 +669,9 @@ public class Loader {
                     // Auto-approve for this session only — trusted-author approvals are not persisted
                     // because the trust comes from the author record, not the specific JAR hash.
                     approvals.put(ctx.hash, Boolean.TRUE);
+                    if (jModInfo.javaPreload() && PreloadMods.hasManifestPreload(ctx.jarFile)) {
+                        PreloadMods.add(ctx.modId, jModInfo.javaPkgName(), ctx.jarFile.getAbsolutePath());
+                    }
                     continue;
                 }
                 if (!g_forceApprovalDialog && !ctx.steamBanned) {
@@ -637,8 +681,12 @@ public class Loader {
                 if (zbs.valid() && authorID != null && isAuthorTrusted(authorID) && !ctx.steamBanned) {
                     entryFlags = entryFlags.with(MF_TRUST_AUTHOR);
                 }
-                if (jModInfo.javaPreload() && zbs.valid() && JavaModInfo.hasManifestPreload(ctx.jarFile)) {
+                final boolean bHasManifestPreload = PreloadMods.hasManifestPreload(ctx.jarFile);
+                if (jModInfo.javaPreload() && zbs.valid() && bHasManifestPreload) {
                     entryFlags = entryFlags.with(MF_PRELOAD);
+                } else if (jModInfo.javaPreload() || bHasManifestPreload) {
+                    Logger.warn(ctx.modId + ": javaPreload=" + jModInfo.javaPreload() + ", hasManifestPreload=" + bHasManifestPreload
+                        + ", zbs.valid()=" + zbs.valid());
                 }
                 batchEntries.add(new JarBatchApprovalProtocol.Entry(
                     ctx.modId,
@@ -701,6 +749,10 @@ public class Loader {
                 skipReason = " (" + ctx.zbsResult.blockReason() + ", modId=" + ctx.modId + ")";
             }
 
+            if (flags.hasAll(MF_VALID, MF_SIGNED) && isAuthorTrusted(ctx.zbsResult.uploaderID())) {
+                flags = flags.with(MF_TRUST_AUTHOR);
+            }
+
             // Enforce Java JAR policy for new/changed binaries.
             if (!shouldSkip && !isJarAllowedByPolicy(ctx.modId, jModInfo, approvals, ctx.hash)) {
                 shouldSkip = true;
@@ -729,7 +781,8 @@ public class Loader {
                         flags = flags.with(MF_ACTIVE);
                     }
                 }
-                g_jarLoadStatus.put(ctx.modId, new JavaModLoadState(
+                g_jarLoadStatus.put(ctx.jarFile.getAbsolutePath(), new JavaModLoadState(
+                    ctx.modId,
                     flags,
                     shouldSkip ? skipReason.trim() : "loaded",
                     ctx.hash,
@@ -774,7 +827,7 @@ public class Loader {
         // Load only the mods that should be loaded
         for (int i = 0; i < jModInfos.size(); i++) {
             if (!shouldSkipList.get(i)) {
-                loadJavaMod(jModInfos.get(i), modContexts.get(i).hash);
+                loadJar(jModInfos.get(i).getJarFileAsFile().getAbsolutePath(), jModInfos.get(i).javaPkgName(), modContexts.get(i).hash);
             }
         }
     }
@@ -796,7 +849,7 @@ public class Loader {
         Callbacks.onDisplayCreate.register(Loader::checkShiftKey);
     }
 
-    public static void printModList(ArrayList<JavaModInfo> jModInfos) {
+    static void printModList(ArrayList<JavaModInfo> jModInfos) {
         int longestPathLength = 0;
         for (JavaModInfo jModInfo : jModInfos) {
             if (jModInfo.modDir().getAbsolutePath().length() > longestPathLength) {
@@ -810,11 +863,35 @@ public class Loader {
         }
     }
 
-    public static void ApplyPatchesFromPackage(String packageName, ClassLoader modLoader) {
+    // called by Agent and Loader
+    static void loadJar(String jarPath, String packageName, String approvedHash) {
+        if (Utils.isBlank(jarPath) || Utils.isBlank(packageName)) {
+            Logger.error("Invalid arguments to loadPatchesFromJar: jarPath=" + jarPath + ", packageName=" + packageName);
+            return;
+        }
+        File jarFile = new File(jarPath);
+        if (!jarFile.exists()) {
+            Logger.error("JAR not found: " + jarPath);
+            return;
+        }
+        if (!addJarToClasspath(jarFile, packageName, approvedHash)) {
+            return;
+        }
+        ApplyPatchesFromPackage(packageName, null);
+    }
+
+    // called both for ZB bundled patches and external mods
+    static void ApplyPatchesFromPackage(String packageName, ClassLoader modLoader) {
+        if (g_known_packages.contains(packageName)) {
+            Logger.debug("Patches from package " + packageName + " already applied, skipping.");
+            return;
+        }
+        g_known_packages.add(packageName);
+
         // Load and invoke optional Main class
         String mainClassName = packageName + ".Main";
         if (g_known_classes.contains(mainClassName)) {
-            Logger.info("Java class " + mainClassName + " already loaded, skipping.");
+            Logger.debug("Java class " + mainClassName + " already loaded, skipping.");
         } else {
             g_known_classes.add(mainClassName);
 
@@ -826,50 +903,6 @@ public class Loader {
         }
 
         PatchEngine.applyPatches(packageName, modLoader);
-    }
-
-    public static List<Class<?>> CollectPatches(String packageName, ClassLoader modLoader) {
-        return PatchEngine.collectPatches(packageName, modLoader);
-    }
-
-    // Package-private: approval checks live in loadMods(); keeping this non-public
-    // prevents an external (approved) mod from calling it directly with an arbitrary JAR,
-    // bypassing ZBS verification and the decision table entirely.
-    static void loadJavaMod(JavaModInfo modInfo, String approvedHash) {
-        final String separator = "-------------------------------------------";
-        Logger.info(separator + " loading Java mod: " + modInfo.modDir());
-
-        try {
-            File jarFile = modInfo.getJarFileAsFile();
-            if (jarFile == null) {
-                Logger.error("Error! No JAR file specified for mod: " + modInfo.modDir());
-                return;
-            }
-            if (!jarFile.exists()) {
-                Logger.error("classpath not found: " + jarFile);
-                return;
-            }
-            if (!addJarToClasspath(jarFile, modInfo.javaPkgName(), approvedHash)) {
-                return;
-            }
-
-            ApplyPatchesFromPackage(modInfo.javaPkgName(), null);
-        } finally {
-            // called for all return paths to ensure consistent log formatting
-            Logger.info(separator);
-        }
-    }
-
-    static void loadPatchesFromJar(String jarPath, String packageName) {
-        File jarFile = new File(jarPath);
-        if (!jarFile.exists()) {
-            Logger.error("patches_jar file not found: " + jarPath);
-            return;
-        }
-        if (!addJarToClasspath(jarFile, packageName, null)) {
-            return;
-        }
-        ApplyPatchesFromPackage(packageName, null);
     }
 
     static void try_call_main(Class<?> cls) {

@@ -336,4 +336,18 @@ public final class Utils {
             out.rawset("unwrapError", e.getMessage());
         }
     }
+
+    public static KahluaTable mapToLuaTable(Map<?, ?> map) {
+        if (map == null) return null;
+
+        var tbl = LuaManager.platform.newTable();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            Object key = entry.getKey();
+            Object value = entry.getValue();
+            if (key != null) {
+                tbl.rawset(key.toString(), value);
+            }
+        }
+        return tbl;
+    }
 }

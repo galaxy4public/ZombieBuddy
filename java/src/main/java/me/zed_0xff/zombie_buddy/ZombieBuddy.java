@@ -45,41 +45,16 @@ public class ZombieBuddy {
         return Loader.getPolicy();
     }
 
-    /**
-     * Per-mod status snapshot captured during Loader.loadMods(). Returns null
-     * if the given modId has no recorded Java JAR (not a Java mod, or
-     * metadata-only mod.info with no javaJarFile).
-     *
-     * Fields in the returned table:
-     *   active    (boolean) — true if the JAR was loaded this run
-     *   reason    (string)  — "active" or short skip reason
-     *   sha256    (string)  — JAR sha256 (may be absent if hashing failed)
-     *   decision  (boolean) — true for allow, false for deny (absent if never decided)
-     *   persisted (boolean) — true when decision is present
-     *   zbsValid  (boolean) — true if the JAR is signed and signature is valid
-     */
-    public static KahluaTable getJavaModStatus(String modId) {
-        Loader.JavaModLoadState s = Loader.getJarLoadState(modId);
-        if (s == null) return null;
+    // lua-facing variant of Loader.getActiveJavaMods(). Returns a list of modIds for JARs that were loaded this run.
+    public static KahluaTable getActiveJavaMods() {
         var tbl = LuaManager.platform.newTable();
-        tbl.rawset("active", s.flags.has(MF_ACTIVE));
-        tbl.rawset("reason", s.reason);
-        if (s.sha256 != null) tbl.rawset("sha256", s.sha256);
-        if (s.decision != null) {
-            tbl.rawset("decision", s.decision);
-            tbl.rawset("persisted", s.flags.has(MF_PERSIST));
+        for (var modInfo : Loader.getActiveJavaMods()) {
+            var modTbl = LuaManager.platform.newTable();
+            modTbl.rawset("id", modInfo.id());
+            modTbl.rawset("flags", Utils.mapToLuaTable(modInfo.flags().toMap()));
+            tbl.rawset(modInfo.id(), modTbl);
         }
-        tbl.rawset("zbsValid", s.flags.hasAll(MF_SIGNED, MF_VALID));
         return tbl;
-    }
-
-    public static ArrayList<String> getActiveJavaMods() {
-        return Loader.getActiveJavaMods();
-    }
-
-    public static boolean isJavaModSigned(String modId) {
-        Loader.JavaModLoadState s = Loader.getJarLoadState(modId);
-        return s != null && s.flags.hasAll(MF_SIGNED, MF_VALID);
     }
 
     public static String getClosureFilename(Object obj) {

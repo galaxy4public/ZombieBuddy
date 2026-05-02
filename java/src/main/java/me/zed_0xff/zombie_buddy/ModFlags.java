@@ -1,5 +1,8 @@
 package me.zed_0xff.zombie_buddy;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public record ModFlags(int value) {
     public static final int MF_NONE = 0;
 
@@ -30,5 +33,17 @@ public record ModFlags(int value) {
 
     public ModFlags without(int flag) {
         return new ModFlags(value & ~flag);
+    }
+
+    public Map<String, Boolean> toMap() {
+        Map<String, Boolean> map = new HashMap<>();
+        map.put("valid", has(MF_VALID));
+        map.put("signed", has(MF_SIGNED));
+        map.put("active", has(MF_ACTIVE));
+        map.put("persist", has(MF_PERSIST));
+        map.put("banned", has(MF_BANNED));
+        map.put("preload", has(MF_PRELOAD));
+        map.put("trustAuthor", has(MF_TRUST_AUTHOR));
+        return map;
     }
 }

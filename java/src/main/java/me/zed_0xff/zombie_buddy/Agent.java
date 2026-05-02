@@ -120,7 +120,7 @@ public class Agent {
             }
 
             for (PatchesJarEntry entry : patchesJarEntries) {
-                Loader.loadPatchesFromJar(entry.jarPath, entry.packageName);
+                Loader.loadJar(entry.jarPath, entry.packageName, null);
             }
         }
         
@@ -138,6 +138,8 @@ public class Agent {
                 }
             }
         }
+
+        Loader.initConfig();
 
         Logger.info("Agent installed.");
         Loader.preloadMods();

@@ -203,8 +203,5 @@ ZombieBuddy will load automatically as a Java agent.
 
 ## Verifying Installation
 
-You can confirm ZombieBuddy is working by checking:
-
-- **Game version string**: Look for `[ZB]` appended to the game version (e.g., "Build 42.30.16 [ZB]")
-- **Loading screen**: The ZombieBuddy version (e.g., "ZB 1.0.2") appears at the bottom right corner during game loading
-- **Main menu**: The ZombieBuddy version is visible at the bottom right corner of the main menu screen
+You can confirm ZombieBuddy is working by checking top left screen corner during game loading or the main menu.
+You should see a ZombieBuddy icon and "ZombieBuddy vX.Y.Z loaded" text.

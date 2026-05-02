@@ -328,26 +328,6 @@ public record JavaModInfo(
     }
 
     /**
-     * Returns true when the JAR's {@code META-INF/MANIFEST.MF} contains {@code ZB-Preload: true}.
-     * Callers must verify the JAR's ZBS signature before trusting this value.
-     */
-    public static boolean hasManifestPreload(File jarFile) {
-        if (jarFile == null || !jarFile.isFile()) {
-            return false;
-        }
-        try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jarFile, false)) {
-            java.util.jar.Manifest mf = jf.getManifest();
-            if (mf == null) {
-                return false;
-            }
-            String val = mf.getMainAttributes().getValue("ZB-Preload");
-            return "true".equalsIgnoreCase(val != null ? val.trim() : null);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
      * Checks if a version is within the specified minimum and maximum range.
      * 
      * @param currentVersion The current version to check

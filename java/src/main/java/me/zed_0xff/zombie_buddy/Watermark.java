@@ -1,11 +1,13 @@
-package me.zed_0xff.zombie_buddy.frontend;
+package me.zed_0xff.zombie_buddy;
+
+import static me.zed_0xff.zombie_buddy.ModFlags.*;
 
 import java.io.BufferedInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
-
-import me.zed_0xff.zombie_buddy.*;
+import java.util.Comparator;
+import java.util.List;
 
 import zombie.GameTime;
 import zombie.GameWindow;
@@ -19,10 +21,13 @@ import zombie.ui.UIManager;
 @Exposer.LuaClass(name = "ZombieBuddy.Watermark")
 public final class Watermark {
     private static final String ICON_RESOURCE = "zb_icon.png";
-    private static final float GREEN_R = 0.5f;
-    private static final float GREEN_G = 1.0f;
-    private static final float GREEN_B = 0.5f;
-    private static final float GRAY    = 0.9f;
+    private static final float GREEN_R  = 0.5f;
+    private static final float GREEN_G  = 1.0f;
+    private static final float GREEN_B  = 0.5f;
+    private static final float YELLOW_R = 1.0f;
+    private static final float YELLOW_G = 1.0f;
+    private static final float YELLOW_B = 0.0f;
+    private static final float GRAY     = 0.9f;
 
     private static final float DEFAULT_ALPHA = 0.4f;
     private static final int DEFAULT_TTL   = 200;
@@ -76,14 +81,13 @@ public final class Watermark {
     }
 
     private static void draw() {
-        String watermark = ZombieBuddy.getFullVersionString() + " loaded";
+        String base = ZombieBuddy.getFullVersionString() + " loaded";
         String newVersion = SelfUpdater.getNewVersion();
-        if (newVersion != null) {
-            watermark += " (New version " + newVersion + " installed. Please restart the game)";
-        }
+        String newPreload = Loader.g_newPreloadModID;
+
         var font     = UIFont.Small;
         var textMgr  = TextManager.instance;
-        var textH    = textMgr.MeasureStringY(font, watermark);
+        var textH    = textMgr.MeasureStringY(font, base);
         var iconTex  = loadIcon();
         var iconSize = Utils.isHiRes() ? 128 : 64;
         var textX    = iconSize + 4;
@@ -97,14 +101,35 @@ public final class Watermark {
             float alpha = getCurrentAlpha();
             SpriteRenderer.instance.renderi(iconTex, 0, 0, iconSize, iconSize, 1.0f, 1.0f, 1.0f, alpha, null);
         }
-        drawGreen(font, textMgr, textX, textY, watermark);
+
+        if (newVersion != null) {
+            var segments = new ArrayList<TextSegment>();
+            segments.add(TextSegment.green(base));
+            segments.add(TextSegment.yellow(" (New version " + newVersion + " installed. Please restart the game)"));
+            drawSegments(font, textMgr, textX, textY, segments);
+        } else {
+            drawGreen(font, textMgr, textX, textY, base);
+        }
         textY += textH;
+
+        if (!Utils.isBlank(newPreload)) {
+            drawYellow(font, textMgr, textX, textY, "New preload mod " + newPreload + " added. Restart the game to activate it.");
+            textY += textH;
+        }
+
         drawActiveJavaMods(font, textMgr, textX, textY, textH);
     }
 
     private static void drawActiveJavaMods(UIFont font, TextManager textMgr, int textX, int textY, int lineH) {
-        var mods = activeJavaMods();
-        String prefix = (mods.size() == 0 ? "No" : mods.size()) + " active JAVA mods";
+        List<Loader.JavaModLoadState> mods =
+            Loader.getActiveJavaMods().stream()
+            .sorted(Comparator.comparing(
+                        Loader.JavaModLoadState::id,
+                        Comparator.nullsFirst(Comparator.naturalOrder())
+                        ))
+            .toList();
+
+        String prefix = (mods.size() == 0 ? "No" : mods.size()) + " active Java mods";
         if (mods.isEmpty()) {
             drawGreen(font, textMgr, textX, textY, prefix);
             return;
@@ -115,8 +140,9 @@ public final class Watermark {
         String lineText = prefix + ": ";
         boolean lineHasMod = false;
         line.add(TextSegment.green(lineText));
-        for (ActiveJavaMod mod : mods) {
-            String text = (lineHasMod ? ", " : "") + mod.name;
+        for (var mod : mods) {
+            String idText = mod.id() + (mod.flags().has(MF_PRELOAD) ? " (preload)" : "");
+            String text = (lineHasMod ? ", " : "") + idText;
             String candidate = lineText + text;
             if (lineHasMod && textMgr.MeasureStringX(font, candidate) > maxW) {
                 drawSegments(font, textMgr, textX, textY, line);
@@ -124,22 +150,14 @@ public final class Watermark {
                 line.clear();
                 lineText = "";
                 lineHasMod = false;
-                text = mod.name;
+                text = idText;
             }
-            line.add(new TextSegment(text, mod.signed ? GREEN_R : GRAY, mod.signed ? GREEN_G : GRAY, mod.signed ? GREEN_B : GRAY));
+            boolean signed = mod.flags().has(MF_SIGNED);
+            line.add(new TextSegment(text, signed ? GREEN_R : GRAY, signed ? GREEN_G : GRAY, signed ? GREEN_B : GRAY));
             lineText += text;
             lineHasMod = true;
         }
         drawSegments(font, textMgr, textX, textY, line);
-    }
-
-    private static ArrayList<ActiveJavaMod> activeJavaMods() {
-        var mods = new ArrayList<ActiveJavaMod>();
-        for (String name : ZombieBuddy.getActiveJavaMods()) {
-            mods.add(new ActiveJavaMod(name, ZombieBuddy.isJavaModSigned(name)));
-        }
-        Collections.sort(mods, (a, b) -> a.name.compareTo(b.name));
-        return mods;
     }
 
     private static void drawSegments(UIFont font, TextManager textMgr, int x, int y, ArrayList<TextSegment> segments) {
@@ -153,6 +171,10 @@ public final class Watermark {
 
     private static void drawGreen(UIFont font, TextManager textMgr, int x, int y, String text) {
         textMgr.DrawString(font, x, y, text, GREEN_R, GREEN_G, GREEN_B, getCurrentAlpha());
+    }
+
+    private static void drawYellow(UIFont font, TextManager textMgr, int x, int y, String text) {
+        textMgr.DrawString(font, x, y, text, YELLOW_R, YELLOW_G, YELLOW_B, getCurrentAlpha());
     }
 
     private static Texture loadIcon() {
@@ -198,6 +220,10 @@ public final class Watermark {
 
         static TextSegment green(String text) {
             return new TextSegment(text, GREEN_R, GREEN_G, GREEN_B);
+        }
+
+        static TextSegment yellow(String text) {
+            return new TextSegment(text, YELLOW_R, YELLOW_G, YELLOW_B);
         }
     }
 }
