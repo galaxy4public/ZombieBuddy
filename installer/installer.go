@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jslay88/vdf"
+    "github.com/andygrunwald/vdf"
 )
 
 const (
@@ -1050,7 +1050,7 @@ func findPZLaunchConfig(path string, create bool) (map[string]interface{}, error
 		return nil, err
 	}
 
-	apps, err := navigateMap(m, "Software", "Valve", "Steam", "Apps")
+	apps, err := navigateMap(m, "UserLocalConfigStore", "Software", "Valve", "Steam", "Apps")
 	if err != nil {
 		return nil, fmt.Errorf("%v (root keys: %s)", err, formatMapKeys(m))
 	}
@@ -1109,34 +1109,14 @@ func stripZombieBuddyLaunchOptions(options string) (string, bool) {
 }
 
 func parseVDFMap(path string) (map[string]interface{}, error) {
-	m, err := vdf.ParseAutoFile(path)
-	if err != nil {
-		return nil, err
-	}
-	normalized, ok := normalizeVDFValue(m).(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid VDF root")
-	}
-	return normalized, nil
-}
+    f, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
 
-func normalizeVDFValue(value interface{}) interface{} {
-	switch v := value.(type) {
-	case vdf.Map:
-		m := make(map[string]interface{}, len(v))
-		for key, child := range v {
-			m[key] = normalizeVDFValue(child)
-		}
-		return m
-	case map[string]interface{}:
-		m := make(map[string]interface{}, len(v))
-		for key, child := range v {
-			m[key] = normalizeVDFValue(child)
-		}
-		return m
-	default:
-		return value
-	}
+    p := vdf.NewParser(f)
+    return p.Parse()
 }
 
 func navigateMap(m map[string]interface{}, path ...string) (map[string]interface{}, error) {
