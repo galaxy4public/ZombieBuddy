@@ -20,7 +20,7 @@ import (
 const (
 	PZ_APP_ID         = "108600"
 	ZB_MOD_ID         = "3619862853"
-	INSTALLER_VERSION = "4.0"
+	INSTALLER_VERSION = "4.1"
 	ZB_LAUNCH_ARG     = "-agentlib:zbNative"
 	ZB_LAUNCH_OPTIONS = ZB_LAUNCH_ARG + " --"
 )
