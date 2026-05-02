@@ -11,7 +11,6 @@ import org.bouncycastle.crypto.signers.Ed25519Signer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,8 +33,8 @@ class ZBSVerifierTest {
         SignedFixture fixture = signedFixture(AUTHOR_ID);
 
         ZBSVerifier.Verification result = ZBSVerifier.verify(
-            fixture.jarFile,
-            fixture.zbsFile,
+            fixture.jarPath,
+            fixture.zbsPath,
             fixture.jarHash,
             AUTHOR_ID,
             knownAuthors(AUTHOR_ID, fixture.publicKeyHex)
@@ -51,8 +50,8 @@ class ZBSVerifierTest {
         SignedFixture fixture = signedFixture(AUTHOR_ID);
 
         ZBSVerifier.Verification result = ZBSVerifier.verify(
-            fixture.jarFile,
-            fixture.zbsFile,
+            fixture.jarPath,
+            fixture.zbsPath,
             fixture.jarHash,
             OTHER_ID,
             knownAuthors(AUTHOR_ID, fixture.publicKeyHex)
@@ -68,8 +67,8 @@ class ZBSVerifierTest {
         SignedFixture fixture = signedFixture(AUTHOR_ID);
 
         ZBSVerifier.Verification result = ZBSVerifier.verify(
-            fixture.jarFile,
-            fixture.zbsFile,
+            fixture.jarPath,
+            fixture.zbsPath,
             "0".repeat(64),
             AUTHOR_ID,
             knownAuthors(AUTHOR_ID, fixture.publicKeyHex)
@@ -81,14 +80,14 @@ class ZBSVerifierTest {
 
     @Test
     void verify_reportsMalformedSidecar() throws Exception {
-        File jarFile = writeJar("malformed jar").toFile();
-        File zbsFile = tempDir.resolve("malformed.jar.zbs").toFile();
-        Files.writeString(zbsFile.toPath(), "ZBS\nSteamID64:not-a-steamid\nSignature:00\n");
+        Path jarPath = writeJar("malformed jar");
+        Path zbsPath = tempDir.resolve("malformed.jar.zbs");
+        Files.writeString(zbsPath, "ZBS\nSteamID64:not-a-steamid\nSignature:00\n");
 
         ZBSVerifier.Verification result = ZBSVerifier.verify(
-            jarFile,
-            zbsFile,
-            sha256Hex(jarFile.toPath()),
+            jarPath,
+            zbsPath,
+            sha256Hex(jarPath),
             AUTHOR_ID,
             Map.of()
         );
@@ -100,10 +99,10 @@ class ZBSVerifierTest {
 
     @Test
     void verify_reportsMissingSidecar() throws Exception {
-        File jarFile = writeJar("missing zbs").toFile();
-        File missingZBS = tempDir.resolve("missing.jar.zbs").toFile();
+        Path jarPath = writeJar("missing zbs");
+        Path missingZBS = tempDir.resolve("missing.jar.zbs");
 
-        ZBSVerifier.Verification result = ZBSVerifier.verify(jarFile, missingZBS, sha256Hex(jarFile.toPath()));
+        ZBSVerifier.Verification result = ZBSVerifier.verify(jarPath, missingZBS, sha256Hex(jarPath));
 
         assertInstanceOf(ZBSVerifier.MissingSignature.class, result);
         assertNull(result.sid);
@@ -112,12 +111,12 @@ class ZBSVerifierTest {
 
     @Test
     void check_treatsMissingSidecarAsUnsignedWhenAllowed() throws Exception {
-        File jarFile = writeJar("unsigned allowed").toFile();
+        Path jarPath = writeJar("unsigned allowed");
         Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetails = workshopDetails(AUTHOR_ID);
 
         ZBSVerifier.CheckResult result = ZBSVerifier.check(
-            jarFile,
-            sha256Hex(jarFile.toPath()),
+            jarPath,
+            sha256Hex(jarPath),
             WORKSHOP_ID,
             true,
             true,
@@ -132,12 +131,12 @@ class ZBSVerifierTest {
 
     @Test
     void check_blocksMissingSidecarWhenUnsignedNotAllowed() throws Exception {
-        File jarFile = writeJar("unsigned blocked").toFile();
+        Path jarPath = writeJar("unsigned blocked");
         Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetails = workshopDetails(AUTHOR_ID);
 
         ZBSVerifier.CheckResult result = ZBSVerifier.check(
-            jarFile,
-            sha256Hex(jarFile.toPath()),
+            jarPath,
+            sha256Hex(jarPath),
             WORKSHOP_ID,
             true,
             false,
@@ -156,7 +155,7 @@ class ZBSVerifierTest {
         Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetails = workshopDetails(AUTHOR_ID);
 
         ZBSVerifier.CheckResult result = ZBSVerifier.check(
-            fixture.jarFile,
+            fixture.jarPath,
             fixture.jarHash,
             WORKSHOP_ID,
             true,
@@ -178,8 +177,8 @@ class ZBSVerifierTest {
     }
 
     private SignedFixture signedFixture(SteamID64 sid) throws Exception {
-        File jarFile = writeJar("jar contents for " + sid).toFile();
-        String jarHash = sha256Hex(jarFile.toPath());
+        Path jarPath = writeJar("jar contents for " + sid);
+        String jarHash = sha256Hex(jarPath);
 
         byte[] seed = new byte[32];
         for (int i = 0; i < seed.length; i++) {
@@ -194,14 +193,14 @@ class ZBSVerifierTest {
         signer.update(message, 0, message.length);
         String signatureHex = hex(signer.generateSignature());
 
-        File zbsFile = new File(jarFile.getAbsolutePath() + ".zbs");
+        Path zbsPath = jarPath.resolveSibling(jarPath.getFileName().toString() + ".zbs");
         Files.writeString(
-            zbsFile.toPath(),
+            zbsPath,
             "ZBS\nSteamID64:" + sid.value() + "\nSignature:" + signatureHex + "\n",
             StandardCharsets.UTF_8
         );
 
-        return new SignedFixture(jarFile, zbsFile, jarHash, publicKeyHex);
+        return new SignedFixture(jarPath, zbsPath, jarHash, publicKeyHex);
     }
 
     private Path writeJar(String content) throws Exception {
@@ -244,5 +243,5 @@ class ZBSVerifierTest {
         return sb.toString();
     }
 
-    private record SignedFixture(File jarFile, File zbsFile, String jarHash, String publicKeyHex) {}
+    private record SignedFixture(Path jarPath, Path zbsPath, String jarHash, String publicKeyHex) {}
 }

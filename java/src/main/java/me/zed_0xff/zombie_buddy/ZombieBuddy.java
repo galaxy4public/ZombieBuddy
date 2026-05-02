@@ -2,7 +2,9 @@ package me.zed_0xff.zombie_buddy;
 
 import static me.zed_0xff.zombie_buddy.ModFlags.*;
 
-import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 
 import se.krka.kahlua.vm.JavaFunction;
@@ -85,7 +87,8 @@ public class ZombieBuddy {
             }
             String path = closure.prototype.filename;
             if (!Utils.isBlank(path)) {
-                long lastModified = new File(path).lastModified();
+                long lastModified = 0L;
+                try { lastModified = Files.getLastModifiedTime(Path.of(path)).toMillis(); } catch (IOException ignored) {}
                 if (lastModified != 0L) {
                     tbl.rawset("fileLastModified", Double.valueOf(lastModified));
                 }

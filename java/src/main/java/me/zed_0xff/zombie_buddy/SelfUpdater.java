@@ -1,8 +1,8 @@
- package me.zed_0xff.zombie_buddy;
+package me.zed_0xff.zombie_buddy;
 
-import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
@@ -32,32 +32,20 @@ public final class SelfUpdater {
         (byte)0x7F, (byte)0xD0, (byte)0x9B, (byte)0x17, (byte)0xD0, (byte)0xEA, (byte)0xDD, (byte)0x97
     };
 
-    /**
-     * Returns the version string of a pending update (set when a newer JAR
-     * was found and replace was scheduled). Null if no update is pending.
-     */
     public static String getNewVersion() {
         return pendingNewVersion;
     }
 
-    /**
-     * Builds the exclusion reason suffix when ZombieBuddy is excluded from normal mod loading
-     * (loaded as Java agent). Reads version from manifest, optionally checks and performs
-     * self-update, and returns a string like " (version 1.2.3)" or " (version 1.2.3) -> updating to 1.2.4".
-     *
-     * @param jarFile the ZombieBuddy JAR file from the mod directory (may be null)
-     * @return suffix to append to the exclusion reason (e.g. " (version 1.0.0)" or " (path not found)")
-     */
-    public static String getExclusionReasonSuffix(File jarFile) {
-        if (jarFile == null) {
+    public static String getExclusionReasonSuffix(Path jarPath) {
+        if (jarPath == null) {
             return " (null not found)";
         }
-        if (!jarFile.exists()) {
-            return " (" + jarFile.getAbsolutePath() + " not found)";
+        if (!Files.isRegularFile(jarPath)) {
+            return " (" + jarPath.toAbsolutePath() + " not found)";
         }
 
         StringBuilder sb = new StringBuilder();
-        Manifest manifest = getJarManifest(jarFile);
+        Manifest manifest = getJarManifest(jarPath);
         if (manifest != null) {
             String manifestVersion = manifest.getMainAttributes().getValue("Implementation-Version");
             if (manifestVersion != null) {
@@ -65,10 +53,8 @@ public final class SelfUpdater {
             }
         }
 
-        File currentJarFile = Utils.getCurrentJarFile();
-        String currentVersion = ZombieBuddy.getVersion();
-        int verbosity = Loader.g_verbosity;
-        if (checkAndUpdateIfNewer(jarFile, currentJarFile, currentVersion, verbosity)) {
+        Path currentJarPath = Utils.getCurrentJarPath();
+        if (checkAndUpdateIfNewer(jarPath, currentJarPath, ZombieBuddy.getVersion(), Loader.g_verbosity)) {
             String newVer = getNewVersion();
             if (newVer != null) {
                 sb.append(" -> updating to ").append(newVer);
@@ -77,41 +63,32 @@ public final class SelfUpdater {
         return sb.toString();
     }
 
-    /**
-     * Replaces the current JAR with the new one and records the new version.
-     * If the current JAR cannot be replaced (e.g. locked), copies the new JAR
-     * to a .new file for deferred update on next launch.
-     *
-     * @param currentJarFile the JAR file that is currently running (from getCurrentJarFile())
-     * @param newJarFile     the new JAR file to install
-     * @param newVersion    the Implementation-Version of the new JAR (for getNewVersion())
-     */
-    public static void performUpdate(File currentJarFile, File newJarFile, String newVersion) {
-        if (currentJarFile == null) {
+    public static void performUpdate(Path currentJarPath, Path newJarPath, String newVersion) {
+        if (currentJarPath == null) {
             return;
         }
         pendingNewVersion = newVersion;
-        Logger.info("replacing " + currentJarFile + " with " + newJarFile);
+        Logger.info("replacing " + currentJarPath + " with " + newJarPath);
         try {
-            File backupFile = new File(currentJarFile.getAbsolutePath() + ".bak");
-            if (currentJarFile.exists()) {
+            Path backupPath = currentJarPath.resolveSibling(currentJarPath.getFileName() + ".bak");
+            if (Files.exists(currentJarPath)) {
                 try {
-                    Files.move(currentJarFile.toPath(), backupFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    Logger.info("Renamed existing JAR to " + backupFile);
+                    Files.move(currentJarPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+                    Logger.info("Renamed existing JAR to " + backupPath);
                 } catch (Exception e) {
                     Logger.info("Could not rename existing JAR (may be locked): " + e.getMessage());
                 }
             }
 
-            Files.copy(newJarFile.toPath(), currentJarFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(newJarPath, currentJarPath, StandardCopyOption.REPLACE_EXISTING);
             Logger.info("Successfully replaced JAR file");
         } catch (Exception e) {
             Logger.error("Error replacing JAR file: " + e.getMessage());
             Logger.error("JAR may be locked (e.g., on Windows). Copying to .new file for deferred update...");
             try {
-                File deferredFile = new File(currentJarFile.getAbsolutePath() + ".new");
-                Files.copy(newJarFile.toPath(), deferredFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                Logger.info("Copied new JAR to " + deferredFile + " - update will be applied on next game launch");
+                Path deferredPath = currentJarPath.resolveSibling(currentJarPath.getFileName() + ".new");
+                Files.copy(newJarPath, deferredPath, StandardCopyOption.REPLACE_EXISTING);
+                Logger.info("Copied new JAR to " + deferredPath + " - update will be applied on next game launch");
             } catch (Exception e2) {
                 Logger.error("Error copying to .new file: " + e2.getMessage());
                 e2.printStackTrace();
@@ -120,29 +97,19 @@ public final class SelfUpdater {
         }
     }
 
-    /**
-     * Checks if a JAR file is signed with the expected certificate and has a newer version,
-     * and if so, performs the update. This is the main entry point for self-update checks.
-     *
-     * @param jarFile        the JAR file to check (from mod directory)
-     * @param currentJarFile the currently running JAR file
-     * @param currentVersion the current ZombieBuddy version (from ZombieBuddy.getVersion())
-     * @param verbosity      verbosity level (0 = quiet, higher = more logging)
-     * @return true if an update was performed or scheduled, false otherwise
-     */
-    public static boolean checkAndUpdateIfNewer(File jarFile, File currentJarFile, String currentVersion, int verbosity) {
-        if (jarFile == null || !jarFile.exists()) {
+    public static boolean checkAndUpdateIfNewer(Path jarPath, Path currentJarPath, String currentVersion, int verbosity) {
+        if (jarPath == null || !Files.isRegularFile(jarPath)) {
             return false;
         }
 
         try {
-            Certificate[] certs = verifyJarAndGetCerts(jarFile);
+            Certificate[] certs = verifyJarAndGetCerts(jarPath);
             if (certs == null || certs.length == 0) {
                 return false;
             }
 
             if (verbosity > 0) {
-                Logger.info("" + jarFile + " is signed with " + certs.length + " certificate(s)");
+                Logger.info("" + jarPath + " is signed with " + certs.length + " certificate(s)");
             }
 
             for (int certIdx = 0; certIdx < certs.length; certIdx++) {
@@ -150,14 +117,12 @@ public final class SelfUpdater {
                     X509Certificate x509Cert = (X509Certificate) certs[certIdx];
                     byte[] fingerprint = getCertFingerprint(x509Cert, certIdx + 1, verbosity);
                     if (fingerprint != null && java.util.Arrays.equals(fingerprint, EXPECTED_FINGERPRINT)) {
-                        Manifest manifest = getJarManifest(jarFile);
+                        Manifest manifest = getJarManifest(jarPath);
                         if (manifest != null) {
                             String manifestVersion = manifest.getMainAttributes().getValue("Implementation-Version");
-                            if (manifestVersion != null) {
-                                if (Utils.isVersionNewer(manifestVersion, currentVersion)) {
-                                    performUpdate(currentJarFile, jarFile, manifestVersion);
-                                    return true;
-                                }
+                            if (manifestVersion != null && Utils.isVersionNewer(manifestVersion, currentVersion)) {
+                                performUpdate(currentJarPath, jarPath, manifestVersion);
+                                return true;
                             }
                         }
                     }
@@ -169,21 +134,13 @@ public final class SelfUpdater {
         return false;
     }
 
-    /**
-     * Verifies a JAR file's signature and returns its certificates.
-     * Throws SecurityException if the JAR is not signed.
-     *
-     * @param jarPath the JAR file to verify
-     * @return array of certificates from signed entries, or null if no manifest
-     * @throws Exception if verification fails or JAR cannot be read
-     */
-    public static Certificate[] verifyJarAndGetCerts(File jarPath) throws Exception {
+    public static Certificate[] verifyJarAndGetCerts(Path jarPath) throws Exception {
         Manifest mf = getJarManifest(jarPath);
         if (mf == null) {
             return null;
         }
 
-        try (JarFile jar = new JarFile(jarPath, true)) {
+        try (JarFile jar = new JarFile(jarPath.toFile(), true)) {
             Certificate[] signer = null;
 
             var entries = jar.entries();
@@ -191,7 +148,6 @@ public final class SelfUpdater {
                 JarEntry e = entries.nextElement();
                 if (e.isDirectory()) continue;
 
-                // Must read entry fully before getCertificates() returns non-null
                 try (InputStream is = jar.getInputStream(e)) {
                     is.readAllBytes();
                 }
@@ -216,17 +172,11 @@ public final class SelfUpdater {
         }
     }
 
-    /**
-     * Gets the manifest from a JAR file.
-     *
-     * @param jarFile the JAR file
-     * @return the manifest, or null if not found or error
-     */
-    public static Manifest getJarManifest(File jarFile) {
-        if (jarFile == null) {
+    public static Manifest getJarManifest(Path jarPath) {
+        if (jarPath == null) {
             return null;
         }
-        try (JarFile jar = new JarFile(jarFile, true)) {
+        try (JarFile jar = new JarFile(jarPath.toFile(), true)) {
             return jar.getManifest();
         } catch (Exception e) {
             Logger.error("Error getting JAR manifest: " + e);
@@ -234,14 +184,6 @@ public final class SelfUpdater {
         }
     }
 
-    /**
-     * Computes and optionally prints the SHA-256 fingerprint of an X.509 certificate.
-     *
-     * @param cert       the certificate
-     * @param certNumber certificate number (for logging)
-     * @param verbosity  verbosity level (0 = quiet)
-     * @return SHA-256 fingerprint bytes, or null on error
-     */
     private static byte[] getCertFingerprint(X509Certificate cert, int certNumber, int verbosity) {
         if (verbosity > 0) {
             Logger.info("  Certificate " + certNumber + ":");

@@ -8,7 +8,6 @@ import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
 import org.bouncycastle.crypto.signers.Ed25519Signer;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -16,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -74,18 +74,18 @@ public final class ZBSVerifier {
      * UI notice text, and load-blocking decisions.
      */
     public static CheckResult check(
-            File jarFile,
+            Path jarPath,
             String jarHash,
             WorkshopItemID workshopItemId,
             boolean steamModeEnabled,
             boolean allowUnsignedMods,
             Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById
     ) {
-        return check(jarFile, jarHash, workshopItemId, steamModeEnabled, allowUnsignedMods, workshopDetailsById, null);
+        return check(jarPath, jarHash, workshopItemId, steamModeEnabled, allowUnsignedMods, workshopDetailsById, null);
     }
 
     public static CheckResult check(
-            File jarFile,
+            Path jarPath,
             String jarHash,
             WorkshopItemID workshopItemId,
             boolean steamModeEnabled,
@@ -94,20 +94,20 @@ public final class ZBSVerifier {
             Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
     ) {
         SteamID64 uploaderID = steamModeEnabled ? SteamWorkshop.getUploaderID(workshopItemId, workshopDetailsById) : null;
-        File zbsFile = new File(jarFile.getAbsolutePath() + ".zbs");
+        Path zbsPath = jarPath.resolveSibling(jarPath.getFileName().toString() + ".zbs");
 
-        if (!zbsFile.isFile()) {
+        if (!Files.isRegularFile(zbsPath)) {
             return allowUnsignedMods
                 ? CheckResult.unsignedAllowed(uploaderID)
                 : CheckResult.missingNotAllowed(uploaderID);
         }
 
-        Verification zbs = verify(jarFile, zbsFile, jarHash, uploaderID, knownAuthors);
+        Verification zbs = verify(jarPath, zbsPath, jarHash, uploaderID, knownAuthors);
 
         boolean valid = zbs instanceof ValidSignature;
         String notice = noticeForUi(zbs);
 
-        Logger.info("ZBS verification " + (valid ? "valid" : "invalid") + " for " + jarFile.getName() + ": " +
+        Logger.info("ZBS verification " + (valid ? "valid" : "invalid") + " for " + jarPath + ": " +
             "uploaderID=" + (uploaderID != null ? uploaderID : "N/A") +
             ", shortMessage=" + (zbs.shortMessage != null ? zbs.shortMessage.trim() : "null") +
             ", detailedMessage=" + (zbs.detailedMessage != null ? zbs.detailedMessage.trim() : "null"));
@@ -118,6 +118,7 @@ public final class ZBSVerifier {
             return new CheckResult(new ModFlags(MF_SIGNED), zbs.sid, uploaderID, notice, "invalid ZBS: " + zbs.detailedMessage, zbs);
         }
     }
+
 
     /**
      * Format a raw ZBS verification result for UI display.
@@ -134,17 +135,17 @@ public final class ZBSVerifier {
     /**
      * @param jarSha256Hex lowercase hex SHA-256 of the JAR (same as Loader uses)
      */
-    public static Verification verify(File jarFile, File zbsFile, String jarSha256Hex) {
-        return verify(jarFile, zbsFile, jarSha256Hex, null);
+    public static Verification verify(Path jarPath, Path zbsPath, String jarSha256Hex) {
+        return verify(jarPath, zbsPath, jarSha256Hex, null);
     }
 
     public static Verification verify(
-        File jarFile,
-        File zbsFile,
+        Path jarPath,
+        Path zbsPath,
         String jarSha256Hex,
         SteamID64 uploaderID
     ) {
-        return verify(jarFile, zbsFile, jarSha256Hex, uploaderID, Collections.emptyMap());
+        return verify(jarPath, zbsPath, jarSha256Hex, uploaderID, Collections.emptyMap());
     }
 
     /**
@@ -152,19 +153,19 @@ public final class ZBSVerifier {
      *        {@code null} to skip uploader binding (e.g. no workshop id in path).
      */
     public static Verification verify(
-        File jarFile,
-        File zbsFile,
+        Path jarPath,
+        Path zbsPath,
         String jarSha256Hex,
         SteamID64 uploaderID,
         Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthors
     ) {
-        if (zbsFile == null || !zbsFile.isFile()) {
-            return new MissingSignature(null, "Missing .zbs file next to JAR: " + (zbsFile != null ? zbsFile.getName() : ""));
+        if (zbsPath == null || !Files.isRegularFile(zbsPath)) {
+            return new MissingSignature(null, "Missing .zbs file next to JAR: " + zbsPath);
         }
         SteamID64 sid;
         byte[] sig;
         try {
-            ParsedZBS p = parseZBS(zbsFile);
+            ParsedZBS p = parseZBS(zbsPath);
             sid = p.sid;
             sig = p.signature;
         } catch (IOException e) {
@@ -282,8 +283,8 @@ public final class ZBSVerifier {
         }
     }
 
-    private static ParsedZBS parseZBS(File zbsFile) throws IOException {
-        try (BufferedReader r = Files.newBufferedReader(zbsFile.toPath(), StandardCharsets.UTF_8)) {
+    private static ParsedZBS parseZBS(Path zbsPath) throws IOException {
+        try (BufferedReader r = Files.newBufferedReader(zbsPath, StandardCharsets.UTF_8)) {
             String l1 = r.readLine();
             String l2 = r.readLine();
             String l3 = r.readLine();

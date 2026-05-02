@@ -1,8 +1,8 @@
 package me.zed_0xff.zombie_buddy;
 
-import java.io.File;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -677,21 +677,20 @@ public final class PatchEngine {
         if (modLoader != null) {
             classGraph = classGraph.overrideClassLoaders(modLoader);
         } else {
-            ArrayList<String> jarPaths = new ArrayList<>();
-            File currentJar = Utils.getCurrentJarFile();
-            if (currentJar != null && currentJar.exists()) {
-                jarPaths.add(currentJar.getAbsolutePath());
+            ArrayList<Path> jarPaths = new ArrayList<>();
+            Path currentJar = Utils.getCurrentJarPath();
+            if (currentJar != null) {
+                jarPaths.add(currentJar);
             }
             if (!Loader.g_known_jars.isEmpty()) {
-                for (File jar : Loader.g_known_jars) {
-                    String jarPath = jar.getAbsolutePath();
+                for (Path jarPath : Loader.g_known_jars) {
                     if (!jarPaths.contains(jarPath)) {
                         jarPaths.add(jarPath);
                     }
                 }
             }
             if (!jarPaths.isEmpty()) {
-                classGraph = classGraph.overrideClasspath((Object[]) jarPaths.toArray(new String[0]));
+                classGraph = classGraph.overrideClasspath(jarPaths.toArray());
             }
         }
 

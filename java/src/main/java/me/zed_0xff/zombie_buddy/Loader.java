@@ -7,11 +7,13 @@ import static me.zed_0xff.zombie_buddy.SteamWorkshop.SteamID64;
 import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
 import static me.zed_0xff.zombie_buddy.ModFlags.*;
 
-import java.io.File;
 import java.io.IOException;
 import java.lang.ClassLoader;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Date;
@@ -100,12 +102,12 @@ public class Loader {
     }
 
     private static ZBSVerifier.CheckResult zbsCheck(
-        File jarFile, String hash, WorkshopItemID workshopItemId, ZBSContext ctx
+        Path jarPath, String hash, WorkshopItemID workshopItemId, ZBSContext ctx
     ) {
-        if (!zbsSignatureChecksEnabled() || jarFile == null || hash == null) {
+        if (!zbsSignatureChecksEnabled() || jarPath == null || hash == null) {
             return ZBSVerifier.CheckResult.DISABLED;
         }
-        return ZBSVerifier.check(jarFile, hash, workshopItemId, workshopItemId != null,
+        return ZBSVerifier.check(jarPath, hash, workshopItemId, workshopItemId != null,
             g_allowUnsignedMods, ctx.workshopDetailsById(), ctx.knownAuthorsBySteamId());
     }
 
@@ -113,7 +115,7 @@ public class Loader {
         return r != ZBSVerifier.CheckResult.DISABLED && !r.flags().has(MF_VALID);
     }
 
-            static final Set<File>   g_known_jars     = new HashSet<>(); // used by PatchEngine
+            static final Set<Path>   g_known_jars     = new HashSet<>(); // used by PatchEngine
     private static final Set<String> g_known_mains    = new HashSet<>();
     private static final Set<String> g_known_packages = new HashSet<>();
 
@@ -263,14 +265,14 @@ public class Loader {
     }
 
     private static boolean isJarAllowedByPolicy(String modId, JavaModInfo jModInfo, JarDecisionTable disk, String hash) {
-        File jarFile = jModInfo != null ? jModInfo.getJarFileAsFile() : null;
+        Path jarPath = jModInfo != null ? jModInfo.getJarFileAsPath() : null;
         if (hash == null) return false;
 
         String policy = g_jarPolicy;
         Boolean decision = lookupJarDecision(disk, hash);
         if (Boolean.TRUE.equals(decision)) return true;
         if (Boolean.FALSE.equals(decision)) {
-            Logger.warn("Blocking Java mod by stored denial: " + modId + " (" + jarFile + ")");
+            Logger.warn("Blocking Java mod by stored denial: " + modId + " (" + jarPath + ")");
             return false;
         }
 
@@ -280,7 +282,7 @@ public class Loader {
             return true;
         }
         if (POLICY_DENY_NEW.equals(policy)) {
-            Logger.warn("Blocking Java mod by policy=deny-new: " + modId + " (" + jarFile + ")");
+            Logger.warn("Blocking Java mod by policy=deny-new: " + modId + " (" + jarPath + ")");
             return false;
         }
 
@@ -375,11 +377,11 @@ public class Loader {
          * Returns true when the JAR's {@code META-INF/MANIFEST.MF} contains {@code ZB-Preload: true}.
          * Callers must verify the JAR's ZBS signature before trusting this value.
          */
-        static boolean hasManifestPreload(File jarFile) {
-            if (jarFile == null || !jarFile.isFile()) {
+        static boolean hasManifestPreload(Path jarPath) {
+            if (jarPath == null || !Files.isRegularFile(jarPath)) {
                 return false;
             }
-            try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jarFile, false)) {
+            try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jarPath.toFile(), false)) {
                 java.util.jar.Manifest mf = jf.getManifest();
                 if (mf == null) {
                     return false;
@@ -398,40 +400,29 @@ public class Loader {
         }
 
         // First pass: validate and collect entries
-        record PreloadEntry(String javaPkgName, String jarPath, File jarFile, String hash, WorkshopItemID workshopItemId) {}
+        record PreloadEntry(String javaPkgName, Path canPath, String hash, WorkshopItemID workshopItemId) {}
         List<PreloadEntry> entries = new ArrayList<>();
+
         for (Map.Entry<String, String> e : g_config.preload_mods().entrySet()) {
             String javaPkgName = e.getKey();
-            String jarPath = e.getValue();
-            Logger.info("Preloading pkg '" + javaPkgName + "' from " + jarPath);
-            File jarFile = new File(jarPath);
-            if (!jarFile.isFile()) {
-                Logger.warn("Preload pkg '" + javaPkgName + "': JAR not found at " + jarPath);
-                PreloadMods.remove(javaPkgName);
-                continue;
-            }
             try {
-                jarFile = jarFile.getCanonicalFile();
-            } catch (IOException ioe) {
-                Logger.error("Preload pkg '" + javaPkgName + "': cannot resolve canonical path for " + jarPath + ": " + ioe);
-                continue;
-            }
-            if (g_known_jars.contains(jarFile)) {
-                Logger.info("Preload pkg '" + javaPkgName + "' already on classpath, skipping.");
-                continue;
-            }
-            if (!validatePackageInJar(jarFile, javaPkgName)) {
-                Logger.warn("Preload pkg '" + javaPkgName + "': package not found in JAR " + jarPath + "; skipping.");
+                Path jarCanonicalPath = Paths.get(e.getValue()).toRealPath();
+                Logger.info("Preloading pkg '" + javaPkgName + "' from " + jarCanonicalPath);
+                if (!Files.isRegularFile(jarCanonicalPath)) {
+                    Logger.warn("Preload pkg '" + javaPkgName + "': JAR not found at " + jarCanonicalPath + "; removing.");
+                    PreloadMods.remove(javaPkgName);
+                    continue;
+                }
+                if (!PreloadMods.hasManifestPreload(jarCanonicalPath)) {
+                    Logger.warn("Preload pkg '" + javaPkgName + "': JAR manifest missing '" + PreloadMods.MANIFEST_ATTR + "' entry in " + jarCanonicalPath + "; removing.");
+                    PreloadMods.remove(javaPkgName);
+                    continue;
+                }
+                entries.add(new PreloadEntry(javaPkgName, jarCanonicalPath, Utils.sha256Hex(jarCanonicalPath), JavaModInfo.workshopItemIdFromPath(jarCanonicalPath)));
+            } catch (IOException ex) {
+                Logger.warn("Preload pkg '" + javaPkgName + "': cannot resolve JAR path " + e + "; removing.");
                 PreloadMods.remove(javaPkgName);
-                continue;
             }
-            if (!PreloadMods.hasManifestPreload(jarFile)) {
-                Logger.warn("Preload pkg '" + javaPkgName + "': JAR manifest missing '" + PreloadMods.MANIFEST_ATTR + "' entry in " + jarPath + "; skipping.");
-                PreloadMods.remove(javaPkgName);
-                continue;
-            }
-            entries.add(new PreloadEntry(javaPkgName, jarPath, jarFile, Utils.sha256Hex(jarFile),
-                JavaModInfo.workshopItemIdFromPath(jarPath)));
         }
         if (entries.isEmpty()) return;
 
@@ -439,13 +430,13 @@ public class Loader {
 
         // Second pass: ZBS check and load
         for (PreloadEntry entry : entries) {
-            ZBSVerifier.CheckResult zbsResult = zbsCheck(entry.jarFile(), entry.hash(), entry.workshopItemId(), zbsCtx);
+            ZBSVerifier.CheckResult zbsResult = zbsCheck(entry.canPath(), entry.hash(), entry.workshopItemId(), zbsCtx);
             if (zbsBlocked(zbsResult)) {
                 Logger.warn("Preload pkg '" + entry.javaPkgName() + "': ZBS check failed (" + zbsResult.blockReason() + "); skipping.");
                 PreloadMods.remove(entry.javaPkgName());
                 continue;
             }
-            loadJar(entry.jarPath(), entry.javaPkgName(), entry.hash());
+            loadJar(entry.canPath(), entry.javaPkgName(), entry.hash());
         }
         if (g_configDirty) {
             Config.save(g_config);
@@ -460,22 +451,21 @@ public class Loader {
      *
      * @return true if the JAR was added; false on any failure or already-loaded.
      */
-    private static boolean addJarToClasspath(File jarFile, String packageName, String approvedHash) {
+    private static boolean addJarToClasspath(Path jarPath, String packageName, String approvedHash) {
         // Resolve symlinks and normalise path once; all subsequent operations use the canonical
         // file so that symlink-swap attacks and path-alias bypasses of g_known_jars are eliminated.
-        File canonical;
         try {
-            canonical = jarFile.getCanonicalFile();
+            jarPath = jarPath.toRealPath();
         } catch (IOException e) {
-            Logger.error("Cannot resolve canonical path for " + jarFile + ": " + e);
+            Logger.error("Cannot resolve canonical path for " + jarPath + ": " + e);
             return false;
         }
-        if (g_known_jars.contains(canonical)) {
-            Logger.info("" + canonical + " already on classpath, skipping.");
+        if (g_known_jars.contains(jarPath)) {
+            Logger.info("" + jarPath + " already on classpath, skipping.");
             return false;
         }
-        if (!validatePackageInJar(canonical, packageName)) {
-            Logger.error("JAR does not contain package " + packageName + ": " + canonical);
+        if (!validatePackageInJar(jarPath, packageName)) {
+            Logger.error("JAR does not contain package " + packageName + ": " + jarPath);
             return false;
         }
         // Open the JarFile before re-hashing so both operations target the same inode.
@@ -484,42 +474,42 @@ public class Loader {
         // instrumentation API since appendToSystemClassLoaderSearch re-reads by path internally.
         JarFile jf;
         try {
-            jf = new JarFile(canonical);
+            jf = new JarFile(jarPath.toFile());
         } catch (IOException e) {
-            Logger.error("Cannot open JAR " + canonical + ": " + e);
+            Logger.error("Cannot open JAR " + jarPath + ": " + e);
             return false;
         }
         if (approvedHash != null) {
-            String currentHash = Utils.sha256Hex(canonical);
+            String currentHash = Utils.sha256Hex(jarPath);
             if (!approvedHash.equals(currentHash)) {
                 try { jf.close(); } catch (IOException ignored) {}
                 Logger.error("SECURITY: JAR hash changed between approval and load for "
-                    + canonical + " — expected " + approvedHash + ", got " + currentHash
+                    + jarPath + " — expected " + approvedHash + ", got " + currentHash
                     + ". Aborting load.");
                 return false;
             }
         }
         try {
             g_instrumentation.appendToSystemClassLoaderSearch(jf);
-            g_known_jars.add(canonical);
-            Logger.info("added to classpath: " + canonical);
+            g_known_jars.add(jarPath);
+            Logger.info("added to classpath: " + jarPath);
             return true;
         } catch (Exception e) {
             try { jf.close(); } catch (IOException ignored) {}
-            Logger.error("Error adding JAR to classpath " + canonical + ": " + e);
+            Logger.error("Error adding JAR to classpath " + jarPath + ": " + e);
             return false;
         }
     }
 
     private static void untrustAuthorForBannedMod(
         String modId,
-        File jarFile,
+        Path jarPath,
         String hash,
         WorkshopItemID workshopItemId,
         boolean steamBanned,
         Map<WorkshopItemID, SteamWorkshop.ItemDetails> workshopDetailsById
     ) {
-        if (!steamBanned || jarFile == null || hash == null) {
+        if (!steamBanned || jarPath == null || hash == null) {
             return;
         }
         SteamID64 uploaderID = SteamWorkshop.getUploaderID(workshopItemId, workshopDetailsById);
@@ -625,28 +615,29 @@ public class Loader {
         Map<SteamID64, KnownAuthors.AuthorEntry> knownAuthorsBySteamId = zbsCtx.knownAuthorsBySteamId();
 
         // Pre-compute per-mod context to avoid duplicate work in prompt and load loops
-        record ModCtx(String modId, File jarFile, String hash, WorkshopItemID workshopItemId,
+        record ModCtx(String modId, Path jarPath, String hash, WorkshopItemID workshopItemId,
                       SteamWorkshop.ItemDetails workshopDetails, SteamWorkshop.BanInfo banInfo, boolean steamBanned,
                       ZBSVerifier.CheckResult zbsResult) {}
         List<ModCtx> modContexts = new ArrayList<>();
+
         for (int i = 0; i < jModInfos.size(); i++) {
             JavaModInfo jModInfo = jModInfos.get(i);
             String modId = i < jModIds.size() ? jModIds.get(i) : jModInfo.javaPkgName();
-            File jarFile = jModInfo.getJarFileAsFile();
-            String hash = Utils.sha256Hex(jarFile);
+            Path jarPath = jModInfo.getJarFileAsPath();
+            String hash = Utils.sha256Hex(jarPath);
             WorkshopItemID workshopItemId = jModInfo.getWorkshopItemID();
             SteamWorkshop.ItemDetails workshopDetails = workshopItemId != null ? workshopDetailsById.get(workshopItemId) : null;
             SteamWorkshop.BanInfo banInfo = workshopItemId == null
                 ? new SteamWorkshop.BanInfo(null, "Workshop id not found in mod path.")
                 : (workshopDetails != null ? workshopDetails.ban() : null);
             boolean steamBanned = banInfo != null && Boolean.TRUE.equals(banInfo.status());
-            modContexts.add(new ModCtx(modId, jarFile, hash, workshopItemId, workshopDetails, banInfo, steamBanned,
-                zbsCheck(jarFile, hash, workshopItemId, zbsCtx)));
+            modContexts.add(new ModCtx(modId, jarPath, hash, workshopItemId, workshopDetails, banInfo, steamBanned,
+                zbsCheck(jarPath, hash, workshopItemId, zbsCtx)));
         }
         for (ModCtx ctx : modContexts) {
             untrustAuthorForBannedMod(
                 ctx.modId,
-                ctx.jarFile,
+                ctx.jarPath,
                 ctx.hash,
                 ctx.workshopItemId,
                 ctx.steamBanned,
@@ -671,9 +662,10 @@ public class Loader {
                 if (ctx.hash == null) continue;
 
                 JavaModInfo jModInfo = jModInfos.get(i);
-                Date date = (ctx.jarFile != null && ctx.jarFile.exists())
-                    ? new Date(ctx.jarFile.lastModified())
-                    : null;
+                Date date = null;
+                if (ctx.jarPath != null) {
+                    try { date = new Date(Files.getLastModifiedTime(ctx.jarPath).toMillis()); } catch (IOException ignored) {}
+                }
                 String modDisplay = jModInfo.displayName();
                 if (modDisplay == null || modDisplay.trim().isEmpty()) {
                     modDisplay = ctx.modId != null ? ctx.modId : "";
@@ -698,8 +690,8 @@ public class Loader {
                     // Auto-approve for this session only — trusted-author approvals are not persisted
                     // because the trust comes from the author record, not the specific JAR hash.
                     approvals.put(ctx.hash, Boolean.TRUE);
-                    if (jModInfo.javaPreload() && PreloadMods.hasManifestPreload(ctx.jarFile)) {
-                        PreloadMods.add(ctx.modId, jModInfo.javaPkgName(), ctx.jarFile.getAbsolutePath());
+                    if (jModInfo.javaPreload() && PreloadMods.hasManifestPreload(ctx.jarPath)) {
+                        PreloadMods.add(ctx.modId, jModInfo.javaPkgName(), ctx.jarPath.toAbsolutePath().toString());
                     }
                     continue;
                 }
@@ -710,7 +702,7 @@ public class Loader {
                 if (zbs.valid() && authorID != null && isAuthorTrusted(authorID) && !ctx.steamBanned) {
                     entryFlags = entryFlags.with(MF_TRUST_AUTHOR);
                 }
-                final boolean bHasManifestPreload = PreloadMods.hasManifestPreload(ctx.jarFile);
+                final boolean bHasManifestPreload = PreloadMods.hasManifestPreload(ctx.jarPath);
                 if (jModInfo.javaPreload() && zbs.valid() && bHasManifestPreload) {
                     entryFlags = entryFlags.with(MF_PRELOAD);
                 } else if (jModInfo.javaPreload() || bHasManifestPreload) {
@@ -720,7 +712,7 @@ public class Loader {
                 batchEntries.add(new JarBatchApprovalProtocol.Entry(
                     ctx.modId,
                     ctx.workshopItemId,
-                    ctx.jarFile.getAbsolutePath(),
+                    ctx.jarPath.toAbsolutePath().toString(),
                     ctx.hash,
                     date,
                     decision,
@@ -757,7 +749,7 @@ public class Loader {
             // Skip ZombieBuddy itself - it's loaded as a Java agent, not through normal mod loading
             if (jModInfo.javaPkgName().equals(myPackageName)) {
                 shouldSkip = true;
-                skipReason = " (loaded as Java agent, skipping normal mod loading)" + SelfUpdater.getExclusionReasonSuffix(ctx.jarFile);
+                skipReason = " (loaded as Java agent, skipping normal mod loading)" + SelfUpdater.getExclusionReasonSuffix(ctx.jarPath);
             }
             
             // Check if this mod's package name appears in a later mod
@@ -791,9 +783,7 @@ public class Loader {
             shouldSkipList.add(shouldSkip);
             skipReasons.add(skipReason);
 
-            // Snapshot for ZombieBuddy.getJavaModStatus(). Skipped when no JAR
-            // (e.g. metadata-only mod.info entries in B42 common dirs).
-            if (ctx.jarFile != null) {
+            if (ctx.jarPath != null) {
                 Boolean decision = null;
                 if (ctx.hash != null) {
                     decision = approvals.get(ctx.hash);
@@ -810,7 +800,7 @@ public class Loader {
                         flags = flags.with(MF_ACTIVE);
                     }
                 }
-                g_jarLoadStatus.put(ctx.jarFile.getAbsolutePath(), new JavaModLoadState(
+                g_jarLoadStatus.put(ctx.jarPath.toAbsolutePath().toString(), new JavaModLoadState(
                     ctx.modId,
                     flags,
                     shouldSkip ? skipReason.trim() : "loaded",
@@ -838,7 +828,7 @@ public class Loader {
                 if (shouldSkipList.get(i)) {
                     JavaModInfo jModInfo = jModInfos.get(i);
                     String reason = i < skipReasons.size() ? skipReasons.get(i) : "";
-                    Logger.info("Excluded: " + jModInfo.modDir().getAbsolutePath() + reason);
+                    Logger.info("Excluded: " + jModInfo.modDir().toAbsolutePath() + reason);
                 }
             }
             
@@ -856,7 +846,7 @@ public class Loader {
         // Load only the mods that should be loaded
         for (int i = 0; i < jModInfos.size(); i++) {
             if (!shouldSkipList.get(i)) {
-                loadJar(jModInfos.get(i).getJarFileAsFile().getAbsolutePath(), jModInfos.get(i).javaPkgName(), modContexts.get(i).hash);
+                loadJar(jModInfos.get(i).getJarFileAsPath(), jModInfos.get(i).javaPkgName(), modContexts.get(i).hash);
             }
         }
     }
@@ -881,32 +871,32 @@ public class Loader {
     static void printModList(ArrayList<JavaModInfo> jModInfos) {
         int longestPathLength = 0;
         for (JavaModInfo jModInfo : jModInfos) {
-            if (jModInfo.modDir().getAbsolutePath().length() > longestPathLength) {
-                longestPathLength = jModInfo.modDir().getAbsolutePath().length();
+            if (jModInfo.modDir().toAbsolutePath().toString().length() > longestPathLength) {
+                longestPathLength = jModInfo.modDir().toAbsolutePath().toString().length();
             }
         }
 
         String formatString = "    %-" + longestPathLength + "s %s";
         for (JavaModInfo jModInfo : jModInfos) {
-            Logger.info(String.format(formatString, jModInfo.modDir().getAbsolutePath(), jModInfo.javaPkgName()));
+            Logger.info(String.format(formatString, jModInfo.modDir().toAbsolutePath(), jModInfo.javaPkgName()));
         }
     }
 
     // called by Agent and Loader
-    static void loadJar(String jarPath, String packageName, String approvedHash) {
-        if (Utils.isBlank(jarPath) || Utils.isBlank(packageName)) {
-            Logger.error("Invalid arguments to loadPatchesFromJar: jarPath=" + jarPath + ", packageName=" + packageName);
-            return;
-        }
-        File jarFile = new File(jarPath);
-        if (!jarFile.exists()) {
+    static boolean loadJar(Path jarPath, String packageName, String approvedHash) {
+        if (!Files.isRegularFile(jarPath)) {
             Logger.error("JAR not found: " + jarPath);
-            return;
+            return false;
         }
-        if (!addJarToClasspath(jarFile, packageName, approvedHash)) {
-            return;
+        if (Utils.isBlank(packageName)) {
+            Logger.error("Invalid package name: '" + packageName + "' for JAR " + jarPath);
+            return false;
+        }
+        if (!addJarToClasspath(jarPath, packageName, approvedHash)) {
+            return false;
         }
         ApplyPatchesFromPackage(packageName, null);
+        return true;
     }
 
     // called both for ZB bundled patches and external mods
@@ -955,13 +945,13 @@ public class Loader {
         }
     }
 
-    private static boolean validatePackageInJar(File jarFile, String packageName) {
-        if (jarFile == null || Utils.isBlank(packageName)) {
+    private static boolean validatePackageInJar(Path jarPath, String packageName) {
+        if (jarPath == null || Utils.isBlank(packageName)) {
             return false;
         }
         try {
             String packagePath = packageName.replace('.', '/');
-            try (JarFile jf = new JarFile(jarFile)) {
+            try (JarFile jf = new JarFile(jarPath.toFile())) {
                 var entries = jf.entries();
                 while (entries.hasMoreElements()) {
                     var entry = entries.nextElement();
@@ -975,7 +965,7 @@ public class Loader {
             }
             return false;
         } catch (Exception e) {
-            Logger.error("Error validating package in JAR " + jarFile + ": " + e);
+            Logger.error("Error validating package in JAR " + jarPath + ": " + e);
             return false;
         }
     }

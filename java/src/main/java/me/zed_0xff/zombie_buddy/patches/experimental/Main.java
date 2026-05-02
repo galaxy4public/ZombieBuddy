@@ -1,8 +1,8 @@
 package me.zed_0xff.zombie_buddy.patches.experimental;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import me.zed_0xff.zombie_buddy.*;
 
@@ -61,12 +61,9 @@ public class Main {
 
     private static void writePortFile(int port) {
         try {
-            String cacheDir = ExpUtils.getCacheDir();
-            File portFile = new File(cacheDir + File.separator + "zbLuaAPI.txt");
-            try (FileWriter writer = new FileWriter(portFile)) {
-                writer.write(String.valueOf(port));
-            }
-            Logger.info("Wrote random API port " + port + " to " + portFile.getAbsolutePath());
+            Path portFile = Path.of(ExpUtils.getCacheDir(), "zbLuaAPI.txt");
+            Files.writeString(portFile, String.valueOf(port));
+            Logger.info("Wrote random API port " + port + " to " + portFile.toAbsolutePath());
         } catch (IOException e) {
             Logger.error("Failed to write port file: " + e.getMessage());
             e.printStackTrace();

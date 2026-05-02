@@ -5,7 +5,6 @@ import me.zed_0xff.zombie_buddy.*;
 import zombie.core.Core;
 import zombie.core.GameVersion;
 
-import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -35,10 +34,6 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
     }
 
     private static Boolean promptForEntry(JarBatchApprovalProtocol.Entry e) {
-        File jarFile = !Utils.isBlank(e.jarAbsolutePath)
-            ? new File(e.jarAbsolutePath)
-            : null;
-
         if (e.zbs.invalid()) {
             String note = !Utils.isBlank(e.zbs.notice())
                 ? e.zbs.notice()
@@ -63,7 +58,7 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
             "Allow Java mod to load?\n\n"
                 + zbsLine
                 + "Mod: " + e.modId + "\n\n"
-                + "JAR: " + jarFile + "\n\n"
+                + "JAR: " + e.jarAbsolutePath + "\n\n"
                 + "Modified: " + modified + "\n\n"
                 + "SHA-256: " + e.sha256 + "\n\n"
                 + "Only allow if you trust this mod source."

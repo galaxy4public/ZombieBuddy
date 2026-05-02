@@ -1,7 +1,5 @@
 package me.zed_0xff.zombie_buddy;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -225,9 +223,9 @@ public final class Utils {
      * Compute SHA-256 hash of a file as lowercase hex string.
      * @return hex string or null if file doesn't exist or error occurs
      */
-    public static String sha256Hex(File file) {
-        if (file == null || !file.exists() || !file.isFile()) return null;
-        try (FileInputStream in = new FileInputStream(file)) {
+    public static String sha256Hex(Path path) {
+        if (path == null || !Files.isRegularFile(path)) return null;
+        try (var in = Files.newInputStream(path)) {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] buf = new byte[8192];
             int read;
@@ -236,7 +234,7 @@ public final class Utils {
             }
             return bytesToHex(md.digest(), "%02x", "");
         } catch (Exception e) {
-            Logger.error("Could not hash file " + file + ": " + e);
+            Logger.error("Could not hash file " + path + ": " + e);
             return null;
         }
     }
@@ -244,18 +242,18 @@ public final class Utils {
     /**
      * Returns the JAR file that contains the currently running ZombieBuddy code.
      *
-     * @return the JAR file, or null if not found or not running from a JAR
+     * @return the JAR path, or null if not found or not running from a JAR
      */
-    public static File getCurrentJarFile() {
+    public static Path getCurrentJarPath() {
         try {
             java.security.CodeSource codeSource = Utils.class.getProtectionDomain().getCodeSource();
             if (codeSource != null) {
                 java.net.URL location = codeSource.getLocation();
                 if (location != null) {
                     java.net.URI uri = location.toURI();
-                    File jarFile = new File(uri);
-                    if (jarFile.exists() && jarFile.getName().endsWith(".jar")) {
-                        return jarFile;
+                    Path jarPath = Path.of(uri);
+                    if (Files.exists(jarPath) && jarPath.getFileName().toString().endsWith(".jar")) {
+                        return jarPath;
                     }
                 }
             }

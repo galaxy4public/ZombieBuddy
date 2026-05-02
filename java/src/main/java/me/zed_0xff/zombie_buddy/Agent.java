@@ -1,6 +1,5 @@
 package me.zed_0xff.zombie_buddy;
 
-import java.io.File;
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -166,11 +165,11 @@ public class Agent {
     }
     
     private static class PatchesJarEntry {
-        final String jarPath;
+        final Path jarPath;
         final String packageName;
         
         PatchesJarEntry(String jarPath, String packageName) {
-            this.jarPath = jarPath;
+            this.jarPath = Path.of(jarPath);
             this.packageName = packageName;
         }
     }
