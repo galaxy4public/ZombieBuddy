@@ -23,7 +23,6 @@ import java.util.jar.JarFile;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.lwjgl.glfw.GLFW;
 import org.lwjglx.opengl.Display;
@@ -181,6 +180,7 @@ public class Loader {
      */
     static record JavaModLoadState (
             String id,
+            Path jarPath,
             ModFlags flags,
             String reason,      // "loaded" or a short skip reason
             String sha256,      // JAR sha256, null if no JAR
@@ -188,7 +188,7 @@ public class Loader {
     ) {}
 
     // key is jar pathname
-    private static final Map<String, JavaModLoadState> g_jarLoadStatus = new ConcurrentHashMap<>();
+    private static final Map<Path, JavaModLoadState> g_jarLoadStatus = new ConcurrentHashMap<>();
 
     // returns readonly snapshot
     static List<JavaModLoadState> getActiveJavaMods() {
@@ -437,6 +437,14 @@ public class Loader {
                 continue;
             }
             loadJar(entry.canPath(), entry.javaPkgName(), entry.hash());
+            g_jarLoadStatus.put(entry.canPath(), new JavaModLoadState(
+                        entry.javaPkgName(),
+                        entry.canPath(),
+                        zbsResult.flags().with(MF_PRELOAD).with(MF_ACTIVE),
+                        "preloaded",
+                        entry.hash(),
+                        null
+                        ));
         }
         if (g_configDirty) {
             Config.save(g_config);
@@ -779,11 +787,22 @@ public class Loader {
                 shouldSkip = true;
                 skipReason = " (blocked by policy=" + g_jarPolicy + ", modId=" + ctx.modId + ")";
             }
+
+            Path canonicalJarPath = null;
+            if (ctx.jarPath != null) {
+                try {
+                    canonicalJarPath = ctx.jarPath.toRealPath();
+                } catch (IOException e) {
+                    Logger.error("Cannot resolve canonical path for " + ctx.jarPath + ": " + e);
+                    shouldSkip = true;
+                    skipReason = " (cannot resolve JAR path)";
+                }
+            }
             
             shouldSkipList.add(shouldSkip);
             skipReasons.add(skipReason);
 
-            if (ctx.jarPath != null) {
+            if (canonicalJarPath != null) {
                 Boolean decision = null;
                 if (ctx.hash != null) {
                     decision = approvals.get(ctx.hash);
@@ -793,15 +812,17 @@ public class Loader {
                 }
                 if (!shouldSkip) {
                     flags = flags.with(MF_ACTIVE);
-                } else {
-                    // A loaded JAR cannot be unloaded — preserve MF_ACTIVE if it was previously set.
-                    JavaModLoadState prev = g_jarLoadStatus.get(ctx.modId);
-                    if (prev != null && prev.flags.has(MF_ACTIVE)) {
-                        flags = flags.with(MF_ACTIVE);
-                    }
                 }
-                g_jarLoadStatus.put(ctx.jarPath.toAbsolutePath().toString(), new JavaModLoadState(
+
+                // merge in "sticky" flags like MF_ACTIVE or MF_PRELOAD
+                JavaModLoadState prev = g_jarLoadStatus.get(canonicalJarPath);
+                if (prev != null) {
+                    flags = flags.merge(prev.flags.getSticky());
+                }
+
+                g_jarLoadStatus.put(canonicalJarPath, new JavaModLoadState(
                     ctx.modId,
+                    canonicalJarPath,
                     flags,
                     shouldSkip ? skipReason.trim() : "loaded",
                     ctx.hash,

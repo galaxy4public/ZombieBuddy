@@ -1,11 +1,8 @@
 package me.zed_0xff.zombie_buddy;
 
-import static me.zed_0xff.zombie_buddy.ModFlags.*;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 
 import se.krka.kahlua.vm.JavaFunction;
 import se.krka.kahlua.vm.LuaClosure;
@@ -53,6 +50,7 @@ public class ZombieBuddy {
         for (var modInfo : Loader.getActiveJavaMods()) {
             var modTbl = LuaManager.platform.newTable();
             modTbl.rawset("id", modInfo.id());
+            modTbl.rawset("jarPath", modInfo.jarPath());
             modTbl.rawset("flags", Utils.mapToLuaTable(modInfo.flags().toMap()));
             tbl.rawset(modInfo.id(), modTbl);
         }
