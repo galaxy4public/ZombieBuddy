@@ -5,7 +5,6 @@ import static me.zed_0xff.zombie_buddy.ModFlags.*;
 import java.io.BufferedInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -21,6 +20,7 @@ import zombie.ui.UIManager;
 @Exposer.LuaClass(name = "ZombieBuddy.Watermark")
 public final class Watermark {
     private static final String ICON_RESOURCE = "zb_icon.png";
+
     private static final float GREEN_R  = 0.5f;
     private static final float GREEN_G  = 1.0f;
     private static final float GREEN_B  = 0.5f;
@@ -39,6 +39,7 @@ public final class Watermark {
     private static boolean _in_init = true;
     private static int _ttl         = DEFAULT_TTL;
     private static float _alpha     = DEFAULT_ALPHA;
+    private static String _midLine  = null;
 
     private Watermark() {}
 
@@ -47,6 +48,10 @@ public final class Watermark {
         Callbacks.onGameInitComplete.register(() -> {
             _in_init = false;
         });
+    }
+
+    static void setMidLine(String text) {
+        _midLine = text;
     }
 
     public static void setAlpha(float alpha) {
@@ -83,7 +88,6 @@ public final class Watermark {
     private static void draw() {
         String base = ZombieBuddy.getFullVersionString() + " loaded";
         String newVersion = SelfUpdater.getNewVersion();
-        String newPreload = Loader.g_newPreloadModID;
 
         var font     = UIFont.Small;
         var textMgr  = TextManager.instance;
@@ -112,8 +116,8 @@ public final class Watermark {
         }
         textY += textH;
 
-        if (!Utils.isBlank(newPreload)) {
-            drawYellow(font, textMgr, textX, textY, "New preload mod " + newPreload + " added. Restart the game to activate it.");
+        if (!Utils.isBlank(_midLine)) {
+            drawYellow(font, textMgr, textX, textY, _midLine);
             textY += textH;
         }
 

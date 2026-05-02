@@ -29,7 +29,6 @@ public final class JarBatchApprovalProtocol {
 
     public static final class Entry {
         public final String modId;
-        public final String javaPkgName;
         public final WorkshopItemID workshopItemId;
         public final Path jarAbsolutePath;
         public final Path infAbsolutePath;
@@ -52,11 +51,9 @@ public final class JarBatchApprovalProtocol {
             ModFlags flags,
             String modDisplayName,
             ZBSignature zbs,
-            SteamBan steamBan,
-            String javaPkgName
+            SteamBan steamBan
         ) {
             this.modId = modId;
-            this.javaPkgName = javaPkgName != null ? javaPkgName : "";
             this.workshopItemId = workshopItemId;
             this.jarAbsolutePath = jarAbsolutePath;
             this.infAbsolutePath = infAbsolutePath;

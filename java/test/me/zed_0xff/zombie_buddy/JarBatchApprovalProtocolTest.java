@@ -35,7 +35,6 @@ class JarBatchApprovalProtocolTest {
         // Check first entry
         JarBatchApprovalProtocol.Entry e1 = entries.get(0);
         assertEquals("TestMod", e1.modId);
-        assertEquals("com.example.testmod", e1.javaPkgName);
         assertEquals(3709229404L, e1.workshopItemId.value());
         assertEquals(Path.of("/path/to/mod.jar"), e1.jarAbsolutePath);
         assertEquals("abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", e1.sha256);
@@ -49,7 +48,6 @@ class JarBatchApprovalProtocolTest {
         // Check second entry (no workshopItemId, no authorSteamId)
         JarBatchApprovalProtocol.Entry e2 = entries.get(1);
         assertEquals("LocalMod", e2.modId);
-        assertEquals("com.example.localmod", e2.javaPkgName);
         assertNull(e2.workshopItemId);
         assertNull(e2.zbs.authorSteamId());
         assertFalse(e2.zbs.valid());
@@ -97,7 +95,6 @@ class JarBatchApprovalProtocolTest {
             ModFlags.EMPTY,
             "Round Trip Mod",
             new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198099999999L), ""),
-            null,
             null
         ));
 
@@ -126,7 +123,6 @@ class JarBatchApprovalProtocolTest {
             new ModFlags(MF_PERSIST),
             "Round Trip Mod",
             new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198099999999L), ""),
-            null,
             null
         ));
 
@@ -186,7 +182,6 @@ class JarBatchApprovalProtocolTest {
             ModFlags.EMPTY,
             "",
             new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198000000000L), ""),
-            null,
             null
         ));
 

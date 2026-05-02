@@ -38,8 +38,6 @@ public class Loader {
 
     // called by Patch_GameWindow.Patch_DoLoadingText
     public static boolean g_hasDoLoadingText = false;
-    // set when a new preload mod entry is stored during loadMods (i.e., after premain preload phase)
-    static String g_newPreloadModID = null;
 
     /**
      * When {@code true} (default), a missing {@code .zbs} next to the JAR is allowed as &quot;unsigned&quot;
@@ -309,7 +307,7 @@ public class Loader {
                     removeTrustedAuthor(entry.zbs.authorSteamId());
                 }
             }
-            if (entry.flags.has(MF_PRELOAD) && !Utils.isBlank(entry.modId) && !Utils.isBlank(entry.javaPkgName) && !Utils.isBlank(entry.jarAbsolutePath)) {
+            if (entry.flags.has(MF_PRELOAD) && !Utils.isBlank(entry.modId) && !Utils.isBlank(entry.infAbsolutePath) && !Utils.isBlank(entry.jarAbsolutePath)) {
                 if (allow) {
                     PreloadMods.add(entry.modId, entry.infAbsolutePath, entry.jarAbsolutePath);
                 } else {
@@ -358,7 +356,7 @@ public class Loader {
             if (!nextConfig.equals(g_config)) {
                 g_config = nextConfig;
                 g_configDirty = true;
-                g_newPreloadModID = id;
+                Watermark.setMidLine("New preload mod \"" + id + "\" added. Restart the game to activate it.");
             }
         }
 
@@ -550,6 +548,17 @@ public class Loader {
         ArrayList<JavaModInfo> jModInfos = new ArrayList<>();
         ArrayList<String> jModIds = new ArrayList<>();
         HashSet<String> processedIds = new HashSet<>();
+
+        g_curr_modSet = new HashSet<>(mods);
+        if ( "default".equals(g_curr_modSetID) && "default".equals(g_prev_modSetID) && g_curr_modSet != null && g_prev_modSet != null) {
+            for (String mod_id : PreloadMods.getIds()) {
+                if( g_prev_modSet.contains(mod_id) && !g_curr_modSet.contains(mod_id) ) {
+                    Logger.info("Preload mod '" + mod_id + "' was removed from the default mod list; removing from preload.");
+                    PreloadMods.remove(mod_id);
+                    Watermark.setMidLine("Preload mod \"" + mod_id + "\" disabled. Restart the game to deactivate it.");
+                }
+            }
+        }
 
         ArrayList<String> mergedIds = new ArrayList<>();
         mergedIds.addAll(PreloadMods.getIds()); // inject preloaded mod ids BEFORE actual mod list
@@ -746,8 +755,7 @@ public class Loader {
                     entryFlags,
                     modDisplay,
                     zbs,
-                    steamBan,
-                    jModInfo.javaPkgName()
+                    steamBan
                 ));
             }
             if (!batchEntries.isEmpty()) {
@@ -1009,5 +1017,19 @@ public class Loader {
             Logger.error("Error validating package in JAR " + jarPath + ": " + e);
             return false;
         }
+    }
+
+    private static String g_prev_modSetID = null, g_curr_modSetID = null;
+    private static HashSet<String> g_prev_modSet = null, g_curr_modSet = null;
+
+    public static void onEnterLoadMods(String activeMods) {
+        g_curr_modSetID = activeMods;
+    }
+
+    public static void onExitLoadMods(String activeMods) {
+        g_prev_modSetID = g_curr_modSetID;
+        g_prev_modSet = g_curr_modSet;
+        g_curr_modSetID = null;
+        g_curr_modSet = null;
     }
 }

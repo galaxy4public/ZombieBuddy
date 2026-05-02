@@ -14,23 +14,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 import zombie.core.Core;
-import zombie.GameWindow;
 
 public class Patch_ZomboidFileSystem {
-    // @Patch(className = "zombie.ZomboidFileSystem", methodName = "loadMods")
-    // public class Patch_loadMods1 {
-    //     @Patch.OnEnter
-    //     public static void enter(String activeMods, @Patch.Local("t0") long t0) {
-    //         Logger.info("ZomboidFileSystem.loadMods(\"" + activeMods + "\") ...");
-    //         t0 = System.nanoTime();
-    //     }
-    // 
-    //     @Patch.OnExit
-    //     public static void exit(String activeMods, @Patch.Local("t0") long t0) {
-    //         long vanillaElapsedMs = (System.nanoTime() - t0) / 1_000_000L;
-    //         if ( vanillaElapsedMs > 1000 ) Logger.info("ZomboidFileSystem.loadMods(\"" + activeMods + "\") took " + vanillaElapsedMs + " ms");
-    //     }
-    // }
+    @Patch(className = "zombie.ZomboidFileSystem", methodName = "loadMods")
+    public class Patch_loadMods1 {
+        @Patch.OnEnter
+        public static void enter(String activeMods) {
+            Loader.onEnterLoadMods(activeMods);
+        }
+    
+        @Patch.OnExit
+        public static void exit(String activeMods) {
+            Loader.onExitLoadMods(activeMods);
+        }
+    }
 
     @Patch(className = "zombie.ZomboidFileSystem", methodName = "loadMods")
     public class Patch_loadMods2 {
