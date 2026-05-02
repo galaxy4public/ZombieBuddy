@@ -13,7 +13,6 @@ import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Date;
@@ -310,11 +309,11 @@ public class Loader {
                     removeTrustedAuthor(entry.zbs.authorSteamId());
                 }
             }
-            if (entry.flags.has(MF_PRELOAD) && !Utils.isBlank(entry.javaPkgName) && !Utils.isBlank(entry.jarAbsolutePath)) {
+            if (entry.flags.has(MF_PRELOAD) && !Utils.isBlank(entry.modId) && !Utils.isBlank(entry.javaPkgName) && !Utils.isBlank(entry.jarAbsolutePath)) {
                 if (allow) {
-                    PreloadMods.add(entry);
+                    PreloadMods.add(entry.modId, entry.infAbsolutePath, entry.jarAbsolutePath);
                 } else {
-                    PreloadMods.remove(entry.javaPkgName);
+                    PreloadMods.remove(entry.modId);
                 }
             }
         }
@@ -350,27 +349,29 @@ public class Loader {
     }
 
     private static final class PreloadMods {
+        private PreloadMods() {}
+
         private static final String MANIFEST_ATTR = "ZB-Preload";
 
-        private static void add(String modId, String javaPkgName, String jarAbsolutePath) {
-            Config nextConfig = g_config.withPreloadMod(javaPkgName, jarAbsolutePath);
+        private static void add(String id, Path infPath, Path jarPath) {
+            Config nextConfig = g_config.withPreloadMod(id, new Config.PreloadMod(infPath, jarPath));
             if (!nextConfig.equals(g_config)) {
                 g_config = nextConfig;
                 g_configDirty = true;
-                g_newPreloadModID = modId;
+                g_newPreloadModID = id;
             }
         }
 
-        private static void add(JarBatchApprovalProtocol.Entry entry) {
-            add(entry.modId, entry.javaPkgName, entry.jarAbsolutePath);
-        }
-
-        private static void remove(String javaPkgName) {
-            Config nextConfig = g_config.withoutPreloadMod(javaPkgName);
+        private static void remove(String id) {
+            Config nextConfig = g_config.withoutPreloadMod(id);
             if (!nextConfig.equals(g_config)) {
                 g_config = nextConfig;
                 g_configDirty = true;
             }
+        }
+
+        private static List<String> getIds() {
+            return new ArrayList<>(g_config.preload_mods().keySet());
         }
 
         /**
@@ -400,28 +401,35 @@ public class Loader {
         }
 
         // First pass: validate and collect entries
-        record PreloadEntry(String javaPkgName, Path canPath, String hash, WorkshopItemID workshopItemId) {}
+        record PreloadEntry(String id, String javaPkgName, Path canJarPath, String hash, WorkshopItemID workshopItemId) {}
         List<PreloadEntry> entries = new ArrayList<>();
 
-        for (Map.Entry<String, String> e : g_config.preload_mods().entrySet()) {
-            String javaPkgName = e.getKey();
+        for (Map.Entry<String, Config.PreloadMod> e : g_config.preload_mods().entrySet()) {
+            String id = e.getKey();
+            Config.PreloadMod preloadMod = e.getValue();
+            String javaPkgName = JavaModInfo.javaPkgNameFrom(preloadMod.infPath());
+            if (Utils.isBlank(javaPkgName)) {
+                Logger.warn("Preload mod '" + id + "': cannot read javaPkgName from " + preloadMod.infPath() + "; removing.");
+                PreloadMods.remove(id);
+                continue;
+            }
             try {
-                Path jarCanonicalPath = Paths.get(e.getValue()).toRealPath();
+                Path jarCanonicalPath = preloadMod.jarPath().toRealPath();
                 Logger.info("Preloading pkg '" + javaPkgName + "' from " + jarCanonicalPath);
                 if (!Files.isRegularFile(jarCanonicalPath)) {
                     Logger.warn("Preload pkg '" + javaPkgName + "': JAR not found at " + jarCanonicalPath + "; removing.");
-                    PreloadMods.remove(javaPkgName);
+                    PreloadMods.remove(id);
                     continue;
                 }
                 if (!PreloadMods.hasManifestPreload(jarCanonicalPath)) {
                     Logger.warn("Preload pkg '" + javaPkgName + "': JAR manifest missing '" + PreloadMods.MANIFEST_ATTR + "' entry in " + jarCanonicalPath + "; removing.");
-                    PreloadMods.remove(javaPkgName);
+                    PreloadMods.remove(id);
                     continue;
                 }
-                entries.add(new PreloadEntry(javaPkgName, jarCanonicalPath, Utils.sha256Hex(jarCanonicalPath), JavaModInfo.workshopItemIdFromPath(jarCanonicalPath)));
+                entries.add(new PreloadEntry(id, javaPkgName, jarCanonicalPath, Utils.sha256Hex(jarCanonicalPath), JavaModInfo.workshopItemIdFromPath(jarCanonicalPath)));
             } catch (IOException ex) {
-                Logger.warn("Preload pkg '" + javaPkgName + "': cannot resolve JAR path " + e + "; removing.");
-                PreloadMods.remove(javaPkgName);
+                Logger.warn("Preload pkg '" + javaPkgName + "': cannot resolve JAR path " + preloadMod.jarPath() + "; removing.");
+                PreloadMods.remove(id);
             }
         }
         if (entries.isEmpty()) return;
@@ -430,16 +438,16 @@ public class Loader {
 
         // Second pass: ZBS check and load
         for (PreloadEntry entry : entries) {
-            ZBSVerifier.CheckResult zbsResult = zbsCheck(entry.canPath(), entry.hash(), entry.workshopItemId(), zbsCtx);
+            ZBSVerifier.CheckResult zbsResult = zbsCheck(entry.canJarPath(), entry.hash(), entry.workshopItemId(), zbsCtx);
             if (zbsBlocked(zbsResult)) {
                 Logger.warn("Preload pkg '" + entry.javaPkgName() + "': ZBS check failed (" + zbsResult.blockReason() + "); skipping.");
-                PreloadMods.remove(entry.javaPkgName());
+                PreloadMods.remove(entry.id());
                 continue;
             }
-            loadJar(entry.canPath(), entry.javaPkgName(), entry.hash());
-            g_jarLoadStatus.put(entry.canPath(), new JavaModLoadState(
-                        entry.javaPkgName(),
-                        entry.canPath(),
+            loadJar(entry.canJarPath(), entry.javaPkgName(), entry.hash());
+            g_jarLoadStatus.put(entry.canJarPath(), new JavaModLoadState(
+                        entry.id(),
+                        entry.canJarPath(),
                         zbsResult.flags().with(MF_PRELOAD).with(MF_ACTIVE),
                         "preloaded",
                         entry.hash(),
@@ -541,8 +549,17 @@ public class Loader {
     public static void loadMods(ArrayList<String> mods) {
         ArrayList<JavaModInfo> jModInfos = new ArrayList<>();
         ArrayList<String> jModIds = new ArrayList<>();
+        HashSet<String> processedIds = new HashSet<>();
 
-        for (String mod_id : mods) {
+        ArrayList<String> mergedIds = new ArrayList<>();
+        mergedIds.addAll(PreloadMods.getIds()); // inject preloaded mod ids BEFORE actual mod list
+        mergedIds.addAll(mods);
+
+        for (String mod_id : mergedIds) {
+            if (Utils.isBlank(mod_id)) continue;
+            if (processedIds.contains(mod_id)) continue;
+            processedIds.add(mod_id);
+
             var mod = ChooseGameInfo.getAvailableModDetails(mod_id);
             if (mod == null) continue;
 
@@ -665,7 +682,8 @@ public class Loader {
             }
             ArrayList<JarBatchApprovalProtocol.Entry> batchEntries = new ArrayList<>();
             for (int i = 0; i < jModInfos.size(); i++) {
-                if (structuralOnlySkip.get(i)) continue;
+                if (structuralOnlySkip.get(i)) continue;;
+
                 ModCtx ctx = modContexts.get(i);
                 if (ctx.hash == null) continue;
 
@@ -699,7 +717,7 @@ public class Loader {
                     // because the trust comes from the author record, not the specific JAR hash.
                     approvals.put(ctx.hash, Boolean.TRUE);
                     if (jModInfo.javaPreload() && PreloadMods.hasManifestPreload(ctx.jarPath)) {
-                        PreloadMods.add(ctx.modId, jModInfo.javaPkgName(), ctx.jarPath.toAbsolutePath().toString());
+                        PreloadMods.add(ctx.modId, jModInfo.modInfoFile(), ctx.jarPath);
                     }
                     continue;
                 }
@@ -720,7 +738,8 @@ public class Loader {
                 batchEntries.add(new JarBatchApprovalProtocol.Entry(
                     ctx.modId,
                     ctx.workshopItemId,
-                    ctx.jarPath.toAbsolutePath().toString(),
+                    ctx.jarPath,
+                    jModInfo.modInfoFile(),
                     ctx.hash,
                     date,
                     decision,
@@ -841,8 +860,9 @@ public class Loader {
         }
         if (g_configDirty) {
             Config.save(g_config);
+            g_configDirty = false;
         }
-        
+
         if (!shouldSkipList.isEmpty()) {
             // Print excluded mods first
             for (int i = 0; i < jModInfos.size(); i++) {

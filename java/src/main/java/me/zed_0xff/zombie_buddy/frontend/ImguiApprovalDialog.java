@@ -797,7 +797,8 @@ final class ImguiApprovalDialog {
             sb.append(PRELOAD_NOTICE);
         }
         appendTooltipLine(sb, "id:  ", e.modId);
-        appendTooltipLine(sb, "jar: ", e.jarAbsolutePath);
+        appendTooltipLine(sb, "jar: ", e.jarAbsolutePath.toString());
+        appendTooltipLine(sb, "inf: ", e.infAbsolutePath.toString());
         return sb.toString();
     }
 

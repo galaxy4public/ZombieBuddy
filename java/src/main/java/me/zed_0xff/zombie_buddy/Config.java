@@ -11,18 +11,23 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
-public record Config(
+record Config(
     List<SteamID64> trusted_authors,
-    Map<String, String> preload_mods
+    Map<String, Config.PreloadMod> preload_mods
 ) {
-    public static final String JSON_FILE_NAME = "config.json";
+    record PreloadMod(
+        Path infPath,
+        Path jarPath
+    ) {}
 
-    public Config {
+    static final String JSON_FILE_NAME = "config.json";
+
+    Config {
         trusted_authors = normalizeTrustedAuthors(trusted_authors);
         preload_mods = normalizePreloadMods(preload_mods);
     }
 
-    public Config() {
+    Config() {
         this(new ArrayList<>(), new LinkedHashMap<>());
     }
 
@@ -30,7 +35,7 @@ public record Config(
         return Agent.configDir().resolve(JSON_FILE_NAME);
     }
 
-    public static Config load() {
+    static Config load() {
         Path path = jsonPath();
         try {
             if (!Files.exists(path)) {
@@ -48,7 +53,7 @@ public record Config(
         }
     }
 
-    public static void save(Config config) {
+    static void save(Config config) {
         try {
             Path path = jsonPath();
             Files.createDirectories(path.getParent());
@@ -59,11 +64,11 @@ public record Config(
         }
     }
 
-    public boolean trustsAuthor(SteamID64 authorId) {
+    boolean trustsAuthor(SteamID64 authorId) {
         return authorId != null && trusted_authors.contains(authorId);
     }
 
-    public Config withTrustedAuthor(SteamID64 authorId) {
+    Config withTrustedAuthor(SteamID64 authorId) {
         if (authorId == null || trusted_authors.contains(authorId)) {
             return this;
         }
@@ -72,7 +77,7 @@ public record Config(
         return new Config(out, preload_mods);
     }
 
-    public Config withoutTrustedAuthor(SteamID64 authorId) {
+    Config withoutTrustedAuthor(SteamID64 authorId) {
         if (authorId == null || !trusted_authors.contains(authorId)) {
             return this;
         }
@@ -81,21 +86,24 @@ public record Config(
         return new Config(out, preload_mods);
     }
 
-    public Config withPreloadMod(String javaPkgName, String jarPath) {
-        if (Utils.isBlank(javaPkgName) || Utils.isBlank(jarPath)) {
+    Config withPreloadMod(String id, PreloadMod mod) {
+        if (Utils.isBlank(id)
+                || mod == null
+                || Utils.isBlank(mod.infPath())
+                || Utils.isBlank(mod.jarPath())) {
             return this;
         }
-        Map<String, String> out = new LinkedHashMap<>(preload_mods);
-        out.put(javaPkgName, jarPath);
+        Map<String, PreloadMod> out = new LinkedHashMap<>(preload_mods);
+        out.put(id, mod);
         return new Config(trusted_authors, out);
     }
 
-    public Config withoutPreloadMod(String javaPkgName) {
-        if (Utils.isBlank(javaPkgName) || !preload_mods.containsKey(javaPkgName)) {
+    Config withoutPreloadMod(String id) {
+        if (Utils.isBlank(id) || !preload_mods.containsKey(id)) {
             return this;
         }
-        Map<String, String> out = new LinkedHashMap<>(preload_mods);
-        out.remove(javaPkgName);
+        Map<String, PreloadMod> out = new LinkedHashMap<>(preload_mods);
+        out.remove(id);
         return new Config(trusted_authors, out);
     }
 
@@ -111,12 +119,16 @@ public record Config(
         return new ArrayList<>(out);
     }
 
-    private static Map<String, String> normalizePreloadMods(Map<String, String> input) {
-        LinkedHashMap<String, String> out = new LinkedHashMap<>();
+    private static Map<String, PreloadMod> normalizePreloadMods(Map<String, PreloadMod> input) {
+        LinkedHashMap<String, PreloadMod> out = new LinkedHashMap<>();
         if (input != null) {
-            for (Map.Entry<String, String> entry : input.entrySet()) {
-                if (!Utils.isBlank(entry.getKey()) && !Utils.isBlank(entry.getValue())) {
-                    out.put(entry.getKey(), entry.getValue());
+            for (Map.Entry<String, PreloadMod> entry : input.entrySet()) {
+                PreloadMod mod = entry.getValue();
+                if (!Utils.isBlank(entry.getKey())
+                        && mod != null
+                        && !Utils.isBlank(mod.infPath())
+                        && !Utils.isBlank(mod.jarPath())) {
+                    out.put(entry.getKey(), mod);
                 }
             }
         }

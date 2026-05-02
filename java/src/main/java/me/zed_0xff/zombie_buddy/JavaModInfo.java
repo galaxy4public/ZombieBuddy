@@ -269,6 +269,11 @@ public record JavaModInfo(
         return validateAndCreate(parsed, modInfoFile, modDir, true);
     }
 
+    public static String javaPkgNameFrom(Path modInfoFile) {
+        ParsedValues parsed = parseModInfoFile(modInfoFile);
+        return parsed != null ? parsed.javaPkgName() : null;
+    }
+
     public static JavaModInfo parse(String modDirPath) {
         if (Utils.isBlank(modDirPath)) {
             return null;

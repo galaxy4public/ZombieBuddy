@@ -28,42 +28,24 @@ public final class JarBatchApprovalProtocol {
     private static final Gson JSON = ZBGson.PRETTY;
 
     public static final class Entry {
-        /** Mod id from mod.info {@code id=}. */
-        @SerializedName("modId")
         public final String modId;
-        /** Java package name from mod.info {@code javaPkgName=}; used as the preload config key. */
-        @SerializedName("javaPkgName")
         public final String javaPkgName;
-        /** Nullable workshop item id for this row. */
-        @SerializedName("workshopItemId")
         public final WorkshopItemID workshopItemId;
-        @SerializedName("jarAbsolutePath")
-        public final String jarAbsolutePath;
-        @SerializedName("sha256")
+        public final Path jarAbsolutePath;
+        public final Path infAbsolutePath;
         public final String sha256;
-        /** Last modified time from the file system. */
-        @SerializedName("date")
         public final Date date;
-        /** Existing allow/deny decision for this exact JAR hash, if any. */
-        @SerializedName("decision")
         public Boolean decision;
-        /** Loader/UI flags for this row; see {@link ModFlags}. */
-        @SerializedName("flags")
         public ModFlags flags = ModFlags.EMPTY;
-        /** Display name from mod.info {@code name=}; may be empty (UI falls back to {@link #modId}). */
-        @SerializedName("modDisplayName")
         public final String modDisplayName;
-        /** ZBS signature status and signer metadata. */
-        @SerializedName("zbs")
         public final ZBSignature zbs;
-        /** Nullable; null means no known Steam ban. */
-        @SerializedName("steamBan")
         public final SteamBan steamBan;
 
         public Entry(
             String modId,
             WorkshopItemID workshopItemId,
-            String jarAbsolutePath,
+            Path jarAbsolutePath,
+            Path infAbsolutePath,
             String sha256,
             Date date,
             Boolean decision,
@@ -76,7 +58,8 @@ public final class JarBatchApprovalProtocol {
             this.modId = modId;
             this.javaPkgName = javaPkgName != null ? javaPkgName : "";
             this.workshopItemId = workshopItemId;
-            this.jarAbsolutePath = jarAbsolutePath != null ? jarAbsolutePath : "";
+            this.jarAbsolutePath = jarAbsolutePath;
+            this.infAbsolutePath = infAbsolutePath;
             this.sha256 = sha256 != null ? sha256 : "";
             this.date = date;
             this.decision = decision;

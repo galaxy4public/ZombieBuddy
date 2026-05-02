@@ -37,7 +37,7 @@ class JarBatchApprovalProtocolTest {
         assertEquals("TestMod", e1.modId);
         assertEquals("com.example.testmod", e1.javaPkgName);
         assertEquals(3709229404L, e1.workshopItemId.value());
-        assertEquals("/path/to/mod.jar", e1.jarAbsolutePath);
+        assertEquals(Path.of("/path/to/mod.jar"), e1.jarAbsolutePath);
         assertEquals("abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", e1.sha256);
         assertNotNull(e1.date);
         assertEquals(Boolean.TRUE, e1.decision);
@@ -89,7 +89,8 @@ class JarBatchApprovalProtocolTest {
         original.add(new JarBatchApprovalProtocol.Entry(
             "RoundTripMod",
             new WorkshopItemID(9876543210L),
-            "/path/to/roundtrip.jar",
+            Path.of("/path/to/roundtrip.jar"),
+            Path.of("/path/to/mod.info"),
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             new Date(1_777_000_000_000L),
             Boolean.FALSE,
@@ -117,7 +118,8 @@ class JarBatchApprovalProtocolTest {
         original.add(new JarBatchApprovalProtocol.Entry(
             "RoundTripMod",
             new WorkshopItemID(9876543210L),
-            "/path/to/roundtrip.jar",
+            Path.of("/path/to/roundtrip.jar"),
+            Path.of("/path/to/mod.info"),
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             new Date(1_777_000_000_000L),
             Boolean.TRUE,
@@ -176,7 +178,13 @@ class JarBatchApprovalProtocolTest {
         entries.add(new JarBatchApprovalProtocol.Entry(
             "NumericTest",
             new WorkshopItemID(1234567890L),
-            "/path", "hash", new Date(1_777_000_000_000L), null, ModFlags.EMPTY, "",
+            Path.of("/path/to/roundtrip.jar"),
+            Path.of("/path/to/mod.info"),
+            "hash",
+            new Date(1_777_000_000_000L),
+            null,
+            ModFlags.EMPTY,
+            "",
             new JarBatchApprovalProtocol.Entry.ZBSignature(true, new SteamID64(76561198000000000L), ""),
             null,
             null

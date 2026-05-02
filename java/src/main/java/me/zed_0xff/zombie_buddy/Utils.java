@@ -47,6 +47,10 @@ public final class Utils {
         return str == null || str.isEmpty();
     }
 
+    public static boolean isBlank(Path path) {
+        return path == null || path.toString().isEmpty();
+    }
+
     public static boolean isBlank(Collection<?> collection) {
         return collection == null || collection.isEmpty();
     }

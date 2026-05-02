@@ -240,8 +240,11 @@ public final class SwingApprovalMain {
             } else {
                 nameLab = new JLabel(modTitle(e));
             }
-            String tip = "<html>" + escapeHtml(e.jarAbsolutePath)
-                + "<br/><b>SHA-256:</b> " + escapeHtml(e.sha256) + "</html>";
+            String tip =
+                "<html>"
+                + escapeHtml(e.jarAbsolutePath.toString()) + "<br/>"
+                + "<b>SHA-256:</b> " + escapeHtml(e.sha256)
+                + "</html>";
             nameLab.setToolTipText(tip);
             applyRowBackground(nameLab, rowBg);
             grid.add(nameLab, c);
