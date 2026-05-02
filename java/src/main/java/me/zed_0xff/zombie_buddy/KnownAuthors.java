@@ -151,6 +151,7 @@ public final class KnownAuthors {
     }
 
     private static byte[] hexToBytes(String hex) {
+        if ((hex.length() & 1) != 0) throw new IllegalArgumentException("odd hex length: " + hex.length());
         int n = hex.length() / 2;
         byte[] out = new byte[n];
         for (int i = 0; i < n; i++) {

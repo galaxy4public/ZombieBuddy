@@ -8,6 +8,7 @@ import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
 import static me.zed_0xff.zombie_buddy.ModFlags.*;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.ClassLoader;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
@@ -113,7 +114,7 @@ public class Loader {
     }
 
             static final Set<File>   g_known_jars     = new HashSet<>(); // used by PatchEngine
-    private static final Set<String> g_known_classes  = new HashSet<>();
+    private static final Set<String> g_known_mains    = new HashSet<>();
     private static final Set<String> g_known_packages = new HashSet<>();
 
     // Persisted entries loaded from disk - the source of truth for saving
@@ -409,6 +410,12 @@ public class Loader {
                 PreloadMods.remove(javaPkgName);
                 continue;
             }
+            try {
+                jarFile = jarFile.getCanonicalFile();
+            } catch (IOException ioe) {
+                Logger.error("Preload pkg '" + javaPkgName + "': cannot resolve canonical path for " + jarPath + ": " + ioe);
+                continue;
+            }
             if (g_known_jars.contains(jarFile)) {
                 Logger.info("Preload pkg '" + javaPkgName + "' already on classpath, skipping.");
                 continue;
@@ -454,30 +461,52 @@ public class Loader {
      * @return true if the JAR was added; false on any failure or already-loaded.
      */
     private static boolean addJarToClasspath(File jarFile, String packageName, String approvedHash) {
-        if (g_known_jars.contains(jarFile)) {
-            Logger.info("" + jarFile + " already on classpath, skipping.");
+        // Resolve symlinks and normalise path once; all subsequent operations use the canonical
+        // file so that symlink-swap attacks and path-alias bypasses of g_known_jars are eliminated.
+        File canonical;
+        try {
+            canonical = jarFile.getCanonicalFile();
+        } catch (IOException e) {
+            Logger.error("Cannot resolve canonical path for " + jarFile + ": " + e);
             return false;
         }
-        if (!validatePackageInJar(jarFile, packageName)) {
-            Logger.error("JAR does not contain package " + packageName + ": " + jarFile);
+        if (g_known_jars.contains(canonical)) {
+            Logger.info("" + canonical + " already on classpath, skipping.");
+            return false;
+        }
+        if (!validatePackageInJar(canonical, packageName)) {
+            Logger.error("JAR does not contain package " + packageName + ": " + canonical);
+            return false;
+        }
+        // Open the JarFile before re-hashing so both operations target the same inode.
+        // This closes the symlink-swap window between the hash check and the load; a hard
+        // file-replacement race (atomic rename) cannot be fully prevented via the Java
+        // instrumentation API since appendToSystemClassLoaderSearch re-reads by path internally.
+        JarFile jf;
+        try {
+            jf = new JarFile(canonical);
+        } catch (IOException e) {
+            Logger.error("Cannot open JAR " + canonical + ": " + e);
             return false;
         }
         if (approvedHash != null) {
-            String currentHash = Utils.sha256Hex(jarFile);
+            String currentHash = Utils.sha256Hex(canonical);
             if (!approvedHash.equals(currentHash)) {
+                try { jf.close(); } catch (IOException ignored) {}
                 Logger.error("SECURITY: JAR hash changed between approval and load for "
-                    + jarFile + " — expected " + approvedHash + ", got " + currentHash
+                    + canonical + " — expected " + approvedHash + ", got " + currentHash
                     + ". Aborting load.");
                 return false;
             }
         }
         try {
-            g_instrumentation.appendToSystemClassLoaderSearch(new JarFile(jarFile));
-            g_known_jars.add(jarFile);
-            Logger.info("added to classpath: " + jarFile);
+            g_instrumentation.appendToSystemClassLoaderSearch(jf);
+            g_known_jars.add(canonical);
+            Logger.info("added to classpath: " + canonical);
             return true;
         } catch (Exception e) {
-            Logger.error("Error adding JAR to classpath " + jarFile + ": " + e);
+            try { jf.close(); } catch (IOException ignored) {}
+            Logger.error("Error adding JAR to classpath " + canonical + ": " + e);
             return false;
         }
     }
@@ -890,10 +919,10 @@ public class Loader {
 
         // Load and invoke optional Main class
         String mainClassName = packageName + ".Main";
-        if (g_known_classes.contains(mainClassName)) {
-            Logger.debug("Java class " + mainClassName + " already loaded, skipping.");
+        if (g_known_mains.contains(mainClassName)) {
+            Logger.debug("Java main class " + mainClassName + " already loaded, skipping.");
         } else {
-            g_known_classes.add(mainClassName);
+            g_known_mains.add(mainClassName);
 
             Logger.info("trying to load " + mainClassName);
             Class<?> cls = Accessor.findClass(mainClassName);
