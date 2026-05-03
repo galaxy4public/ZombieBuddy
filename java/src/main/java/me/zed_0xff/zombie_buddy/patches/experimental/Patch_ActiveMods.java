@@ -14,8 +14,8 @@
 // 
 //         @Patch.OnExit
 //         public static void exit(@Patch.Local("t0") long t0) {
-//             long vanillaElapsedMs = (System.nanoTime() - t0) / 1_000_000L;
-//             Logger.info("ActiveMods.checkMissingMods() took " + vanillaElapsedMs + " ms");
+//             long elapsedMS = (System.nanoTime() - t0) / 1_000_000L;
+//             Logger.info("ActiveMods.checkMissingMods() took " + elapsedMS + " ms");
 //         }
 //     }
 // 
@@ -29,7 +29,7 @@
 // 
 //     @Patch.OnExit
 //     public static void exit(@Patch.Local("t0") long t0) {
-//         long vanillaElapsedMs = (System.nanoTime() - t0) / 1_000_000L;
-//         Logger.info("ActiveMods.checkMissingMaps() took " + vanillaElapsedMs + " ms");
+//         long elapsedMS = (System.nanoTime() - t0) / 1_000_000L;
+//         Logger.info("ActiveMods.checkMissingMaps() took " + elapsedMS + " ms");
 //     }
 // }

@@ -14,8 +14,8 @@
 // 
 //         @Patch.OnExit
 //         public static void exit(String modId, @Patch.Local("t0") long t0) {
-//             long vanillaElapsedMs = (System.nanoTime() - t0) / 1_000_000L;
-//             if ( vanillaElapsedMs > 1000 ) Logger.info("ChooseGameInfo.getAvailableModDetails(\"" + modId + "\") took " + vanillaElapsedMs + " ms");
+//             long elapsedMS = (System.nanoTime() - t0) / 1_000_000L;
+//             if ( elapsedMS > 1000 ) Logger.info("ChooseGameInfo.getAvailableModDetails(\"" + modId + "\") took " + elapsedMS + " ms");
 //         }
 //     }
 // 
@@ -29,8 +29,8 @@
 // 
 //         @Patch.OnExit
 //         public static void exit(String modId, @Patch.Local("t0") long t0) {
-//             long vanillaElapsedMs = (System.nanoTime() - t0) / 1_000_000L;
-//             if ( vanillaElapsedMs > 1000 ) Logger.info("ChooseGameInfo.getModDetails(\"" + modId + "\") took " + vanillaElapsedMs + " ms");
+//             long elapsedMS = (System.nanoTime() - t0) / 1_000_000L;
+//             if ( elapsedMS > 1000 ) Logger.info("ChooseGameInfo.getModDetails(\"" + modId + "\") took " + elapsedMS + " ms");
 //         }
 //     }
 // }

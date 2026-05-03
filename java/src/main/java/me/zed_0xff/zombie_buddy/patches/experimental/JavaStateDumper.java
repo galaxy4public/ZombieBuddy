@@ -1,31 +1,48 @@
-package me.zed_0xff.zombie_buddy;
+package me.zed_0xff.zombie_buddy.patches.experimental;
 
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWKeyCallbackI;
+
+import sun.misc.Signal;
+
+import me.zed_0xff.zombie_buddy.*;
 
 /**
  * Ctrl+T dumps all Java thread stacks.
  * Uses GLFW key callback - works even if game loop hangs.
  */
 public class JavaStateDumper {
-    private static GLFWKeyCallbackI originalKeyCallback = null;
-    private static boolean installed = false;
+    private static GLFWKeyCallbackI _originalKeyCallback = null;
+    private static boolean _initialized = false;
+    private static long _window = 0;
 
-    static {
-        Callbacks.onDisplayCreate.register(JavaStateDumper::installKeyCallback);
+    static void init() {
+        if (!_initialized) {
+            _initialized = true;
+            Callbacks.onDisplayCreate.register(JavaStateDumper::installKeyCallback);
+            Signal.handle(new Signal("INFO"), JavaStateDumper::handleSignal);
+        }
+    }
+
+    public static void handleSignal(Signal signal) {
+        if ("INFO".equals(signal.getName())) {
+            dumpThreadStacks();
+        } else {
+            Logger.warn("Received unexpected signal: " + signal);
+        }
     }
 
     public static void installKeyCallback() {
-        if (installed) return;
-        installed = true;
-        
         try {
             if (!org.lwjglx.opengl.Display.isCreated()) return;
             long window = org.lwjglx.opengl.Display.getWindow();
-            originalKeyCallback = GLFW.glfwSetKeyCallback(window, JavaStateDumper::handleKey);
+            if (window == _window) return; // already installed for this window
+                                               //
+            _window = window;
+            _originalKeyCallback = GLFW.glfwSetKeyCallback(window, JavaStateDumper::handleKey);
             Logger.info("Installed GLFW key callback for Ctrl+T thread dump");
-        } catch (Throwable e) {
-            Logger.warn("Failed to install GLFW key callback: " + e);
+        } catch (Throwable t) {
+            Logger.warn("Failed to install GLFW key callback: " + t);
         }
     }
     
@@ -33,8 +50,8 @@ public class JavaStateDumper {
         if (key == GLFW.GLFW_KEY_T && action == GLFW.GLFW_PRESS && (mods & GLFW.GLFW_MOD_CONTROL) != 0) {
             dumpThreadStacks();
         }
-        if (originalKeyCallback != null) {
-            originalKeyCallback.invoke(window, key, scancode, action, mods);
+        if (_originalKeyCallback != null) {
+            _originalKeyCallback.invoke(window, key, scancode, action, mods);
         }
     }
     

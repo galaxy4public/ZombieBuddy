@@ -1,8 +1,16 @@
 local hasShownNotification = false
 
 if ZombieBuddy and ZombieBuddy.LogOverlay then
+    ZombieBuddy.LogOverlay.addFilter("TraitZ ")
+    ZombieBuddy.LogOverlay.addFilter("ATA2Tuning")
     ZombieBuddy.LogOverlay.addFilter("can't find mod.info in mod dir")
+    ZombieBuddy.LogOverlay.addFilter("ignoring invalid ItemPicker")
+    ZombieBuddy.LogOverlay.addFilter("no room or building")
+    ZombieBuddy.LogOverlay.addFilter("no such mesh")
+    ZombieBuddy.LogOverlay.addFilter("no such texture")
+    ZombieBuddy.LogOverlay.addFilter("no such sound")
     ZombieBuddy.LogOverlay.addFilter("not found in ZONE_MAP")
+    ZombieBuddy.LogOverlay.addFilter("skinningData is null")
 end
 
 local function checkZombieBuddyInstallation()

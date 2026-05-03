@@ -143,8 +143,8 @@ public record JavaModInfo(
         String zbVersionMax = parsed.zbVersionMax();
 
         if (isEmpty(jarFilePath)) {
-            if (logMissingJarFile && Loader.g_verbosity > 0) {
-                Logger.info("No javaJarFile entry found in mod.info, skipping Java mod: " + modInfoFile);
+            if (logMissingJarFile) {
+                Logger.trace("No javaJarFile entry found in mod.info, skipping Java mod: " + modInfoFile);
             }
             return null;
         }

@@ -43,8 +43,8 @@ public class Patch_ZomboidFileSystem {
 
         @Patch.OnExit
         public static void exit(ArrayList<String> mods, @Patch.Local("t0") long t0) {
-            long vanillaElapsedMs = (System.nanoTime() - t0) / 1_000_000L;
-            if ( vanillaElapsedMs > 1000 ) Logger.info("ZomboidFileSystem.loadMods(" + mods.size() + " mods) took " + vanillaElapsedMs + " ms");
+            long elapsedMS = (System.nanoTime() - t0) / 1_000_000L;
+            if ( elapsedMS > 1000 ) Logger.info("ZomboidFileSystem.loadMods(" + mods.size() + " mods) took " + elapsedMS + " ms");
         }
     }
 
@@ -57,8 +57,8 @@ public class Patch_ZomboidFileSystem {
     // 
     //     @Patch.OnExit
     //     public static void exit(List<String> out, @Patch.Local("t0") long t0) {
-    //         long vanillaElapsedMs = (System.nanoTime() - t0) / 1_000_000L;
-    //         if ( vanillaElapsedMs > 1000 ) Logger.info("ZomboidFileSystem.getAllModFolders() took " + vanillaElapsedMs + " ms");
+    //         long elapsedMS = (System.nanoTime() - t0) / 1_000_000L;
+    //         if ( elapsedMS > 1000 ) Logger.info("ZomboidFileSystem.getAllModFolders() took " + elapsedMS + " ms");
     //     }
     // }
 
