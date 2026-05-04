@@ -1,3 +1,5 @@
+if not PZAPI or not PZAPI.ModOptions then return end
+
 local zbOptions = PZAPI.ModOptions:create("ZombieBuddy", "ZombieBuddy")
 
 local watermarkOpacity = zbOptions:addSlider(
