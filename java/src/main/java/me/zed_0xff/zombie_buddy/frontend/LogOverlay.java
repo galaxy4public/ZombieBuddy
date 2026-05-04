@@ -32,7 +32,7 @@ public class LogOverlay {
     private static final int KEY_GRAVE   = GLFW.GLFW_KEY_GRAVE_ACCENT;
     private static final int KEY_WORLD_1 = GLFW.GLFW_KEY_WORLD_1;
     
-    private record Line(String text, long timestamp) {}
+    private record Line(String text, long timestamp, int count) {}
     
     private static final ConcurrentLinkedDeque<Line> lines = new ConcurrentLinkedDeque<>();
     private static boolean enabled = true;
@@ -42,6 +42,7 @@ public class LogOverlay {
     private static long pausedAt = 0;  // When game was paused (0 = not paused)
     private static boolean wasPaused = false;
     private static final HashSet<String> filters = new HashSet<>();
+    private static final int DEDUP_WINDOW = 20;
 
     static {
         if (Agent.isExperimental()) {
@@ -117,30 +118,38 @@ public class LogOverlay {
         var oldLines = new java.util.ArrayList<>(lines);
         lines.clear();
         for (Line line : oldLines) {
-            lines.addLast(new Line(line.text, now));
+            lines.addLast(new Line(line.text, now, line.count));
         }
     }
     
     public static void addLine(String text) {
         if (Utils.isBlank(text)) return;
 
-        int nlpos = text.indexOf('\n');
-        if (nlpos >= 0 && nlpos < text.length() - 1) {
-            for (String line : text.split("\n")) {
-                addLine(line);
-            }
-            return;
-        }
+        // Strip trailing newline added by println
+        if (text.endsWith("\n")) text = text.substring(0, text.length() - 1);
+        if (Utils.isBlank(text)) return;
 
         for (String filter : filters) {
-            if (text.contains(filter)) {
-                return;
-            }
+            if (text.contains(filter)) return;
         }
-        
-        lines.addLast(new Line(text, System.currentTimeMillis()));
-        while (lines.size() > maxLines) {
-            lines.removeFirst();
+
+        long now = System.currentTimeMillis();
+        synchronized (lines) {
+            int scanned = 0;
+            int hash = text.hashCode();
+            Line found = null;
+            var it = lines.descendingIterator();
+            while (it.hasNext() && scanned < DEDUP_WINDOW) {
+                Line existing = it.next();
+                scanned++;
+                if (existing.text.hashCode() == hash) {
+                    it.remove();
+                    found = existing;
+                    break;
+                }
+            }
+            lines.addLast(new Line(text, now, found != null ? found.count + 1 : 1));
+            while (lines.size() > maxLines) lines.removeFirst();
         }
     }
     
@@ -184,7 +193,7 @@ public class LogOverlay {
             var oldLines = new java.util.ArrayList<>(lines);
             lines.clear();
             for (Line line : oldLines) {
-                lines.addLast(new Line(line.text, line.timestamp + pauseDuration));
+                lines.addLast(new Line(line.text, line.timestamp + pauseDuration, line.count));
             }
             pausedAt = 0;
         }
@@ -210,10 +219,18 @@ public class LogOverlay {
                 alpha = ALPHA_MAX * (1.0f - fadeProgress);
             }
             
-            y -= lineHeight;
+            String[] msgLines = line.text.split("\n", -1);
+            y -= lineHeight * msgLines.length;
             if (y < topLimit) break;
-            
-            textMgr.DrawString(font, MARGIN_LEFT, y, line.text, 0.5f, 1.0f, 0.5f, alpha);
+
+            for (int i = 0; i < msgLines.length; i++) {
+                String displayText = msgLines[i];
+                if (i == 0 && line.count > 1) {
+                    String badge = String.format("%-5d", line.count);
+                    displayText = displayText.length() >= 5 ? badge + displayText.substring(5) : badge;
+                }
+                textMgr.DrawString(font, MARGIN_LEFT, y + i * lineHeight, displayText, 0.5f, 1.0f, 0.5f, alpha);
+            }
         }
         
         // Update maxLines based on how many lines fit on screen
