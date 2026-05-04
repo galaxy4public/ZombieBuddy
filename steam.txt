@@ -114,6 +114,9 @@ Examples (block form, these go into Steam launch options):
     [*][b]Supported game versions?[/b]
     B41, B42.12-B42.17
 
+    [*][b]Can I hide ZB watermark?[/b]
+    Yes, in ModOptions. During game boot it is always visible.
+
     [*][b]WHY ALL LINKS ARE REMOVED FROM THIS PAGE AND COMMENTS DISABLED???!!![/b]
     Steam does that while it checks a newly uploaded mod version for viruses, I suppose. Everything should return to normal in about 5-10 minutes.
 [/list]
