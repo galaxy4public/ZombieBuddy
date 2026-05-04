@@ -39,10 +39,11 @@ public final class PatchEngine {
             net.bytebuddy.implementation.bind.annotation.This.class
             );
     private static final Set<Class<? extends Annotation>> ADVICE_PARAM_SPECIAL_ANNOTATIONS = Set.of(
-            Advice.Return.class,
             Advice.AllArguments.class,
             Advice.Local.class,
-            Advice.This.class
+            Advice.Return.class,
+            Advice.This.class,
+            Advice.Thrown.class
             );
 
     private static boolean hasAnnotation(Method method, List<Class<? extends Annotation>> annTypes) {

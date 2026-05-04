@@ -29,6 +29,7 @@ public @interface Patch {
   @Target(ElementType.METHOD)
   public @interface OnExit {
     Class<? extends Throwable> onThrowable() default NoException.class;
+    Class<? extends Throwable> suppress() default NoException.class;
   }
 
   public abstract static class NoException extends Throwable {}
@@ -39,6 +40,13 @@ public @interface Patch {
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Return {
+    boolean readOnly() default true;
+  }
+
+  /** Alias for net.bytebuddy.asm.Advice.Thrown - mods should use Patch.Thrown instead */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.PARAMETER)
+  public @interface Thrown {
     boolean readOnly() default true;
   }
   
