@@ -11,6 +11,7 @@ UI_EN = {
                             "<TEXT> Copy files from <H2>%2<TEXT> to <H2>%3<TEXT> and add <H2>%4<TEXT> to Steam launch options. <LINE> " ..
                             "<LINE> " ..
                             "<IMAGECENTRE:SCREENSHOT_PLACEHOLDER>",
+    UI_ZB_SuppressSandboxLog = "Suppress sandbox options logging",
     UI_ZB_WatermarkOpacity = "Watermark Opacity",
     UI_ZB_Install_Unix = "<H1> ZombieBuddy requires manual installation. <LINE> " ..
                          "<LINE> " ..
