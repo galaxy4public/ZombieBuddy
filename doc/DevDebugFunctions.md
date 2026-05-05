@@ -48,7 +48,7 @@ Returns metadata for a **callable** (Lua function or Java-exposed method):
 Returns a **1-based Lua array** of method signature strings, sorted alphabetically by method name.
 
 - For **Java objects:** uses reflection; each signature is `ReturnType name(ArgType, ...)`. Overloads appear as multiple entries.
-- For **Kahlua-exposed callables** (e.g. `getSoundManager().PlaySound`): uses `Utils.addInvokersInfo`; array entries are the `methodDebugData` strings (e.g. `"Audio obj:PlaySound(String arg1, boolean arg2, float arg3)\n"`).
+- For **Kahlua-exposed callables** (e.g. `getSoundManager().PlaySound`): uses `LuaUtils.addInvokersInfo`; array entries are the `methodDebugData` strings (e.g. `"Audio obj:PlaySound(String arg1, boolean arg2, float arg3)\n"`).
 
 `includePrivate`: include private and inherited methods (reflection only).
 

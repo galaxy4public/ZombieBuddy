@@ -15,9 +15,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import me.zed_0xff.zombie_buddy.Accessor;
-import me.zed_0xff.zombie_buddy.Utils;
-import me.zed_0xff.zombie_buddy.ZombieBuddy;
+import me.zed_0xff.zombie_buddy.*;
+
 import se.krka.kahlua.integration.annotations.LuaMethod;
 import se.krka.kahlua.integration.LuaReturn;
 import se.krka.kahlua.vm.JavaFunction;
@@ -89,7 +88,7 @@ public class zbUtils {
         // return an array of its overload signatures sorted by methodName.
         if (obj instanceof JavaFunction) {
             KahluaTable tmp = LuaManager.platform.newTable();
-            Utils.addInvokersInfo(tmp, obj);
+            LuaUtils.addInvokersInfo(tmp, obj);
             Object invokers = tmp.rawget("invokers");
             if (invokers instanceof KahluaTable invTbl) {
                 ArrayList<KahluaTable> invList = new ArrayList<>();

@@ -351,6 +351,8 @@ dependencies {
 tasks.withType(Test) {
     // Always run tests, even if build is up-to-date
     outputs.upToDateWhen { false }
+
+    jvmArgs += "-XX:+EnableDynamicAgentLoading"
     
     // Don't capture stdout/stderr - show it directly in console
     testLogging {

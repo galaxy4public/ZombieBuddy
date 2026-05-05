@@ -51,7 +51,7 @@ public class ZombieBuddy {
             var modTbl = LuaManager.platform.newTable();
             modTbl.rawset("id", modInfo.id());
             modTbl.rawset("jarPath", modInfo.jarPath());
-            modTbl.rawset("flags", Utils.mapToLuaTable(modInfo.flags().toMap()));
+            modTbl.rawset("flags", LuaUtils.mapToLuaTable(modInfo.flags().toMap()));
             tbl.rawset(modInfo.id(), modTbl);
         }
         return tbl;
@@ -113,7 +113,7 @@ public class ZombieBuddy {
             tbl.rawset("className", c.getName());
             tbl.rawset("simpleName", c.getSimpleName());
             tbl.rawset("name", obj.toString());
-            Utils.addInvokersInfo(tbl, obj);
+            LuaUtils.addInvokersInfo(tbl, obj);
             return tbl;
         }
         return null;

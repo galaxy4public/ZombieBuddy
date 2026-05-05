@@ -262,7 +262,7 @@ public class Loader {
     }
 
     private static boolean isJarAllowedByPolicy(String modId, JavaModInfo jModInfo, JarDecisionTable disk, String hash) {
-        Path jarPath = jModInfo != null ? jModInfo.getJarFileAsPath() : null;
+        Path jarPath = jModInfo != null ? jModInfo.jarPath() : null;
         if (hash == null) return false;
 
         String policy = g_jarPolicy;
@@ -424,7 +424,7 @@ public class Loader {
                     PreloadMods.remove(id);
                     continue;
                 }
-                entries.add(new PreloadEntry(id, javaPkgName, jarCanonicalPath, Utils.sha256Hex(jarCanonicalPath), JavaModInfo.workshopItemIdFromPath(jarCanonicalPath)));
+                entries.add(new PreloadEntry(id, javaPkgName, jarCanonicalPath, Utils.sha256Hex(jarCanonicalPath), JavaModInfo.workshopItemIdFromInfPath(preloadMod.infPath())));
             } catch (IOException ex) {
                 Logger.warn("Preload pkg '" + javaPkgName + "': cannot resolve JAR path " + preloadMod.jarPath() + "; removing.");
                 PreloadMods.remove(id);
@@ -564,6 +564,7 @@ public class Loader {
         mergedIds.addAll(PreloadMods.getIds()); // inject preloaded mod ids BEFORE actual mod list
         mergedIds.addAll(mods);
 
+        Boolean isB42 = null;
         for (String mod_id : mergedIds) {
             if (Utils.isBlank(mod_id)) continue;
             if (processedIds.contains(mod_id)) continue;
@@ -572,32 +573,21 @@ public class Loader {
             var mod = ChooseGameInfo.getAvailableModDetails(mod_id);
             if (mod == null) continue;
 
-            if (Accessor.hasPublicMethod(mod, "getVersionDir") && Accessor.hasPublicMethod(mod, "getCommonDir")) {
-                // B42+
-                // follow lua engine logic, load common dir first, then version dir
-                // so version dir could override common dir
-                JavaModInfo jModInfoCommon  = JavaModInfo.parse(mod.getCommonDir());
-                JavaModInfo jModInfoVersion = JavaModInfo.parse(mod.getVersionDir());
+            if (isB42 == null) {
+                isB42 = Accessor.hasPublicMethod(mod, "getVersionDir") && Accessor.hasPublicMethod(mod, "getCommonDir");
+            }
 
-                if (jModInfoCommon != null) {
-                    jModInfos.add(jModInfoCommon);
-                    jModIds.add(mod_id);
-                    if (jModInfoVersion == null) {
-                        // when mod.info is in common dir, but JAR is in version dir
-                        jModInfoVersion = JavaModInfo.parseMerged(mod.getCommonDir(), mod.getVersionDir());
-                    }
-                }
-                if (jModInfoVersion != null) {
-                    jModInfos.add(jModInfoVersion);
-                    jModIds.add(mod_id);
-                }
-            } else {
-                // B41
-                JavaModInfo jModInfo = JavaModInfo.parse(mod.getDir());
-                if (jModInfo != null) {
-                    jModInfos.add(jModInfo);
-                    jModIds.add(mod_id);
-                }
+            JavaModInfo jModInfo = isB42
+                ? Utils.firstNonNull(
+                        () -> JavaModInfo.parse( mod.getVersionDir() ),
+                        () -> JavaModInfo.parse( mod.getCommonDir() ),
+                        () -> JavaModInfo.parseMerged( mod.getCommonDir(), mod.getVersionDir() )
+                        )
+                : JavaModInfo.parse(mod.getDir()); // B41
+
+            if (jModInfo != null) {
+                jModInfos.add(jModInfo);
+                jModIds.add(mod_id);
             }
         }
 
@@ -657,7 +647,7 @@ public class Loader {
         for (int i = 0; i < jModInfos.size(); i++) {
             JavaModInfo jModInfo = jModInfos.get(i);
             String modId = i < jModIds.size() ? jModIds.get(i) : jModInfo.javaPkgName();
-            Path jarPath = jModInfo.getJarFileAsPath();
+            Path jarPath = jModInfo.jarPath();
             String hash = Utils.sha256Hex(jarPath);
             WorkshopItemID workshopItemId = jModInfo.getWorkshopItemID();
             SteamWorkshop.ItemDetails workshopDetails = workshopItemId != null ? workshopDetailsById.get(workshopItemId) : null;
@@ -665,8 +655,7 @@ public class Loader {
                 ? new SteamWorkshop.BanInfo(null, "Workshop id not found in mod path.")
                 : (workshopDetails != null ? workshopDetails.ban() : null);
             boolean steamBanned = banInfo != null && Boolean.TRUE.equals(banInfo.status());
-            modContexts.add(new ModCtx(modId, jarPath, hash, workshopItemId, workshopDetails, banInfo, steamBanned,
-                zbsCheck(jarPath, hash, workshopItemId, zbsCtx)));
+            modContexts.add(new ModCtx(modId, jarPath, hash, workshopItemId, workshopDetails, banInfo, steamBanned, zbsCheck(jarPath, hash, workshopItemId, zbsCtx)));
         }
         for (ModCtx ctx : modContexts) {
             untrustAuthorForBannedMod(
@@ -726,7 +715,7 @@ public class Loader {
                     // because the trust comes from the author record, not the specific JAR hash.
                     approvals.put(ctx.hash, Boolean.TRUE);
                     if (jModInfo.javaPreload() && PreloadMods.hasManifestPreload(ctx.jarPath)) {
-                        PreloadMods.add(ctx.modId, jModInfo.modInfoFile(), ctx.jarPath);
+                        PreloadMods.add(ctx.modId, jModInfo.infPath(), ctx.jarPath);
                     }
                     continue;
                 }
@@ -748,7 +737,7 @@ public class Loader {
                     ctx.modId,
                     ctx.workshopItemId,
                     ctx.jarPath,
-                    jModInfo.modInfoFile(),
+                    jModInfo.infPath(),
                     ctx.hash,
                     date,
                     decision,
@@ -877,7 +866,7 @@ public class Loader {
                 if (shouldSkipList.get(i)) {
                     JavaModInfo jModInfo = jModInfos.get(i);
                     String reason = i < skipReasons.size() ? skipReasons.get(i) : "";
-                    Logger.info("Excluded: " + jModInfo.modDir().toAbsolutePath() + reason);
+                    Logger.info("Excluded: " + jModInfo.infPath().toAbsolutePath() + reason);
                 }
             }
             
@@ -895,7 +884,7 @@ public class Loader {
         // Load only the mods that should be loaded
         for (int i = 0; i < jModInfos.size(); i++) {
             if (!shouldSkipList.get(i)) {
-                loadJar(jModInfos.get(i).getJarFileAsPath(), jModInfos.get(i).javaPkgName(), modContexts.get(i).hash);
+                loadJar(jModInfos.get(i).jarPath(), jModInfos.get(i).javaPkgName(), modContexts.get(i).hash);
             }
         }
     }
@@ -918,16 +907,17 @@ public class Loader {
     }
 
     static void printModList(ArrayList<JavaModInfo> jModInfos) {
-        int longestPathLength = 0;
+        int longestPkgLen = 0;
         for (JavaModInfo jModInfo : jModInfos) {
-            if (jModInfo.modDir().toAbsolutePath().toString().length() > longestPathLength) {
-                longestPathLength = jModInfo.modDir().toAbsolutePath().toString().length();
+            int len = jModInfo.javaPkgName().toString().length();
+            if (len > longestPkgLen) {
+                longestPkgLen = len;
             }
         }
 
-        String formatString = "    %-" + longestPathLength + "s %s";
+        String formatString = "    %-" + longestPkgLen + "s %s";
         for (JavaModInfo jModInfo : jModInfos) {
-            Logger.info(String.format(formatString, jModInfo.modDir().toAbsolutePath(), jModInfo.javaPkgName()));
+            Logger.info(String.format(formatString, jModInfo.javaPkgName(), jModInfo.jarPath().toAbsolutePath()));
         }
     }
 

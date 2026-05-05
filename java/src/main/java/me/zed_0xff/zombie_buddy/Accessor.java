@@ -21,6 +21,85 @@ public final class Accessor {
 
     private Accessor() {}
 
+    public static Query klass(String className) {
+        return Query.of(findClass(className));
+    }
+
+    public static Query klass(Class<?> cls) {
+        return Query.of(cls);
+    }
+
+    public static Query klass(Object obj) {
+        return Query.of(obj);
+    }
+
+    public static final class Query {
+        private final Object value;
+
+        private Query(Object value) {
+            this.value = value;
+        }
+
+        private static Query of(Object value) {
+            return new Query(value);
+        }
+
+        public Query field(String fieldName) {
+            if (value == null || Utils.isBlank(fieldName)) {
+                return of(null);
+            }
+            return of(tryGet(value, fieldName, null));
+        }
+
+        public Query staticField(String fieldName) {
+            if (value == null || Utils.isBlank(fieldName)) {
+                return of(null);
+            }
+            if (value instanceof Class<?> cls) {
+                return of(tryGet(cls, fieldName, null));
+            }
+            return of(tryGet(value.getClass(), fieldName, null));
+        }
+
+        public Query getInstance() {
+            if (value == null) {
+                return of(null);
+            }
+            Query viaMethod = call("getInstance");
+            return viaMethod.isPresent() ? viaMethod : staticField("instance");
+        }
+
+        public Query call(String methodName, Object... args) {
+            if (value == null || Utils.isBlank(methodName)) {
+                return of(null);
+            }
+            try {
+                return of(callByName(value, methodName, args));
+            } catch (ReflectiveOperationException | IllegalArgumentException e) {
+                return of(null);
+            }
+        }
+
+        public <T> Optional<T> as(Class<T> type) {
+            if (value == null || type == null || !type.isInstance(value)) {
+                return Optional.empty();
+            }
+            return Optional.of(type.cast(value));
+        }
+
+        public Optional<Object> asObject() {
+            return Optional.ofNullable(value);
+        }
+
+        public Object orElse(Object defaultValue) {
+            return value != null ? value : defaultValue;
+        }
+
+        public boolean isPresent() {
+            return value != null;
+        }
+    }
+
     /**
      * Gets the value of the named field on {@code obj}, or {@code defaultValue} if
      * the object is null, the field does not exist, or it cannot be read.
