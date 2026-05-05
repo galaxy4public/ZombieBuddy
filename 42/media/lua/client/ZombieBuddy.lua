@@ -14,6 +14,7 @@ if ZombieBuddy and ZombieBuddy.LogOverlay then
     ZombieBuddy.LogOverlay.addFilter("no such sound")
     ZombieBuddy.LogOverlay.addFilter("no such texture")
     ZombieBuddy.LogOverlay.addFilter("not found in ZONE_MAP")
+    ZombieBuddy.LogOverlay.addFilter("OreVein")
     ZombieBuddy.LogOverlay.addFilter("setGameSpeed")
     ZombieBuddy.LogOverlay.addFilter("skinningData is null")
     ZombieBuddy.LogOverlay.addFilter("TraitZ ")

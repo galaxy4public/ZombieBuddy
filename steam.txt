@@ -118,7 +118,7 @@ Examples (block form, these go into Steam launch options):
     Yes, in ModOptions. During game boot it is always visible.
 
     [*][b]WHY ALL LINKS ARE REMOVED FROM THIS PAGE AND COMMENTS DISABLED???!!![/b]
-    Steam does that while it checks a newly uploaded mod version for viruses, I suppose. Everything should return to normal in about 5-10 minutes.
+    Steam does that while it checks a newly uploaded mod version for viruses, I suppose. Everything should return to normal in 10..30 minutes, depending on how busy their system is.
 [/list]
 
 [h1]Links[/h1]

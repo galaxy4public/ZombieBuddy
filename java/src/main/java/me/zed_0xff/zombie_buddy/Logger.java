@@ -13,6 +13,12 @@ public class Logger {
     private static PrintStream out = System.out;
     private static PrintStream err = System.err;
 
+    public static final int TRACE =  2;
+    public static final int DEBUG =  1;
+    public static final int INFO  =  0;
+    public static final int WARN  = -1;
+    public static final int ERROR = -2;
+
     private static void out_msg(String msg) {
         msg = PREFIX + msg;
         try {
@@ -33,37 +39,28 @@ public class Logger {
         }
     }
 
-    public static void trace(String message, Object... args) {
-        if (Loader.g_verbosity < 2) return;
+    public static void log(int level, String message, Object... args) {
+        if (Loader.g_verbosity < level) return;
 
         if (args != null && args.length > 0) {
             message += " " + formatArgs(args);
         }
 
-        out_msg("[t] " + message);
-    }
-
-    public static void debug(String message, Object... args) {
-        if (Loader.g_verbosity < 1) return;
-
-        if (args != null && args.length > 0) {
-            message += " " + formatArgs(args);
+        switch (level) {
+            case TRACE -> out_msg("[t] " + message);
+            case DEBUG -> out_msg("[d] " + message);
+            case INFO  -> out_msg(message);
+            case WARN  -> err_msg("[?] " + message);
+            case ERROR -> err_msg("[!] " + message);
+            default -> out_msg("[x] " + message);
         }
-
-        out_msg("[d] " + message);
     }
 
-    public static void info(String message) {
-        out_msg(message);
-    }
-
-    public static void warn(String message) {
-        err_msg("[?] " + message);
-    }
-
-    public static void error(String message) {
-        err_msg("[!] " + message);
-    }
+    public static void trace(String message, Object... args) { log(TRACE, message, args); }
+    public static void debug(String message, Object... args) { log(DEBUG, message, args); }
+    public static void info( String message, Object... args) { log(INFO,  message, args); }
+    public static void warn( String message, Object... args) { log(WARN,  message, args); }
+    public static void error(String message, Object... args) { log(ERROR, message, args); }
 
     /** Format an object for logging: strings quoted, arrays expanded, length capped. */
     public static String formatArg(Object o) {

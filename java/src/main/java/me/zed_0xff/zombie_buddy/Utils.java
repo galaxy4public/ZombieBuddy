@@ -11,6 +11,7 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.function.Supplier;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -25,6 +26,14 @@ public final class Utils {
     private Utils() {}
 
     private static final Pattern PRERELEASE_PATTERN = Pattern.compile("^([a-z]+)(\\d*)");
+
+    static <T> T firstNonNull(Supplier<T>... suppliers) {
+        for (Supplier<T> s : suppliers) {
+            T v = s.get();
+            if (v != null) return v;
+        }
+        return null;
+    }
 
     public static boolean isClient() {
         return LuaManager.GlobalObject.isClient();
