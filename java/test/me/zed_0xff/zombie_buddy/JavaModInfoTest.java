@@ -12,7 +12,8 @@ import static me.zed_0xff.zombie_buddy.SteamWorkshop.WorkshopItemID;
 import java.nio.file.Path;
 
 class JavaModInfoTest {
-    static final String CACHE_DIR = System.getProperty("user.home") + File.separator + "Zomboid";
+    private static final String HOME_DIR  = System.getProperty("user.home");
+    private static final String CACHE_DIR = HOME_DIR + File.separator + "Zomboid";
 
     private MockedStatic<Utils> utilsMock;
     @BeforeEach
@@ -31,8 +32,11 @@ class JavaModInfoTest {
     void workshopItemIdFromInfPath_valid() {
         assertEquals(
                 new WorkshopItemID(3718604798L),
-                JavaModInfo.workshopItemIdFromInfPath(
-                    Path.of(CACHE_DIR, "Workshop/ZBExhume41/Contents/mods/ZBExhume41/common/mod.info"))
+                JavaModInfo.workshopItemIdFromInfPath( Path.of(CACHE_DIR, "Workshop/ZBExhume41/Contents/mods/ZBExhume41/common/mod.info"))
+                );
+        assertEquals(
+                new WorkshopItemID(2986022978L),
+                JavaModInfo.workshopItemIdFromInfPath( Path.of(HOME_DIR, "/Library/Application Support/Steam/steamapps/workshop/content/108600/2986022978/mods/DoubleDeckerBusInterior"))
                 );
     }
 
