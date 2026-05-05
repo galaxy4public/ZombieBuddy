@@ -86,11 +86,11 @@ public class Agent {
         // fails to expose via annotation at this point (in zbspec), so expose manually
         Exposer.exposeClass(ZombieBuddy.class);
 
-        Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches", null);
+        Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches", null, Loader.Phase.PREMAIN);
 
         // Load experimental patches if enabled
         if (isExperimental()) {
-            Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches.experimental", null);
+            Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches.experimental", null, Loader.Phase.PREMAIN);
         }
         
         if( arguments.containsKey("patches_jar")) {
@@ -119,7 +119,7 @@ public class Agent {
             }
 
             for (PatchesJarEntry entry : patchesJarEntries) {
-                Loader.loadJar(entry.jarPath, entry.packageName, null);
+                Loader.loadJar(entry.jarPath, entry.packageName, null, Loader.Phase.PREMAIN);
             }
         }
         

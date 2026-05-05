@@ -6,8 +6,8 @@ import java.nio.file.Path;
 
 import me.zed_0xff.zombie_buddy.*;
 
-public class Main {
-    public static void main(String[] args) {
+public class PreMain {
+    public static void premain(String[] args) {
         JavaStateDumper.init();
 
         // Configure HTTP server host, port and timeout from Agent.arguments (if provided)

@@ -38,9 +38,12 @@ def run_game(zb_args = {}, pz_args = [])
   ENV['PZ_ARGS'].to_s.split.each do |arg|
     pz_args << arg
   end
-  zb_args[:experimental] = true
+
+  zb_args[:experimental]    = true
+  zb_args[:lua_server_port] = 4444
+
   pargs = zb_args.map { |k, v| "-Dzb.#{k}=#{v}" }
-  sh File.join(GAME_ROOT, "MacOS/JavaAppLauncher"), "-javaagent:ZombieBuddy.jar", *pargs, "--", *pz_args
+  sh File.join(GAME_ROOT, "MacOS/JavaAppLauncher"), "-javaagent:ZombieBuddy.jar=prop_prefix=zb", *pargs, "--", *pz_args
 end
 
 desc "run the game"

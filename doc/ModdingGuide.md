@@ -39,6 +39,7 @@ ZBVersionMax=1.5.0
 | `javaPkgName` | The package name for your Main class and patches. **Mandatory** if `javaJarFile` is specified. |
 | `ZBVersionMin` | (Optional) Minimum ZombieBuddy version required (inclusive) |
 | `ZBVersionMax` | (Optional) Maximum ZombieBuddy version required (inclusive) |
+| `javaPreload` | (Optional) Set to `true` to request early loading. The JAR must also be signed and declare preload support in its manifest. |
 
 ### Client/server JAR paths
 
@@ -90,6 +91,51 @@ public class Main {
 ```
 
 **Patches-only mod**: If your mod only contains patches and doesn't need initialization code, you can omit the Main class entirely. ZombieBuddy will automatically discover and apply all `@Patch` annotated classes in the package.
+
+---
+
+## Preload Mods
+
+Signed mods can request early loading with `javaPreload=true` in `mod.info` and the matching preload manifest entry in the JAR. When the user approves preload, ZombieBuddy loads the JAR during Java agent startup on the next game launch.
+
+Add the manifest attribute to the JAR you distribute:
+
+```text
+ZB-Preload: true
+```
+
+With Gradle's standard `jar` task:
+
+```gradle
+jar {
+    manifest {
+        attributes(
+            'ZB-Preload': 'true'
+        )
+    }
+}
+```
+
+If you distribute a shaded JAR, add the same attribute to `shadowJar` instead, or in addition:
+
+```gradle
+shadowJar {
+    manifest {
+        attributes(
+            'ZB-Preload': 'true'
+        )
+    }
+}
+```
+
+ZombieBuddy requires both `javaPreload=true` in `mod.info` and `ZB-Preload: true` in the JAR manifest. This prevents a loose `mod.info` edit from silently turning an ordinary signed JAR into an early-loaded one.
+
+For preloaded mods, lifecycle entry points are split by phase:
+
+- `PreMain.premain(String[] args)` is executed at ZombieBuddy `premain` time, before regular Project Zomboid mod loading.
+- `Main.main(String[] args)` is still executed later at the regular Java mod load time.
+
+Use `PreMain` only for work that truly needs early hooks. Put normal initialization in `Main` so it runs with the rest of the mod-loading flow.
 
 ---
 

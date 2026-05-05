@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.jar.JarFile;
@@ -29,6 +30,11 @@ import zombie.GameWindow;
 import zombie.gameStates.ChooseGameInfo;
 
 public class Loader {
+    enum Phase {
+        PREMAIN,
+        MAIN
+    }
+
     // Package-private: only ZombieBuddy's own classes may touch the instrumentation handle.
     // External mods (different package) cannot access this field directly, which prevents
     // an approved mod from gaining unrestricted bytecode manipulation of the entire JVM.
@@ -111,9 +117,7 @@ public class Loader {
         return r != ZBSVerifier.CheckResult.DISABLED && !r.flags().has(MF_VALID);
     }
 
-            static final Set<Path>   g_known_jars     = new HashSet<>(); // used by PatchEngine
-    private static final Set<String> g_known_mains    = new HashSet<>();
-    private static final Set<String> g_known_packages = new HashSet<>();
+    static final Set<Path> g_known_jars = new HashSet<>(); // used by PatchEngine
 
     // Persisted entries loaded from disk - the source of truth for saving
     private static List<ModApprovalsStore.ModEntry> g_storedEntries = new ArrayList<>();
@@ -356,7 +360,7 @@ public class Loader {
             if (!nextConfig.equals(g_config)) {
                 g_config = nextConfig;
                 g_configDirty = true;
-                Watermark.setMidLine("New preload mod \"" + id + "\" added. Restart the game to activate it.");
+                Watermark.setMidLine("Preload mod \"" + id + "\" added/updated. Restart recommended.");
             }
         }
 
@@ -442,7 +446,8 @@ public class Loader {
                 PreloadMods.remove(entry.id());
                 continue;
             }
-            loadJar(entry.canJarPath(), entry.javaPkgName(), entry.hash());
+            loadJar(entry.canJarPath(), entry.javaPkgName(), entry.hash(), Phase.PREMAIN);
+            g_known_jars.remove(entry.canJarPath()); // remove from known_jars to allow Main.main run
             g_jarLoadStatus.put(entry.canJarPath(), new JavaModLoadState(
                         entry.id(),
                         entry.canJarPath(),
@@ -475,7 +480,6 @@ public class Loader {
             return false;
         }
         if (g_known_jars.contains(jarPath)) {
-            Logger.info("" + jarPath + " already on classpath, skipping.");
             return false;
         }
         if (!validatePackageInJar(jarPath, packageName)) {
@@ -884,7 +888,7 @@ public class Loader {
         // Load only the mods that should be loaded
         for (int i = 0; i < jModInfos.size(); i++) {
             if (!shouldSkipList.get(i)) {
-                loadJar(jModInfos.get(i).jarPath(), jModInfos.get(i).javaPkgName(), modContexts.get(i).hash);
+                loadJar(jModInfos.get(i).jarPath(), jModInfos.get(i).javaPkgName(), modContexts.get(i).hash, Phase.MAIN);
             }
         }
     }
@@ -906,23 +910,23 @@ public class Loader {
         Callbacks.onDisplayCreate.register(Loader::checkShiftKey);
     }
 
+    private static int _maxPkgLen = 0;
     static void printModList(ArrayList<JavaModInfo> jModInfos) {
-        int longestPkgLen = 0;
         for (JavaModInfo jModInfo : jModInfos) {
             int len = jModInfo.javaPkgName().toString().length();
-            if (len > longestPkgLen) {
-                longestPkgLen = len;
+            if (len > _maxPkgLen) {
+                _maxPkgLen = len;
             }
         }
 
-        String formatString = "    %-" + longestPkgLen + "s %s";
+        String formatString = "    %-" + _maxPkgLen + "s %s";
         for (JavaModInfo jModInfo : jModInfos) {
             Logger.info(String.format(formatString, jModInfo.javaPkgName(), jModInfo.jarPath().toAbsolutePath()));
         }
     }
 
     // called by Agent and Loader
-    static boolean loadJar(Path jarPath, String packageName, String approvedHash) {
+    static boolean loadJar(Path jarPath, String packageName, String approvedHash, Phase phase) {
         if (!Files.isRegularFile(jarPath)) {
             Logger.error("JAR not found: " + jarPath);
             return false;
@@ -934,53 +938,64 @@ public class Loader {
         if (!addJarToClasspath(jarPath, packageName, approvedHash)) {
             return false;
         }
-        ApplyPatchesFromPackage(packageName, null);
-        return true;
+        return ApplyPatchesFromPackage(packageName, null, phase);
     }
 
-    // called both for ZB bundled patches and external mods
-    static void ApplyPatchesFromPackage(String packageName, ClassLoader modLoader) {
-        if (g_known_packages.contains(packageName)) {
-            Logger.debug("Patches from package " + packageName + " already applied, skipping.");
-            return;
+    private static final Set<String> _known_mains = new HashSet<>();
+    private static final HashMap<String, EnumSet<Phase>> _known_package_phases = new HashMap<>();
+
+    // called by Agent and Loader
+    static boolean ApplyPatchesFromPackage(String packageName, ClassLoader modLoader, Phase phase) {
+        EnumSet<Phase> phases =
+            _known_package_phases.computeIfAbsent(packageName, k -> EnumSet.noneOf(Phase.class));
+
+        if (!phases.add(phase)) {
+            final String pkgStr = _maxPkgLen > 0 ? String.format("%-" + _maxPkgLen + "s", packageName) : packageName;
+            Logger.debug("package " + pkgStr + " phase " + phase + " already applied, skipping.");
+            return false;
         }
-        g_known_packages.add(packageName);
 
-        // Load and invoke optional Main class
-        String mainClassName = packageName + ".Main";
-        if (g_known_mains.contains(mainClassName)) {
-            Logger.debug("Java main class " + mainClassName + " already loaded, skipping.");
+        // Load and invoke optional [Pre]Main class
+        String mainClassName = packageName + "." + (phase == Phase.PREMAIN ? "PreMain" : "Main");
+        if (_known_mains.contains(mainClassName)) {
+            Logger.debug("Java " + phase + " class " + mainClassName + " already loaded, skipping.");
         } else {
-            g_known_mains.add(mainClassName);
+            _known_mains.add(mainClassName);
 
-            Logger.info("trying to load " + mainClassName);
             Class<?> cls = Accessor.findClass(mainClassName);
+            Logger.info("trying to load " + mainClassName + ": " + cls);
             if (cls != null) {
-                try_call_main(cls);
+                try_call_main(cls, phase);
             }
         }
 
-        PatchEngine.applyPatches(packageName, modLoader);
+        // only apply patches on the first phase that loads this package
+        if (phases.size() == 1) {
+            PatchEngine.applyPatches(packageName, modLoader);
+        }
+        return true;
     }
 
-    static void try_call_main(Class<?> cls) {
-        Method main = null;
+    static void try_call_main(Class<?> cls, Phase phase) {
+        final String methodName = phase == Phase.PREMAIN ? "premain" : "main";
+
+        Method method = null;
         try {
-            main = cls.getMethod("main", String[].class);
+            method = cls.getMethod(methodName, String[].class);
         } catch (java.lang.NoSuchMethodException e) {
             return;
-        } catch (Exception e) {
-            Logger.error("" + cls + ": error getting main(): " + e);
+        } catch (Throwable t) {
+            Logger.error(cls + ": error getting " + methodName + "(): " + t);
             return;
         }
 
-        // main cannot be null here if getMethod() succeeded
+        // method cannot be null here if getMethod() succeeded
         try {
             String[] args = {}; // no arguments for now
-            main.invoke(null, (Object) args);
-            Logger.info("" + cls + ": main() invoked successfully");
-        } catch (Exception e) {
-            Logger.error("" + cls + ": error invoking main(): " + e);
+            method.invoke(null, (Object) args);
+            Logger.info(cls + ": method " + methodName + "() invoked successfully");
+        } catch (Throwable t) {
+            Logger.error(cls + ": error invoking " + methodName + "(): " + t);
         }
     }
 

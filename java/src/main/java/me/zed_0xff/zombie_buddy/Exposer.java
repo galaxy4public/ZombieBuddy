@@ -4,6 +4,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -127,13 +128,29 @@ public class Exposer {
         return true;
     }
 
+    public static void exposeMethod(Class<?> cls, String methodName) {
+        if (cls == null || Utils.isBlank(methodName)) {
+            Logger.error("exposeMethod(): cls and methodName must be /non-empty:", cls, methodName);
+            return;
+        }
+        g_exposed_methods.computeIfAbsent(cls, k -> new HashSet<>()).add(methodName);
+        // If exposer is already available, expose immediately (for mods loaded after initial exposure)
+        if (LuaManager.exposer != null && LuaManager.env != null) {
+            exposeMethodNow(cls, methodName);
+        }
+    }
+
     public static void exposeMethod(String className, String methodName) {
+        if (Utils.isBlank(className) || Utils.isBlank(methodName)) {
+            Logger.error("exposeMethod(): className and methodName must be non-empty:", className, methodName);
+            return;
+        }
         Class<?> cls = Accessor.findClass(className);
         if (cls == null) {
             Logger.warn("exposeMethod(\"" + className + "\", \"" + methodName + "\"): class not found");
             return;
         }
-        g_exposed_methods.computeIfAbsent(cls, k -> new HashSet<>()).add(methodName);
+        exposeMethod(cls, methodName);
     }
 
     public static List<Class<?>> getExposedClasses() {
@@ -150,8 +167,8 @@ public class Exposer {
             Logger.error("LuaManager.exposer is null!");
             return;
         }
-        var env = LuaManager.env;
-        if (env == null) {
+        var staticBase = LuaManager.env;
+        if (staticBase == null) {
             Logger.error("LuaManager.env is null!");
             return;
         }
@@ -186,8 +203,8 @@ public class Exposer {
             try {
                 Logger.info("Exposing global functions from class: " + cls.getName());
                 exposer.exposeGlobalFunctions(instance);
-            } catch (Exception e) {
-                Logger.error("exposeGlobalFunctions(" + cls.getName() + "): " + e.getMessage());
+            } catch (Throwable t) {
+                Logger.error("exposeGlobalFunctions(" + cls.getName() + "): " + t.getMessage());
             }
         }
 
@@ -195,18 +212,45 @@ public class Exposer {
         for (var entry : g_exposed_methods.entrySet()) {
             Class<?> cls = entry.getKey();
             for (String methodName : entry.getValue()) {
-                Logger.info("Exposing method " + cls.getName() + "." + methodName + "()");
-                for (var method : cls.getMethods()) {
-                    if (method.getName().equals(methodName)) {
-                        try {
-                            exposer.exposeMethod(cls, method, method.getName(), env);
-                        } catch (Exception e) {
-                            Logger.error("exposeMethod(" + cls.getName() + ", " + methodName + "): " + e.getMessage());
+                exposeMethodNow(cls, methodName);
+            }
+        }
+    }
+
+    private static void exposeMethodNow(Class<?> cls, String methodName) {
+        var exposer    = LuaManager.exposer;
+        var staticBase = LuaManager.env;
+        var methods    = Accessor.findMethodsByName(cls, methodName);
+
+        for (var method : methods) {
+            if (method.getName().equals(methodName)) {
+                try {
+                    if (isStatic(method)) {
+                        Logger.info("Exposing static method " + cls.getName() + "." + methodName + "()");
+                        KahluaTable container = (KahluaTable) staticBase.rawget(cls.getSimpleName());
+                        if (container == null) {
+                            // replicate LuaJavaClassExposer.exposeStatics() logic
+                            String[] packageStructure = cls.getName().replaceAll("\\$", ".").split("\\.");
+                            container = (KahluaTable) Accessor.callByName(exposer, "createTableStructure", staticBase, packageStructure);
+                            if (container == null) {
+                                Logger.error("Failed to create table structure for static method exposure of " + cls.getName());
+                                continue;
+                            }
                         }
+                        exposer.exposeGlobalClassFunction(container, cls, method, method.getName());
+                    } else {
+                        Logger.info("Exposing method " + cls.getName() + "." + methodName + "()");
+                        exposer.exposeMethod(cls, method, method.getName(), staticBase);
                     }
+                } catch (Throwable t) {
+                    Logger.error("error exposing method", cls, method, t.getMessage());
                 }
             }
         }
+    }
+
+    private static boolean isStatic(Member member) {
+        return Modifier.isStatic(member.getModifiers());
     }
 
     private static KahluaTable getOrCreateParentTable(KahluaTable root, String path) {
