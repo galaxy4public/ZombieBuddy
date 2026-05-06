@@ -19,6 +19,7 @@ import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.jar.JarFile;
 import java.util.List;
 import java.util.Map;
@@ -548,7 +549,54 @@ public class Loader {
         return known != null && !Utils.isBlank(known.name) ? known.name : sid.toString();
     }
 
+    private static final List<String> PINNED_MOD_ORDER = List.of(
+        "ZombieBuddy",
+        "zdk",
+        "ZModUnbork"
+    );
+
+    private static void autoFixModOrder(ArrayList<String> mods) {
+        if (Utils.isBlank(mods)) {
+            return;
+        }
+        Map<String, Integer> before = pinnedModIndices(mods);
+        int targetIndex = 0;
+        for (String modId : before.keySet()) {
+            moveModToIndex(mods, modId, targetIndex);
+            targetIndex++;
+        }
+        for (Map.Entry<String, Integer> entry : before.entrySet()) {
+            String modId = entry.getKey();
+            int oldIndex = entry.getValue();
+            int newIndex = mods.indexOf(modId);
+            if (newIndex != oldIndex) {
+                Logger.info("Auto-fix mod order: " + oldIndex + " -> " + newIndex + " " + modId);
+            }
+        }
+    }
+
+    private static Map<String, Integer> pinnedModIndices(List<String> mods) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (String modId : PINNED_MOD_ORDER) {
+            int index = mods.indexOf(modId);
+            if (index >= 0) {
+                out.put(modId, index);
+            }
+        }
+        return out;
+    }
+
+    private static void moveModToIndex(ArrayList<String> mods, String modId, int index) {
+        int oldIndex = mods.indexOf(modId);
+        if (oldIndex < 0) return;
+        mods.remove(oldIndex);
+        mods.add(Math.min(index, mods.size()), modId);
+    }
+
     public static void loadMods(ArrayList<String> mods) {
+        if (g_config.auto_fix_mod_order()) {
+            autoFixModOrder(mods);
+        }
         ArrayList<JavaModInfo> jModInfos = new ArrayList<>();
         ArrayList<String> jModIds = new ArrayList<>();
         HashSet<String> processedIds = new HashSet<>();
@@ -1036,5 +1084,15 @@ public class Loader {
         g_prev_modSet = g_curr_modSet;
         g_curr_modSetID = null;
         g_curr_modSet = null;
+    }
+
+    public static void setAutoFixModOrder(boolean value) {
+        Config newConfig = g_config.withAutoFixModOrder(value);
+        if (newConfig.equals(g_config)) {
+            return;
+        }
+        g_config = newConfig;
+        Config.save(g_config);
+        g_configDirty = false;
     }
 }

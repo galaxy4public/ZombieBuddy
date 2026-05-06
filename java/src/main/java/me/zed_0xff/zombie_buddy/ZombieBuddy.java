@@ -39,9 +39,8 @@ public class ZombieBuddy {
         return "ZombieBuddy v" + version;
     }
 
-    /** Current Java-mod JAR policy: "prompt", "deny-new", or "allow-all". */
-    public static String getPolicy() {
-        return Loader.getPolicy();
+    public static void setAutoFixModOrder(boolean value) {
+        Loader.setAutoFixModOrder(value);
     }
 
     // lua-facing variant of Loader.getActiveJavaMods(). Returns a list of modIds for JARs that were loaded this run.

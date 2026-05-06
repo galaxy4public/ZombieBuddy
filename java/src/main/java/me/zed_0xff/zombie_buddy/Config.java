@@ -13,7 +13,8 @@ import java.util.Map;
 
 record Config(
     List<SteamID64> trusted_authors,
-    Map<String, Config.PreloadMod> preload_mods
+    Map<String, Config.PreloadMod> preload_mods,
+    boolean auto_fix_mod_order
 ) {
     record PreloadMod(
         Path infPath,
@@ -21,6 +22,7 @@ record Config(
     ) {}
 
     static final String JSON_FILE_NAME = "config.json";
+    private static final Config DEFAULT = new Config(new ArrayList<>(), new LinkedHashMap<>(), true);
 
     Config {
         trusted_authors = normalizeTrustedAuthors(trusted_authors);
@@ -28,7 +30,7 @@ record Config(
     }
 
     Config() {
-        this(new ArrayList<>(), new LinkedHashMap<>());
+        this(DEFAULT.trusted_authors, DEFAULT.preload_mods, DEFAULT.auto_fix_mod_order);
     }
 
     static Path jsonPath() {
@@ -39,17 +41,17 @@ record Config(
         Path path = jsonPath();
         try {
             if (!Files.exists(path)) {
-                return new Config();
+                return defaultConfig();
             }
             String json = Files.readString(path, StandardCharsets.UTF_8);
             if (Utils.isBlank(json)) {
-                return new Config();
+                return defaultConfig();
             }
             Config config = ZBGson.PRETTY.fromJson(json, Config.class);
-            return config != null ? config : new Config();
+            return config != null ? config : defaultConfig();
         } catch (Exception e) {
             Logger.error("Could not load config: " + e);
-            return new Config();
+            return defaultConfig();
         }
     }
 
@@ -57,11 +59,15 @@ record Config(
         try {
             Path path = jsonPath();
             Files.createDirectories(path.getParent());
-            Utils.writeFileAtomic(path, ZBGson.PRETTY.toJson(config != null ? config : new Config()), StandardCharsets.UTF_8);
+            Utils.writeFileAtomic(path, ZBGson.PRETTY.toJson(config != null ? config : defaultConfig()), StandardCharsets.UTF_8);
             Logger.info("ZombieBuddy config written to " + path);
         } catch (Exception e) {
             Logger.error("Could not save config: " + e);
         }
+    }
+
+    private static Config defaultConfig() {
+        return new Config(DEFAULT.trusted_authors, DEFAULT.preload_mods, DEFAULT.auto_fix_mod_order);
     }
 
     boolean trustsAuthor(SteamID64 authorId) {
@@ -69,42 +75,60 @@ record Config(
     }
 
     Config withTrustedAuthor(SteamID64 authorId) {
-        if (authorId == null || trusted_authors.contains(authorId)) {
-            return this;
-        }
-        List<SteamID64> out = new ArrayList<>(trusted_authors);
-        out.add(authorId);
-        return new Config(out, preload_mods);
+        return withTrustedAuthor(authorId, true);
     }
 
     Config withoutTrustedAuthor(SteamID64 authorId) {
-        if (authorId == null || !trusted_authors.contains(authorId)) {
-            return this;
-        }
-        List<SteamID64> out = new ArrayList<>(trusted_authors);
-        out.remove(authorId);
-        return new Config(out, preload_mods);
+        return withTrustedAuthor(authorId, false);
     }
 
     Config withPreloadMod(String id, PreloadMod mod) {
-        if (Utils.isBlank(id)
-                || mod == null
-                || Utils.isBlank(mod.infPath())
-                || Utils.isBlank(mod.jarPath())) {
-            return this;
-        }
-        Map<String, PreloadMod> out = new LinkedHashMap<>(preload_mods);
-        out.put(id, mod);
-        return new Config(trusted_authors, out);
+        return withPreloadMod(id, mod, true);
     }
 
     Config withoutPreloadMod(String id) {
-        if (Utils.isBlank(id) || !preload_mods.containsKey(id)) {
+        return withPreloadMod(id, null, false);
+    }
+
+    Config withAutoFixModOrder(boolean value) {
+        if (value == auto_fix_mod_order) {
+            return this;
+        }
+        return new Config(trusted_authors, preload_mods, value);
+    }
+
+    private Config withTrustedAuthor(SteamID64 authorId, boolean trusted) {
+        if (authorId == null || trusted_authors.contains(authorId) == trusted) {
+            return this;
+        }
+        List<SteamID64> out = new ArrayList<>(trusted_authors);
+        if (trusted) {
+            out.add(authorId);
+        } else {
+            out.remove(authorId);
+        }
+        return withTrustedAuthors(out);
+    }
+
+    private Config withTrustedAuthors(List<SteamID64> trustedAuthors) {
+        return new Config(trustedAuthors, preload_mods, auto_fix_mod_order);
+    }
+
+    private Config withPreloadMod(String id, PreloadMod mod, boolean enabled) {
+        if (Utils.isBlank(id) || (enabled && !isValidPreloadMod(mod)) || (!enabled && !preload_mods.containsKey(id))) {
             return this;
         }
         Map<String, PreloadMod> out = new LinkedHashMap<>(preload_mods);
-        out.remove(id);
-        return new Config(trusted_authors, out);
+        if (enabled) {
+            out.put(id, mod);
+        } else {
+            out.remove(id);
+        }
+        return withPreloadMods(out);
+    }
+
+    private Config withPreloadMods(Map<String, PreloadMod> preloadMods) {
+        return new Config(trusted_authors, preloadMods, auto_fix_mod_order);
     }
 
     private static List<SteamID64> normalizeTrustedAuthors(List<SteamID64> input) {
@@ -124,14 +148,15 @@ record Config(
         if (input != null) {
             for (Map.Entry<String, PreloadMod> entry : input.entrySet()) {
                 PreloadMod mod = entry.getValue();
-                if (!Utils.isBlank(entry.getKey())
-                        && mod != null
-                        && !Utils.isBlank(mod.infPath())
-                        && !Utils.isBlank(mod.jarPath())) {
+                if (!Utils.isBlank(entry.getKey()) && isValidPreloadMod(mod)) {
                     out.put(entry.getKey(), mod);
                 }
             }
         }
         return out;
+    }
+
+    private static boolean isValidPreloadMod(PreloadMod mod) {
+        return mod != null && !Utils.isBlank(mod.infPath()) && !Utils.isBlank(mod.jarPath());
     }
 }
