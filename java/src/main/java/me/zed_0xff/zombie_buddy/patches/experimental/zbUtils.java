@@ -145,6 +145,7 @@ public class zbUtils {
         for (String name : names) {
             ArrayList<String> sigs = byName.get(name);
             if (Utils.isBlank(sigs)) continue;
+
             Collections.sort(sigs);
             for (String sig : sigs) {
                 outArr.rawset(Double.valueOf(idx++), sig);

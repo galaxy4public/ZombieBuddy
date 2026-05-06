@@ -29,7 +29,7 @@ local suppressSandboxLog = zbOptions:addTickBox(
 
 local function onChangeSuppressSandboxLog(self, value)
     if ZombieBuddy and ZombieBuddy.Patches and ZombieBuddy.Patches.GameLoadingState then
-        ZombieBuddy.Patches.GameLoadingState.setSuppress(value)
+        ZombieBuddy.Patches.GameLoadingState.setSuppressSandboxLog(value)
     end
 end
 
@@ -44,7 +44,7 @@ Events.OnMainMenuEnter.Add(function()
     if ZombieBuddy.Watermark and ZombieBuddy.Watermark.setAlpha then
         ZombieBuddy.Watermark.setAlpha(watermarkOpacity:getValue())
     end
-    if ZombieBuddy.Patches and ZombieBuddy.Patches.GameLoadingState and ZombieBuddy.Patches.GameLoadingState.setSuppress then
-        ZombieBuddy.Patches.GameLoadingState.setSuppress(suppressSandboxLog:getValue())
+    if ZombieBuddy.Patches and ZombieBuddy.Patches.GameLoadingState and ZombieBuddy.Patches.GameLoadingState.setSuppressSandboxLog then
+        ZombieBuddy.Patches.GameLoadingState.setSuppressSandboxLog(suppressSandboxLog:getValue())
     end
 end)
