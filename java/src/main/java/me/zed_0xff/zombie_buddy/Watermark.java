@@ -81,8 +81,8 @@ public final class Watermark {
 
     private static boolean isEnabled() {
         return _in_init
-                || !GameWindow.isIngameState()
-                || GameTime.isGamePaused() && !UIManager.isShowPausedMessage();
+                || !GameWindow.isIngameState();
+                // || GameTime.isGamePaused() && !UIManager.isShowPausedMessage();
     }
 
     private static void draw() {
