@@ -1,6 +1,5 @@
 package me.zed_0xff.zombie_buddy;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.List;
@@ -34,28 +33,20 @@ public final class LuaUtils {
             Class<?> invokerClass = list.get(0).getClass();
             if (!"se.krka.kahlua.integration.expose.LuaJavaInvoker".equals(invokerClass.getName())) return;
 
-            Field clazzField = invokerClass.getDeclaredField("clazz");
-            clazzField.setAccessible(true);
-            Field nameField = invokerClass.getDeclaredField("name");
-            nameField.setAccessible(true);
-            Field callerField = invokerClass.getDeclaredField("caller");
-            callerField.setAccessible(true);
-
             var invokersTbl = LuaManager.platform.newTable();
             for (int i = 0; i < list.size(); i++) {
                 Object inv = list.get(i);
+                Class<?> targetClass = Accessor.tryGet(inv, "clazz", null);
+                String methodName = Accessor.tryGet(inv, "name", null);
+                if (targetClass == null || methodName == null) continue;
+                Object caller = Accessor.tryGet(inv, "caller", null);
                 var invTbl = LuaManager.platform.newTable();
-                Class<?> targetClass = (Class<?>) clazzField.get(inv);
-                String methodName = (String) nameField.get(inv);
-                Object caller = callerField.get(inv);
                 invTbl.rawset("targetClass", targetClass.getName());
                 invTbl.rawset("targetSimpleClass", targetClass.getSimpleName());
                 invTbl.rawset("methodName", methodName);
                 if (caller != null && "se.krka.kahlua.integration.expose.caller.MethodCaller".equals(caller.getClass().getName())) {
-                    Field methodField = caller.getClass().getDeclaredField("method");
-                    methodField.setAccessible(true);
-                    Method m = (Method) methodField.get(caller);
-                    invTbl.rawset("declaringClass", m.getDeclaringClass().getName());
+                    Method m = Accessor.tryGet(caller, "method", null);
+                    if (m != null) invTbl.rawset("declaringClass", m.getDeclaringClass().getName());
                 }
                 Object debugData = invokerClass.getMethod("getMethodDebugData").invoke(inv);
                 invTbl.rawset("methodDebugData", debugData != null ? debugData.toString() : "");

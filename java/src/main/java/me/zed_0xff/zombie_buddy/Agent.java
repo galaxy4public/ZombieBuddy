@@ -142,6 +142,7 @@ public class Agent {
 
         Logger.info("Agent installed.");
         Loader.preloadMods();
+        Accessor.clearCaches();
     }
 
     public static boolean isExperimental() {

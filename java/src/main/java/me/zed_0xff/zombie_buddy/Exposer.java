@@ -45,7 +45,7 @@ public class Exposer {
     private static final HashSet<Class<?>> g_classesWithGlobalLuaMethod = new HashSet<>();
 
     public static boolean hasGlobalLuaMethod(Class<?> cls) {
-        for (Method m : cls.getMethods()) {
+        for (Method m : Accessor.allMethods(cls)) {
             LuaMethod ann = m.getAnnotation(LuaMethod.class);
             if (ann != null && ann.global()) {
                 return true;

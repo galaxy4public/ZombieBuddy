@@ -120,18 +120,14 @@ public class zbUtils {
         HashMap<String, ArrayList<String>> byName = new HashMap<>();
 
         if (includePrivate) {
-            for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
-                Method[] methods = c.getDeclaredMethods();
-                for (Method m : methods) {
-                    if (m.isSynthetic() || m.isBridge() || m.getDeclaringClass() == Object.class) {
-                        continue;
-                    }
-                    addMethodSignature(byName, m);
+            for (Method m : Accessor.allMethods(cls)) {
+                if (m.isSynthetic() || m.isBridge() || m.getDeclaringClass() == Object.class) {
+                    continue;
                 }
+                addMethodSignature(byName, m);
             }
         } else {
-            Method[] methods = cls.getMethods();
-            for (Method m : methods) {
+            for (Method m : Accessor.publicMethods(cls)) {
                 if (m.isSynthetic() || m.isBridge() || m.getDeclaringClass() == Object.class) {
                     continue;
                 }
@@ -198,16 +194,9 @@ public class zbUtils {
         Class<?> cls = obj.getClass();
 
         if (includePrivate) {
-            for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
-                Field[] fields = c.getDeclaredFields();
-                for (Field f : fields) {
-                    if (f.isSynthetic()) {
-                        continue;
-                    }
-                    String name = f.getName();
-                    Object value = Accessor.tryGet(obj, f, "[inaccessible]");
-                    result.rawset(name, value);
-                }
+            for (Field f : Accessor.allFields(cls)) {
+                if (f.isSynthetic()) continue;
+                result.rawset(f.getName(), Accessor.tryGet(obj, f, "[inaccessible]"));
             }
         } else {
             Field[] fields = cls.getFields();

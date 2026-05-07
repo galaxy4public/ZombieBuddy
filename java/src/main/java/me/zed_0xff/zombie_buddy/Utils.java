@@ -80,8 +80,7 @@ public final class Utils {
     }
 
     public static boolean isHiRes() {
-        return Accessor
-            .klass("zombie.core.Core")
+        return Accessor.klass("zombie.core.Core")
             .getInstance()
             .call("getScreenWidth")
             .as(Integer.class)

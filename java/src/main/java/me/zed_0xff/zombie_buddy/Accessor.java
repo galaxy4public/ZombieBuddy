@@ -4,22 +4,153 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Helper to read (including private) field values from objects via reflection.
- * Returns a default value if the field is missing or inaccessible.
- */
 public final class Accessor {
 
-    private static final ConcurrentHashMap<String, Boolean> hasPublicMethodCache = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Optional<Field>> findFieldCache = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Optional<Method>> findMethodCache = new ConcurrentHashMap<>();
+    // Class-name -> Class<?> lives separately: we need the Class object before we can create a ClassInfo.
+    private static final ConcurrentHashMap<String, Optional<Class<?>>> classNameCache = new ConcurrentHashMap<>();
+
+    // Per-class cache. On second access the class is fully prewarmed (all fields and declared methods scanned).
+    private static final ConcurrentHashMap<Class<?>, ClassInfo> cache = new ConcurrentHashMap<>();
+
+    private static final class ClassInfo {
+        final AtomicInteger accessCount = new AtomicInteger(0);
+        // Set to true only after prewarm() fully completes (volatile for happens-before).
+        volatile boolean prewarmed = false;
+        final ConcurrentHashMap<String, Optional<Field>>    fields        = new ConcurrentHashMap<>();
+        final ConcurrentHashMap<String, List<Method>>       methodsByName = new ConcurrentHashMap<>();
+        // key: methodName + '\0' + param1Name + '\0' + param2Name ...
+        final ConcurrentHashMap<String, Optional<Method>>   exactMethods  = new ConcurrentHashMap<>();
+        // populated lazily before prewarm; replaced by publicMethodNames after
+        final ConcurrentHashMap<String, Boolean>            publicMethods     = new ConcurrentHashMap<>();
+        volatile Set<String>  publicMethodNames = null;
+        volatile List<Method> publicMethodList  = null;
+    }
 
     private Accessor() {}
+
+    private static ClassInfo getClassInfo(Class<?> cls) {
+        ClassInfo info = cache.computeIfAbsent(cls, k -> new ClassInfo());
+        // incrementAndGet is atomic: exactly one thread observes count==2, so no CAS needed.
+        if (info.accessCount.incrementAndGet() == 2) {
+            prewarm(cls, info);
+        }
+        return info;
+    }
+
+    private static void prewarm(Class<?> cls, ClassInfo info) {
+        Logger.debug("Prewarming Accessor cache for " + cls.getName());
+        for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                info.fields.putIfAbsent(f.getName(), Optional.of(f));
+            }
+        }
+        Map<String, List<Method>> byName = new HashMap<>();
+        for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
+            for (Method m : c.getDeclaredMethods()) {
+                byName.computeIfAbsent(m.getName(), k -> new ArrayList<>()).add(m);
+                info.exactMethods.putIfAbsent(exactMethodKey(m.getName(), m.getParameterTypes()), Optional.of(m));
+            }
+        }
+        for (Map.Entry<String, List<Method>> e : byName.entrySet()) {
+            info.methodsByName.putIfAbsent(e.getKey(), Collections.unmodifiableList(e.getValue()));
+        }
+        Set<String> names = new HashSet<>();
+        List<Method> pubList = new ArrayList<>();
+        for (Method m : cls.getMethods()) {
+            names.add(m.getName());
+            pubList.add(m);
+        }
+        info.publicMethodNames = Collections.unmodifiableSet(names);
+        info.publicMethodList  = Collections.unmodifiableList(pubList);
+        info.prewarmed = true;
+    }
+
+    private static String exactMethodKey(String methodName, Class<?>[] parameterTypes) {
+        StringBuilder sb = new StringBuilder(methodName).append('\0');
+        if (parameterTypes != null) {
+            for (int i = 0; i < parameterTypes.length; i++) {
+                if (i > 0) sb.append('\0');
+                sb.append(parameterTypes[i].getName());
+            }
+        }
+        return sb.toString();
+    }
+
+    public static void clearCaches() {
+        Logger.debug("Clearing Accessor caches");
+        classNameCache.clear();
+        cache.clear();
+    }
+
+    /**
+     * Returns all declared fields in {@code cls}'s hierarchy, one per name (most-derived wins).
+     * Uses the prewarmed cache when available; otherwise scans and warms the per-name entries.
+     */
+    public static List<Field> allFields(Class<?> cls) {
+        if (cls == null) return Collections.emptyList();
+        ClassInfo info = getClassInfo(cls);
+        if (info.prewarmed) {
+            List<Field> out = new ArrayList<>(info.fields.size());
+            for (Optional<Field> opt : info.fields.values()) {
+                opt.ifPresent(out::add);
+            }
+            return out;
+        }
+        List<Field> out = new ArrayList<>();
+        for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (info.fields.putIfAbsent(f.getName(), Optional.of(f)) == null) {
+                    out.add(f);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Returns all public methods of {@code cls} (equivalent to {@link Class#getMethods()}, cached).
+     */
+    public static List<Method> publicMethods(Class<?> cls) {
+        if (cls == null) return Collections.emptyList();
+        ClassInfo info = getClassInfo(cls);
+        List<Method> list = info.publicMethodList;
+        if (list != null) return list;
+        list = List.copyOf(Arrays.asList(cls.getMethods()));
+        info.publicMethodList = list;
+        return list;
+    }
+
+    /**
+     * Returns all declared methods in {@code cls}'s hierarchy (all names, all overloads).
+     * Uses the prewarmed cache when available; otherwise scans directly.
+     */
+    public static List<Method> allMethods(Class<?> cls) {
+        if (cls == null) return Collections.emptyList();
+        ClassInfo info = getClassInfo(cls);
+        if (info.prewarmed) {
+            List<Method> out = new ArrayList<>();
+            for (List<Method> ml : info.methodsByName.values()) {
+                out.addAll(ml);
+            }
+            return out;
+        }
+        List<Method> out = new ArrayList<>();
+        for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
+            Collections.addAll(out, c.getDeclaredMethods());
+        }
+        return out;
+    }
 
     public static Query klass(String className) {
         return Query.of(findClass(className));
@@ -65,8 +196,20 @@ public final class Accessor {
             if (value == null) {
                 return of(null);
             }
-            Query viaMethod = call("getInstance");
-            return viaMethod.isPresent() ? viaMethod : staticField("instance");
+            Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
+            Method getInstance = findExactMethod(cls, "getInstance");
+            if (getInstance != null && Modifier.isStatic(getInstance.getModifiers())) {
+                try {
+                    getInstance.setAccessible(true);
+                    Object instance = getInstance.invoke(null);
+                    if (instance != null) {
+                        return of(instance);
+                    }
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Fall back to static "instance" below.
+                }
+            }
+            return of(tryGet(cls, "instance", null));
         }
 
         public Query call(String methodName, Object... args) {
@@ -78,6 +221,10 @@ public final class Accessor {
             } catch (ReflectiveOperationException | IllegalArgumentException e) {
                 return of(null);
             }
+        }
+
+        public <T> Optional<T> field(String fieldName, Class<T> type) {
+            return field(fieldName).as(type);
         }
 
         public <T> Optional<T> as(Class<T> type) {
@@ -105,11 +252,6 @@ public final class Accessor {
      * the object is null, the field does not exist, or it cannot be read.
      * If {@code obj} is a {@link Class}, the field is looked up on that class and
      * read as a static field (instance argument is ignored for static fields).
-     *
-     * @param obj          the instance to read from, or a Class for static field lookup (may be null)
-     * @param fieldName    the field name (searches this class and superclasses)
-     * @param defaultValue value to return when the field cannot be read
-     * @return the field value (including null), or {@code defaultValue} only if the field could not be read
      */
     public static <T> T tryGet(Object obj, String fieldName, T defaultValue) {
         if (obj == null || Utils.isBlank(fieldName)) {
@@ -124,11 +266,6 @@ public final class Accessor {
     /**
      * Gets the value of {@code field} on {@code obj}, or {@code defaultValue} if
      * the field is null or it cannot be read. For static fields, {@code obj} may be null.
-     *
-     * @param obj          the instance to read from (null for static fields)
-     * @param field        the field to read (may be null)
-     * @param defaultValue value to return when the field cannot be read
-     * @return the field value (including null), or {@code defaultValue} only if the field could not be read
      */
     @SuppressWarnings("unchecked")
     public static <T> T tryGet(Object obj, Field field, T defaultValue) {
@@ -147,14 +284,8 @@ public final class Accessor {
     }
 
     /**
-     * Sets the named field on {@code obj} to {@code value}. Uses {@link Field#set(Object, Object)}
-     * so primitive fields accept boxed values (e.g. Integer, Boolean).
+     * Sets the named field on {@code obj} to {@code value}.
      * If {@code obj} is a {@link Class}, the field is looked up on that class and set as a static field.
-     *
-     * @param obj       the instance to write to, or a Class for static field lookup
-     * @param fieldName the field name (searches this class and superclasses)
-     * @param value     the value to set
-     * @return true if the field was set successfully, false if obj/fieldName is null, field not found, or set threw
      */
     public static <T> boolean trySet(Object obj, String fieldName, T value) {
         if (obj == null || Utils.isBlank(fieldName)) {
@@ -167,14 +298,7 @@ public final class Accessor {
     }
 
     /**
-     * Sets {@code field} on {@code obj} to {@code value}. Uses {@link Field#set(Object, Object)}
-     * so primitive fields accept boxed values (e.g. Integer, Boolean).
-     * For static fields, {@code obj} may be null.
-     *
-     * @param obj   the instance to write to (null for static fields)
-     * @param field the field to set (may be null)
-     * @param value the value to set
-     * @return true if the field was set successfully, false if field is null, or obj is null for instance field, or set threw
+     * Sets {@code field} on {@code obj} to {@code value}. For static fields, {@code obj} may be null.
      */
     public static <T> boolean trySet(Object obj, Field field, T value) {
         if (field == null) {
@@ -192,7 +316,7 @@ public final class Accessor {
         }
     }
 
-    // returns class or null, never throws
+    /** Returns the first loadable class from the given names, or null. Never throws. */
     public static Class<?> findClass(String... classNames) {
         if (classNames == null || classNames.length == 0) {
             return null;
@@ -200,12 +324,9 @@ public final class Accessor {
         for (String className : classNames) {
             if (!Utils.isBlank(className)) {
                 String normalized = className.replace('/', '.');
-                Class<?> cls = null;
-                try {
-                    cls = Class.forName(normalized);
-                } catch (ClassNotFoundException e) {
-                    continue;
-                }
+                Class<?> cls = classNameCache
+                    .computeIfAbsent(normalized, k -> Optional.ofNullable(findClassUncached(k)))
+                    .orElse(null);
                 if (cls != null) {
                     return cls;
                 }
@@ -214,21 +335,28 @@ public final class Accessor {
         return null;
     }
 
+    private static Class<?> findClassUncached(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException | LinkageError e) {
+            return null;
+        }
+    }
+
     /**
      * Finds a field by name in {@code cls} or any superclass. Accepts multiple candidate
-     * names and returns the first found. Results are cached per (class name, field name).
-     *
-     * @param cls        the class to search (and its superclasses)
-     * @param fieldNames one or more field names to try in order; null/empty names are skipped
-     * @return the first found field, or null if none exist
+     * names and returns the first found. Results are cached per class.
      */
     public static Field findField(Class<?> cls, String... fieldNames) {
         if (cls == null || fieldNames == null || fieldNames.length == 0) {
             return null;
         }
+        ClassInfo info = getClassInfo(cls);
         for (String fieldName : fieldNames) {
             if (!Utils.isBlank(fieldName)) {
-                Field f = findFieldCached(cls, fieldName);
+                Field f = info.fields
+                    .computeIfAbsent(fieldName, k -> Optional.ofNullable(findFieldUncached(cls, k)))
+                    .orElse(null);
                 if (f != null) {
                     return f;
                 }
@@ -239,27 +367,12 @@ public final class Accessor {
 
     /**
      * Finds a field by name in the class named {@code className} or any superclass.
-     * Accepts multiple candidate names and returns the first found.
-     *
-     * @param className  fully qualified class name
-     * @param fieldNames one or more field names to try in order; null/empty names are skipped
-     * @return the first found field, or null if the class cannot be loaded or no field exists
      */
     public static Field findField(String className, String... fieldNames) {
         if (Utils.isBlank(className) || fieldNames == null || fieldNames.length == 0) {
             return null;
         }
-        try {
-            Class<?> cls = Class.forName(className);
-            return findField(cls, fieldNames);
-        } catch (ClassNotFoundException e) {
-            return null;
-        }
-    }
-
-    private static Field findFieldCached(Class<?> cls, String fieldName) {
-        String key = cls.getName() + "\0" + fieldName;
-        return findFieldCache.computeIfAbsent(key, k -> Optional.ofNullable(findFieldUncached(cls, fieldName))).orElse(null);
+        return findField(findClass(className), fieldNames);
     }
 
     private static Field findFieldUncached(Class<?> cls, String fieldName) {
@@ -274,17 +387,18 @@ public final class Accessor {
     }
 
     /**
-     * Finds all methods with the given name in {@code cls} and its superclasses (declared on each class).
-     * Includes overloads and overrides. Order: current class methods first, then superclass, etc.
-     *
-     * @param cls        the class to search (and its superclasses)
-     * @param methodName the method name to match
-     * @return list of matching methods (possibly empty); never null
+     * Finds all methods with the given name in {@code cls} and its superclasses.
+     * Includes overloads and overrides. Order: current class first, then superclass.
      */
     public static List<Method> findMethodsByName(Class<?> cls, String methodName) {
         if (cls == null || Utils.isBlank(methodName)) {
             return Collections.emptyList();
         }
+        return getClassInfo(cls).methodsByName
+            .computeIfAbsent(methodName, k -> findMethodsByNameUncached(cls, k));
+    }
+
+    private static List<Method> findMethodsByNameUncached(Class<?> cls, String methodName) {
         List<Method> out = new ArrayList<>();
         for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
             for (Method m : c.getDeclaredMethods()) {
@@ -293,37 +407,26 @@ public final class Accessor {
                 }
             }
         }
-        return out;
+        return out.isEmpty() ? Collections.emptyList() : Collections.unmodifiableList(out);
     }
 
-    /**
-     * Finds a no-arg method by name in {@code cls} or any superclass. Returns null if not found.
-     */
+    /** Finds a no-arg method by name in {@code cls} or any superclass. Returns null if not found. */
     public static Method findNoArgMethod(Class<?> cls, String methodName) {
         return findExactMethod(cls, methodName, (Class<?>[]) null);
     }
 
     /**
-     * Finds a method by name and parameter types in {@code cls} or any superclass. Returns null if not found.
-     * Pass empty array or null for no-arg method. Results are cached per (class name, method name, parameter types).
+     * Finds a method by name and parameter types in {@code cls} or any superclass.
+     * Pass empty array or null for no-arg method. Results are cached per class.
      */
     public static Method findExactMethod(Class<?> cls, String methodName, Class<?>... parameterTypes) {
-        String key = buildFindMethodCacheKey(cls, methodName, parameterTypes);
-        return findMethodCache.computeIfAbsent(key, k -> Optional.ofNullable(findMethodUncached(cls, methodName, parameterTypes))).orElse(null);
+        String key = exactMethodKey(methodName, parameterTypes);
+        return getClassInfo(cls).exactMethods
+            .computeIfAbsent(key, k -> Optional.ofNullable(findExactMethodUncached(cls, methodName, parameterTypes)))
+            .orElse(null);
     }
 
-    private static String buildFindMethodCacheKey(Class<?> cls, String methodName, Class<?>[] parameterTypes) {
-        StringBuilder sb = new StringBuilder(cls.getName()).append('\0').append(methodName).append('\0');
-        if (parameterTypes != null && parameterTypes.length > 0) {
-            for (int i = 0; i < parameterTypes.length; i++) {
-                if (i > 0) sb.append('\0');
-                sb.append(parameterTypes[i].getName());
-            }
-        }
-        return sb.toString();
-    }
-
-    private static Method findMethodUncached(Class<?> cls, String methodName, Class<?>[] parameterTypes) {
+    private static Method findExactMethodUncached(Class<?> cls, String methodName, Class<?>[] parameterTypes) {
         for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
             try {
                 if (parameterTypes == null || parameterTypes.length == 0) {
@@ -338,36 +441,43 @@ public final class Accessor {
     }
 
     /**
-     * Returns true if {@code obj}'s class (including inherited public methods) has a public
-     * method with the given name (any parameter count).
+     * Returns true if {@code cls} has a public method with the given name (any overload).
      *
-     * @throws IllegalArgumentException if obj or methodName is null, or methodName is empty
+     * @throws IllegalArgumentException if cls or methodName is null/empty
      */
-    public static boolean hasPublicMethod(Object obj, String methodName) {
-        if (obj == null || Utils.isBlank(methodName)) {
-            throw new IllegalArgumentException("obj and methodName must be non-null and non-empty");
+    public static boolean hasPublicMethod(Class<?> cls, String methodName) {
+        if (cls == null || Utils.isBlank(methodName)) {
+            throw new IllegalArgumentException("cls and methodName must be non-null and non-empty");
         }
-        Class<?> cls = obj.getClass();
-        String cacheKey = cls.getName() + "\0" + methodName;
-        return hasPublicMethodCache.computeIfAbsent(cacheKey, k -> {
+        ClassInfo info = getClassInfo(cls);
+        Set<String> names = info.publicMethodNames;
+        if (names != null) {
+            return names.contains(methodName);
+        }
+        return info.publicMethods.computeIfAbsent(methodName, k -> {
             for (Method m : cls.getMethods()) {
-                if (methodName.equals(m.getName())) {
-                    return true;
-                }
+                if (k.equals(m.getName())) return true;
             }
             return false;
         });
     }
 
     /**
-     * Invokes the named no-arg method on {@code obj}. Searches class hierarchy for the method,
-     * sets it accessible, then invokes. Does not catch exceptions; callers must handle
-     * ReflectiveOperationException (or IllegalAccessException, InvocationTargetException, etc.).
+     * Returns true if {@code obj}'s class has a public method with the given name (any overload).
      *
-     * @param obj        the instance to call on (may not be null)
-     * @param methodName the name of the no-arg method
-     * @return the return value of the method (possibly null)
-     * @throws NoSuchMethodException  if the method is not found
+     * @throws IllegalArgumentException if obj or methodName is null/empty
+     */
+    public static boolean hasPublicMethod(Object obj, String methodName) {
+        if (obj == null || Utils.isBlank(methodName)) {
+            throw new IllegalArgumentException("obj and methodName must be non-null and non-empty");
+        }
+        return hasPublicMethod(obj.getClass(), methodName);
+    }
+
+    /**
+     * Invokes the named no-arg method on {@code obj}. Does not catch exceptions.
+     *
+     * @throws NoSuchMethodException        if the method is not found
      * @throws ReflectiveOperationException if setAccessible or invoke fails
      */
     public static Object callNoArg(Object obj, String methodName) throws ReflectiveOperationException {
@@ -376,15 +486,9 @@ public final class Accessor {
 
     /**
      * Invokes the named method on {@code obj} with the given parameter types and arguments.
-     * Searches class hierarchy for the method, sets it accessible, then invokes. Does not catch
-     * exceptions; callers must handle ReflectiveOperationException.
+     * Does not catch exceptions.
      *
-     * @param obj             the instance to call on (may not be null)
-     * @param methodName      the name of the method
-     * @param parameterTypes  the method parameter types (null or empty for no-arg)
-     * @param args            the arguments to pass (will be unboxed for primitive params)
-     * @return the return value of the method (possibly null)
-     * @throws NoSuchMethodException  if the method is not found
+     * @throws NoSuchMethodException        if the method is not found
      * @throws ReflectiveOperationException if setAccessible or invoke fails
      */
     public static Object callExact(Object obj, String methodName, Class<?>[] parameterTypes, Object... args) throws ReflectiveOperationException {
@@ -401,15 +505,10 @@ public final class Accessor {
 
     /**
      * Invokes a method with the given name on {@code obj}, choosing an overload by argument count
-     * and compatibility. Uses {@link #findMethodsByName} and tries each candidate with matching
-     * parameter count; the first that accepts the arguments (via normal invoke boxing/assignment)
-     * is used. Does not catch exceptions; callers must handle ReflectiveOperationException.
+     * and compatibility. If {@code obj} is a String class name or a Class, calls a static method.
+     * Does not catch exceptions.
      *
-     * @param obj        the instance to call on (may not be null)
-     * @param methodName the name of the method
-     * @param args       the arguments to pass (null treated as no arguments)
-     * @return the return value of the method (possibly null)
-     * @throws NoSuchMethodException  if no compatible overload is found
+     * @throws NoSuchMethodException        if no compatible overload is found
      * @throws ReflectiveOperationException if setAccessible or invoke fails
      */
     public static Object callByName(Object obj, String methodName, Object... args) throws ReflectiveOperationException {
