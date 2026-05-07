@@ -120,7 +120,7 @@ public class Patch_ZomboidFileSystem {
                 } finally {
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                Logger.printStackTrace(e);
             }
         }
     }

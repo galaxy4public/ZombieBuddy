@@ -256,6 +256,7 @@ tasks.withType(JavaCompile).configureEach {
     options.generatedSourceOutputDirectory.set(provider { null })
     options.headerOutputDirectory.set(provider { null })
     options.incremental = false
+    options.compilerArgs += ['-Xlint:deprecation']
 
     doLast {
         delete "${buildDir}/tmp"
@@ -353,15 +354,11 @@ tasks.withType(Test) {
     outputs.upToDateWhen { false }
 
     jvmArgs += "-XX:+EnableDynamicAgentLoading"
+    jvmArgs += "-Dzb.filter_stacktrace=true"
     
     // Don't capture stdout/stderr - show it directly in console
     testLogging {
         showStandardStreams = true
-    }
-    
-    // Disable HTML reports
-    reports {
-        html.required = false
     }
     
     // Output test results summary
@@ -414,7 +411,7 @@ task test_patched(type: Test) {
         def bcJar = configurations.runtimeClasspath.find { it.name.contains("bcprov") }
         if (!bcJar) throw new GradleException("bouncycastle jar not found in runtimeClasspath")
         jvmArgs "-Xbootclasspath/a:${gsonJar}${File.pathSeparator}${bcJar}"
-        jvmArgs "-javaagent:${shadowJar.archiveFile.get().asFile.absolutePath}=patches_jar=${patchesJarPath}:${patchesPackageName},verbosity=2,config_dir=.config"
+        jvmArgs "-javaagent:${shadowJar.archiveFile.get().asFile.absolutePath}=patches_jar=${patchesJarPath}:${patchesPackageName},verbosity=2,config_dir=.config,prop_prefix=zb"
     }
 }
 

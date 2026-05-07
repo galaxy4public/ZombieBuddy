@@ -91,9 +91,9 @@ public final class SelfUpdater {
                 Logger.info("Copied new JAR to " + deferredPath + " - update will be applied on next game launch");
             } catch (Exception e2) {
                 Logger.error("Error copying to .new file: " + e2.getMessage());
-                e2.printStackTrace();
+                Logger.printStackTrace(e2);
             }
-            e.printStackTrace();
+            Logger.printStackTrace(e);
         }
     }
 

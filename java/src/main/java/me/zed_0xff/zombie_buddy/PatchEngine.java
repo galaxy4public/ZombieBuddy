@@ -244,7 +244,7 @@ public final class PatchEngine {
                 public void onError(String typeName, ClassLoader cl, net.bytebuddy.utility.JavaModule jm,
                                    boolean loaded, Throwable throwable) {
                     Logger.error("ERROR transforming " + typeName + ": " + throwable.getMessage());
-                    throwable.printStackTrace();
+                    Logger.printStackTrace(throwable);
                 }
 
                 @Override
@@ -310,7 +310,7 @@ public final class PatchEngine {
                                 }
                             } catch (Exception e) {
                                 Logger.error("ERROR: Failed to transform patch class " + adviceClass.getName() + ": " + e.getMessage());
-                                e.printStackTrace();
+                                Logger.printStackTrace(e);
                                 continue;
                             }
                             
@@ -354,7 +354,6 @@ public final class PatchEngine {
                                     java.util.Map<Integer, Class<?>> argumentMap = new java.util.HashMap<>();
                                     boolean hasAnyArguments = false;
                                     boolean allParamsAreSpecial = paramTypes.length > 0; // Will be set to false if we find a non-special param
-                                    int regularParamCount = 0;
                                     
                                     for (int i = 0; i < paramAnns.length; i++) {
                                         boolean isArgument = false;
@@ -389,7 +388,6 @@ public final class PatchEngine {
                                             allParamsAreSpecial = false;
                                             Logger.trace("arg #" + i + " of type " + paramTypes[i]);
                                             argumentMap.put(i, paramTypes[i]);
-                                            regularParamCount++;
                                         }
                                     }
                                     
@@ -553,7 +551,7 @@ public final class PatchEngine {
                             } catch (Exception e) {
                                 Logger.error("ERROR: Failed to apply advice to " + className + "." + methodName + ": " + e.getMessage());
                                 if (Loader.g_verbosity > 0) {
-                                    e.printStackTrace();
+                                    Logger.printStackTrace(e);
                                 }
                             }
                         }
@@ -604,7 +602,7 @@ public final class PatchEngine {
                             } catch (Exception e) {
                                 Logger.error("ERROR: Could not set up constructor delegation: " + e.getMessage());
                                 if (Loader.g_verbosity > 0) {
-                                    e.printStackTrace();
+                                    Logger.printStackTrace(e);
                                 }
                                 // Fallback to SuperMethodCall
                                 result = result
@@ -644,7 +642,7 @@ public final class PatchEngine {
                 } catch (Exception e) {
                     Logger.error("Error retransforming class " + className + ": " + e.getMessage());
                     if (Loader.g_verbosity > 0) {
-                        e.printStackTrace();
+                        Logger.printStackTrace(e);
                     }
                 }
             }
@@ -660,7 +658,7 @@ public final class PatchEngine {
                 Logger.error("Could not find class for warm-up: " + className);
             } catch (Exception e) {
                 Logger.error("Error warming up class " + className + ": " + e.getMessage());
-                e.printStackTrace();
+                Logger.printStackTrace(e);
             }
         }
     }
@@ -710,7 +708,7 @@ public final class PatchEngine {
                     patches.add(patchClass);
                 } catch (Exception e) {
                     Logger.error("Error loading patch class " + classInfo.getName() + ": " + e.getMessage());
-                    e.printStackTrace();
+                    Logger.printStackTrace(e);
                 }
             }
 
@@ -730,7 +728,7 @@ public final class PatchEngine {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            Logger.printStackTrace(e);
         }
 
         return patches;

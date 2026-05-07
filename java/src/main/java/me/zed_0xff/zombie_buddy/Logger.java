@@ -62,6 +62,23 @@ public class Logger {
     public static void warn( String message, Object... args) { log(WARN,  message, args); }
     public static void error(String message, Object... args) { log(ERROR, message, args); }
 
+    public static void printStackTrace(Throwable t) {
+        if (!Agent.arguments.containsKey("filter_stacktrace")) {
+            t.printStackTrace();
+            return;
+        }
+        while (t != null) {
+            err_msg(t.toString());
+            for (StackTraceElement f : t.getStackTrace()) {
+                if (f.getClassName().startsWith("me.zed_0xff")) {
+                    err_msg("    at " + f);
+                }
+            }
+            t = t.getCause();
+            if (t != null) err_msg("  Caused by:");
+        }
+    }
+
     /** Format an object for logging: strings quoted, arrays expanded, length capped. */
     public static String formatArg(Object o) {
         if (o == null) return "null";

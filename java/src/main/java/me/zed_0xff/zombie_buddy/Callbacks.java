@@ -38,7 +38,7 @@ public final class Callbacks {
                 try {
                     callback.run();
                 } catch (Throwable t) {
-                    t.printStackTrace();
+                    Logger.printStackTrace(t);
                 }
             }
         }

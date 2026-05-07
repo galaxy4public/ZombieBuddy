@@ -68,7 +68,7 @@ public class PreMain {
             Logger.info("Wrote random API port " + port + " to " + portFile.toAbsolutePath());
         } catch (IOException e) {
             Logger.error("Failed to write port file: " + e.getMessage());
-            e.printStackTrace();
+            Logger.printStackTrace(e);
         }
     }
 }

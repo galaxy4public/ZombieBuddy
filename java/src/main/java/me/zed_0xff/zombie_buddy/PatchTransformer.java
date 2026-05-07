@@ -195,7 +195,7 @@ final class PatchTransformer {
                 } catch (Exception e) {
                     Logger.error("Failed to redefine class " + patchClass.getName() + ": " + e.getMessage());
                     if (verbosity > 0) {
-                        e.printStackTrace();
+                        Logger.printStackTrace(e);
                     }
                 }
             }
@@ -208,7 +208,7 @@ final class PatchTransformer {
             } catch (Exception e) {
                 Logger.error("Failed to define transformed class: " + e.getMessage());
                 if (verbosity > 0) {
-                    e.printStackTrace();
+                    Logger.printStackTrace(e);
                 }
             }
             
@@ -216,7 +216,7 @@ final class PatchTransformer {
         } catch (Exception e) {
             Logger.error("Failed to transform patch class " + patchClass.getName() + ": " + e.getMessage());
             if (verbosity > 0) {
-                e.printStackTrace();
+                Logger.printStackTrace(e);
             }
             return patchClass; // Fall back to original
         }
