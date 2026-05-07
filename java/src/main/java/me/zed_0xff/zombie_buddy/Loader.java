@@ -1095,4 +1095,18 @@ public class Loader {
         Config.save(g_config);
         g_configDirty = false;
     }
+
+    public static boolean fixApprovalDialogCursor() {
+        return g_config.fix_approval_dialog_cursor();
+    }
+
+    public static void setFixApprovalDialogCursor(boolean value) {
+        Config newConfig = g_config.withFixApprovalDialogCursor(value);
+        if (newConfig.equals(g_config)) {
+            return;
+        }
+        g_config = newConfig;
+        Config.save(g_config);
+        g_configDirty = false;
+    }
 }

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import me.zed_0xff.zombie_buddy.JarBatchApprovalProtocol;
+import me.zed_0xff.zombie_buddy.Loader;
 import me.zed_0xff.zombie_buddy.Logger;
 
 import imgui.ImDrawData;
@@ -98,12 +99,17 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
         private final long arrowCursor;
         private final long handCursor;
         private int currentCursor = Integer.MIN_VALUE;
+        private final int savedCursorMode;
         private boolean closed;
 
         OwnedImguiContext(long windowHandle) {
             this.windowHandle = windowHandle;
             arrowCursor = GLFW.glfwCreateStandardCursor(GLFW.GLFW_ARROW_CURSOR);
             handCursor = GLFW.glfwCreateStandardCursor(GLFW.GLFW_HAND_CURSOR);
+            savedCursorMode = GLFW.glfwGetInputMode(windowHandle, GLFW.GLFW_CURSOR);
+            if (Loader.fixApprovalDialogCursor()) {
+                GLFW.glfwSetInputMode(windowHandle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+            }
             ImGui.createContext();
             ImGuiIO io = ImGui.getIO();
             io.addConfigFlags(64); // Keyboard navigation, same flag PZ enables for its own context.
@@ -207,6 +213,7 @@ public final class ImguiModApprovalFrontend implements ModApprovalFrontend {
                 return;
             }
             closed = true;
+            GLFW.glfwSetInputMode(windowHandle, GLFW.GLFW_CURSOR, savedCursorMode);
             GLFW.glfwSetCursor(windowHandle, 0);
             if (arrowCursor != 0) {
                 GLFW.glfwDestroyCursor(arrowCursor);

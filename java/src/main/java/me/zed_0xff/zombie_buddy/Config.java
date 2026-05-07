@@ -14,7 +14,8 @@ import java.util.Map;
 record Config(
     List<SteamID64> trusted_authors,
     Map<String, Config.PreloadMod> preload_mods,
-    boolean auto_fix_mod_order
+    boolean auto_fix_mod_order,
+    boolean fix_approval_dialog_cursor
 ) {
     record PreloadMod(
         Path infPath,
@@ -22,7 +23,7 @@ record Config(
     ) {}
 
     static final String JSON_FILE_NAME = "config.json";
-    private static final Config DEFAULT = new Config(new ArrayList<>(), new LinkedHashMap<>(), true);
+    private static final Config DEFAULT = new Config(new ArrayList<>(), new LinkedHashMap<>(), true, true);
 
     Config {
         trusted_authors = normalizeTrustedAuthors(trusted_authors);
@@ -30,7 +31,7 @@ record Config(
     }
 
     Config() {
-        this(DEFAULT.trusted_authors, DEFAULT.preload_mods, DEFAULT.auto_fix_mod_order);
+        this(DEFAULT.trusted_authors, DEFAULT.preload_mods, DEFAULT.auto_fix_mod_order, DEFAULT.fix_approval_dialog_cursor);
     }
 
     static Path jsonPath() {
@@ -67,7 +68,7 @@ record Config(
     }
 
     private static Config defaultConfig() {
-        return new Config(DEFAULT.trusted_authors, DEFAULT.preload_mods, DEFAULT.auto_fix_mod_order);
+        return new Config(DEFAULT.trusted_authors, DEFAULT.preload_mods, DEFAULT.auto_fix_mod_order, DEFAULT.fix_approval_dialog_cursor);
     }
 
     boolean trustsAuthor(SteamID64 authorId) {
@@ -94,7 +95,14 @@ record Config(
         if (value == auto_fix_mod_order) {
             return this;
         }
-        return new Config(trusted_authors, preload_mods, value);
+        return new Config(trusted_authors, preload_mods, value, fix_approval_dialog_cursor);
+    }
+
+    Config withFixApprovalDialogCursor(boolean value) {
+        if (value == fix_approval_dialog_cursor) {
+            return this;
+        }
+        return new Config(trusted_authors, preload_mods, auto_fix_mod_order, value);
     }
 
     private Config withTrustedAuthor(SteamID64 authorId, boolean trusted) {
@@ -111,7 +119,7 @@ record Config(
     }
 
     private Config withTrustedAuthors(List<SteamID64> trustedAuthors) {
-        return new Config(trustedAuthors, preload_mods, auto_fix_mod_order);
+        return new Config(trustedAuthors, preload_mods, auto_fix_mod_order, fix_approval_dialog_cursor);
     }
 
     private Config withPreloadMod(String id, PreloadMod mod, boolean enabled) {
@@ -128,7 +136,7 @@ record Config(
     }
 
     private Config withPreloadMods(Map<String, PreloadMod> preloadMods) {
-        return new Config(trusted_authors, preloadMods, auto_fix_mod_order);
+        return new Config(trusted_authors, preloadMods, auto_fix_mod_order, fix_approval_dialog_cursor);
     }
 
     private static List<SteamID64> normalizeTrustedAuthors(List<SteamID64> input) {

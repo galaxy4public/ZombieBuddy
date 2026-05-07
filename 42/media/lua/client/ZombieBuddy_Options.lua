@@ -5,7 +5,8 @@ local options = PZAPI.ModOptions:create("ZombieBuddy", "ZombieBuddy")
 local config = {
     watermarkOpacity   = options:addSlider( "watermarkOpacity",    "UI_ZB_WatermarkOpacity", 0.0, 1.0, 0.05, 0.4 ),
     suppressSandboxLog = options:addTickBox( "suppressSandboxLog", "UI_ZB_SuppressSandboxLog", false, "UI_ZB_SuppressSandboxLog_desc" ),
-    autoFixModOrder    = options:addTickBox( "autoFixModOrder",    "UI_ZB_AutoFixModOrder", true, "UI_ZB_AutoFixModOrder_desc" ),
+    autoFixModOrder           = options:addTickBox( "autoFixModOrder",           "UI_ZB_AutoFixModOrder",           true, "UI_ZB_AutoFixModOrder_desc" ),
+    fixApprovalDialogCursor   = options:addTickBox( "fixApprovalDialogCursor",   "UI_ZB_FixApprovalDialogCursor",   true, "UI_ZB_FixApprovalDialogCursor_desc" ),
 }
 
 local function onChangeWatermarkOpacity(self, value)
@@ -23,6 +24,9 @@ config.watermarkOpacity.onChange = onChangeWatermarkOpacity
 local function applySettings()
     if ZombieBuddy.setAutoFixModOrder then
         ZombieBuddy.setAutoFixModOrder(config.autoFixModOrder:getValue())
+    end
+    if ZombieBuddy.setFixApprovalDialogCursor then
+        ZombieBuddy.setFixApprovalDialogCursor(config.fixApprovalDialogCursor:getValue())
     end
     if ZombieBuddy.Watermark and ZombieBuddy.Watermark.setAlpha then
         ZombieBuddy.Watermark.setAlpha(config.watermarkOpacity:getValue())
