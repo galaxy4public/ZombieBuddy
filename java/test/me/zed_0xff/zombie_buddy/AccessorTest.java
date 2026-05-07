@@ -284,11 +284,11 @@ public class AccessorTest {
         assertThrows(Exception.class, () -> Accessor.callNoArg(t, "noSuchMethod"));
     }
 
-    // --- Query ---
+    // --- Reflect ---
 
     @Test
     void query_staticField_call_as_returnsTypedOptional() {
-        assertEquals("hello", Accessor.klass(Target.class)
+        assertEquals("hello", Reflect.on(Target.class)
             .staticField("INSTANCE")
             .call("getPublicString")
             .as(String.class)
@@ -297,7 +297,7 @@ public class AccessorTest {
 
     @Test
     void query_className_staticField_call_as_returnsTypedOptional() {
-        assertEquals("hello", Accessor.klass(Target.class.getName())
+        assertEquals("hello", Reflect.on(Target.class.getName())
             .staticField("INSTANCE")
             .call("getPublicString")
             .as(String.class)
@@ -306,7 +306,7 @@ public class AccessorTest {
 
     @Test
     void query_field_call_supportsChainingThroughObjects() {
-        assertEquals("child", Accessor.klass(new Target())
+        assertEquals("child", Reflect.on(new Target())
             .call("child")
             .field("publicString")
             .as(String.class)
@@ -315,7 +315,7 @@ public class AccessorTest {
 
     @Test
     void query_call_supportsArguments() {
-        assertEquals("echo:value", Accessor.klass(new Target())
+        assertEquals("echo:value", Reflect.on(new Target())
             .call("echo", "value")
             .as(String.class)
             .orElseThrow());
@@ -323,7 +323,7 @@ public class AccessorTest {
 
     @Test
     void query_getInstance_prefersStaticGetInstanceMethod() {
-        TargetWithGetInstance result = Accessor.klass(TargetWithGetInstance.class)
+        TargetWithGetInstance result = Reflect.on(TargetWithGetInstance.class)
             .getInstance()
             .as(TargetWithGetInstance.class)
             .orElseThrow();
@@ -333,7 +333,7 @@ public class AccessorTest {
 
     @Test
     void query_getInstance_fallsBackToStaticInstanceField() {
-        TargetWithInstanceField result = Accessor.klass(TargetWithInstanceField.class)
+        TargetWithInstanceField result = Reflect.on(TargetWithInstanceField.class)
             .getInstance()
             .as(TargetWithInstanceField.class)
             .orElseThrow();
@@ -343,7 +343,7 @@ public class AccessorTest {
 
     @Test
     void query_getInstance_returnsEmptyWhenNoMethodOrField() {
-        assertFalse(Accessor.klass(TargetWithoutInstance.class)
+        assertFalse(Reflect.on(TargetWithoutInstance.class)
             .getInstance()
             .asObject()
             .isPresent());
@@ -351,7 +351,7 @@ public class AccessorTest {
 
     @Test
     void query_missingClass_returnsEmpty() {
-        assertFalse(Accessor.klass("no.such.Class")
+        assertFalse(Reflect.on("no.such.Class")
             .staticField("INSTANCE")
             .call("getPublicString")
             .as(String.class)
@@ -360,7 +360,7 @@ public class AccessorTest {
 
     @Test
     void query_missingField_returnsEmpty() {
-        assertFalse(Accessor.klass(Target.class)
+        assertFalse(Reflect.on(Target.class)
             .staticField("missing")
             .call("getPublicString")
             .as(String.class)
@@ -369,7 +369,7 @@ public class AccessorTest {
 
     @Test
     void query_missingMethod_returnsEmpty() {
-        assertFalse(Accessor.klass(Target.class)
+        assertFalse(Reflect.on(Target.class)
             .staticField("INSTANCE")
             .call("missing")
             .as(String.class)
@@ -378,7 +378,7 @@ public class AccessorTest {
 
     @Test
     void query_asWrongType_returnsEmpty() {
-        assertFalse(Accessor.klass(Target.class)
+        assertFalse(Reflect.on(Target.class)
             .staticField("INSTANCE")
             .call("getPublicString")
             .as(Integer.class)
@@ -387,14 +387,14 @@ public class AccessorTest {
 
     @Test
     void query_orElse_returnsDefaultWhenEmpty() {
-        assertEquals("default", Accessor.klass(Target.class)
+        assertEquals("default", Reflect.on(Target.class)
             .staticField("missing")
             .orElse("default"));
     }
 
     @Test
     void query_isPresentAndAsObjectReflectCurrentValue() {
-        Accessor.Query query = Accessor.klass(Target.class).staticField("INSTANCE");
+        Reflect query = Reflect.on(Target.class).staticField("INSTANCE");
         assertTrue(query.isPresent());
         assertSame(Target.INSTANCE, query.asObject().orElseThrow());
     }

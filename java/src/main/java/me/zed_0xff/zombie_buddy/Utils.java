@@ -30,8 +30,8 @@ public final class Utils {
     private static String _cacheDir;
     public static String getCacheDir() {
         if (_cacheDir == null) {
-            _cacheDir = Accessor
-                .klass("zombie.ZomboidFileSystem")
+            _cacheDir = Reflect
+                .on("zombie.ZomboidFileSystem")
                 .getInstance()
                 .call("getCacheDir")
                 .as(String.class)
@@ -62,14 +62,14 @@ public final class Utils {
     }
 
     public static boolean isClient() {
-        return Accessor.klass("zombie.Lua.LuaManager.GlobalObject")
+        return Reflect.on("zombie.Lua.LuaManager.GlobalObject")
             .call("isClient")
             .as(Boolean.class)
             .orElse(false);
     }
 
     public static boolean isServer() {
-        return Accessor.klass("zombie.Lua.LuaManager.GlobalObject")
+        return Reflect.on("zombie.Lua.LuaManager.GlobalObject")
             .call("isServer")
             .as(Boolean.class)
             .orElse(false);
@@ -80,7 +80,7 @@ public final class Utils {
     }
 
     public static boolean isHiRes() {
-        return Accessor.klass("zombie.core.Core")
+        return Reflect.on("zombie.core.Core")
             .getInstance()
             .call("getScreenWidth")
             .as(Integer.class)
