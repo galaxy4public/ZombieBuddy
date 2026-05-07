@@ -304,10 +304,7 @@ public final class PatchEngine {
                             Class<?> transformedClass;
                             try {
                                 transformedClass = PatchTransformer.transformPatchClass(adviceClass, Loader.g_instrumentation, Loader.g_verbosity, false);
-                                if (transformedClass == null) {
-                                    Logger.error("ERROR: PatchTransformer returned null for " + adviceClass.getName());
-                                    continue;
-                                }
+                                if (transformedClass == null) continue;
                             } catch (Exception e) {
                                 Logger.error("ERROR: Failed to transform patch class " + adviceClass.getName() + ": " + e.getMessage());
                                 Logger.printStackTrace(e);
@@ -564,10 +561,7 @@ public final class PatchEngine {
                         
                         // Transform the delegation class to convert Patch.* annotations to ByteBuddy annotations
                         Class<?> transformedDelegationClass = PatchTransformer.transformPatchClass(delegationClass, Loader.g_instrumentation, Loader.g_verbosity, true);
-                        if (transformedDelegationClass == null) {
-                            Logger.error("ERROR: PatchTransformer returned null for " + delegationClass.getName());
-                            transformedDelegationClass = delegationClass; // Fall back to original
-                        }
+                        if (transformedDelegationClass == null) continue;
                         
                         Logger.info("patching " + className + "." + methodName + " with delegation");
                         
