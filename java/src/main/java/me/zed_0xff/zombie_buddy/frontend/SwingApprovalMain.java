@@ -393,7 +393,7 @@ public final class SwingApprovalMain {
             "<html><small><i>\"Trust author\" means all mods by that author are auto-allowed while their digital signature remains valid and the mod is not banned.</i></small></html>");
         trustNotice.setAlignmentX(Component.LEFT_ALIGNMENT);
         JCheckBox savePersist = new JCheckBox("Save decisions to disk (persist across game launches)", false);
-        savePersist.setAlignmentX(Component.LEFT_ALIGNMENT);
+        savePersist.setHorizontalTextPosition(SwingConstants.LEADING);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton ok = new JButton("OK");
@@ -465,9 +465,12 @@ public final class SwingApprovalMain {
         }
         updateOkEnabled.run();
 
+        JPanel persistRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        persistRow.add(savePersist);
+
         JPanel south = new JPanel();
         south.setLayout(new BoxLayout(south, BoxLayout.PAGE_AXIS));
-        south.add(savePersist);
+        south.add(persistRow);
         if (showTrustColumn) {
             south.add(Box.createVerticalStrut(6));
             south.add(trustNotice);
