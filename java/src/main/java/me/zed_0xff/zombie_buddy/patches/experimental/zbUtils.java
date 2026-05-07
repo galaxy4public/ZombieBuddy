@@ -119,20 +119,8 @@ public class zbUtils {
         Class<?> cls = obj.getClass();
         HashMap<String, ArrayList<String>> byName = new HashMap<>();
 
-        if (includePrivate) {
-            for (Method m : Accessor.allMethods(cls)) {
-                if (m.isSynthetic() || m.isBridge() || m.getDeclaringClass() == Object.class) {
-                    continue;
-                }
-                addMethodSignature(byName, m);
-            }
-        } else {
-            for (Method m : Accessor.publicMethods(cls)) {
-                if (m.isSynthetic() || m.isBridge() || m.getDeclaringClass() == Object.class) {
-                    continue;
-                }
-                addMethodSignature(byName, m);
-            }
+        for (Method m : Reflect.on(cls).methods(includePrivate ? null : Reflect.PUBLIC)) {
+            addMethodSignature(byName, m);
         }
 
         ArrayList<String> names = new ArrayList<>(byName.keySet());
@@ -193,21 +181,8 @@ public class zbUtils {
         KahluaTable result = LuaManager.platform.newTable();
         Class<?> cls = obj.getClass();
 
-        if (includePrivate) {
-            for (Field f : Accessor.allFields(cls)) {
-                if (f.isSynthetic()) continue;
-                result.rawset(f.getName(), Accessor.tryGet(obj, f, "[inaccessible]"));
-            }
-        } else {
-            Field[] fields = cls.getFields();
-            for (Field f : fields) {
-                if (f.isSynthetic()) {
-                    continue;
-                }
-                String name = f.getName();
-                Object value = Accessor.tryGet(obj, f, "[inaccessible]");
-                result.rawset(name, value);
-            }
+        for (Field f : Reflect.on(cls).fields(includePrivate ? null : Reflect.PUBLIC)) {
+            result.rawset(f.getName(), Accessor.tryGet(obj, f, "[inaccessible]"));
         }
 
         return result;

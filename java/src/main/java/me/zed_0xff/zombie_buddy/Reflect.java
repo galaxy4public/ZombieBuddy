@@ -1,14 +1,19 @@
 package me.zed_0xff.zombie_buddy;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
 
 /**
- * Fluent reflection chain. Entry point is {@link #on(String)} (class-name lookup) or
- * {@link #on(Object)} (wrap an instance or Class). Every step returns a new {@code Reflect};
- * a failed step (null value, missing field/method) returns a null-valued chain that silently
- * propagates — call {@link #isPresent()} or {@link #as} at the end to detect failure.
+ * Fluent reflection chain. Entry point is {@link #on(Object)}; strings are resolved as class
+ * names. Every step returns a new {@code Reflect}; a failed step produces a null-valued chain
+ * that silently propagates — call {@link #isPresent()} or {@link #as} at the end to detect
+ * failure.
  *
  * <pre>{@code
  * String dir = Reflect.on("zombie.ZomboidFileSystem")
@@ -19,55 +24,153 @@ import java.util.Optional;
  * }</pre>
  */
 public final class Reflect {
+
+    public enum Flag {
+        PUBLIC, PROTECTED, PACKAGE_PRIVATE, PRIVATE,
+        STATIC, INSTANCE
+    }
+
+    public static final Flag PUBLIC          = Flag.PUBLIC;
+    public static final Flag PROTECTED       = Flag.PROTECTED;
+    public static final Flag PACKAGE_PRIVATE = Flag.PACKAGE_PRIVATE;
+    public static final Flag PRIVATE         = Flag.PRIVATE;
+    public static final Flag STATIC          = Flag.STATIC;
+    public static final Flag INSTANCE        = Flag.INSTANCE;
+
+    private static final Reflect REFLECT_NULL = new Reflect(null);
+
     private final Object value;
 
     private Reflect(Object value) {
         this.value = value;
     }
 
-    /** Looks up {@code className} and wraps the result (null-valued chain if not found). */
-    public static Reflect on(String className) {
-        return new Reflect(Accessor.findClass(className));
-    }
-
-    /** Wraps {@code obj} directly; accepts instances and Class objects alike. */
+    /**
+     * Entry point for all chains. Strings are resolved as class names (null-valued chain if
+     * not found). Everything else is wrapped directly as the subject.
+     */
     public static Reflect on(Object obj) {
+        if (obj instanceof String s) {
+            return new Reflect(Accessor.findClass(s));
+        }
         return new Reflect(obj);
     }
 
     public Reflect field(String fieldName) {
-        if (value == null || Utils.isBlank(fieldName)) return new Reflect(null);
+        if (value == null || Utils.isBlank(fieldName))
+            return REFLECT_NULL;
+
         return new Reflect(Accessor.tryGet(value, fieldName, null));
     }
 
     public Reflect staticField(String fieldName) {
-        if (value == null || Utils.isBlank(fieldName)) return new Reflect(null);
-        if (value instanceof Class<?> cls) return new Reflect(Accessor.tryGet(cls, fieldName, null));
+        if (value == null || Utils.isBlank(fieldName))
+            return REFLECT_NULL;
+
+        if (value instanceof Class<?> cls)
+            return new Reflect(Accessor.tryGet(cls, fieldName, null));
+
         return new Reflect(Accessor.tryGet(value.getClass(), fieldName, null));
     }
 
     /** Tries {@code getInstance()} static method, then falls back to a static {@code instance} field. */
     public Reflect getInstance() {
-        if (value == null) return new Reflect(null);
+        if (value == null) return REFLECT_NULL;
+
         Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
         Method m = Accessor.findExactMethod(cls, "getInstance");
         if (m != null && Modifier.isStatic(m.getModifiers())) {
             try {
                 m.setAccessible(true);
                 Object instance = m.invoke(null);
-                if (instance != null) return new Reflect(instance);
+                if (instance != null)
+                    return new Reflect(instance);
             } catch (ReflectiveOperationException | RuntimeException ignored) {}
         }
         return new Reflect(Accessor.tryGet(cls, "instance", null));
     }
 
     public Reflect call(String methodName, Object... args) {
-        if (value == null || Utils.isBlank(methodName)) return new Reflect(null);
+        if (value == null || Utils.isBlank(methodName)) return REFLECT_NULL;
         try {
             return new Reflect(Accessor.callByName(value, methodName, args));
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
-            return new Reflect(null);
+            return REFLECT_NULL;
         }
+    }
+
+    /**
+     * Returns declared methods of the subject's class hierarchy, excluding synthetic, bridge, and
+     * Object-declared methods. Flags further filter by access/static; empty flags = no extra filtering.
+     * Access flags (PUBLIC/PROTECTED/PACKAGE_PRIVATE/PRIVATE) are OR-combined within the group.
+     * Static flags (STATIC/INSTANCE) are OR-combined within the group.
+     * Both groups must match when both are present.
+     */
+    public List<Method> methods(Flag... flags) {
+        if (value == null) return Collections.emptyList();
+
+        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
+        EnumSet<Flag> flagSet = toFlagSet(flags);
+        List<Method> out = new ArrayList<>();
+        for (Method m : Accessor.allMethods(cls)) {
+            if (m.isSynthetic() || m.isBridge() || m.getDeclaringClass() == Object.class) continue;
+
+            if (flagSet != null && !matchesMod(m.getModifiers(), flagSet)) continue;
+
+            out.add(m);
+        }
+        return out;
+    }
+
+    /**
+     * Returns all declared fields of the subject's class hierarchy (one per name, most-derived
+     * wins) matching {@code flags}. Same flag semantics as {@link #methods(Flag...)}.
+     */
+    public List<Field> fields(Flag... flags) {
+        if (value == null) return Collections.emptyList();
+
+        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
+        EnumSet<Flag> flagSet = toFlagSet(flags);
+        List<Field> out = new ArrayList<>();
+        for (Field f : Accessor.allFields(cls)) {
+            if (f.isSynthetic()) continue;
+
+            if (flagSet != null && !matchesMod(f.getModifiers(), flagSet)) continue;
+
+            out.add(f);
+        }
+        return out;
+    }
+
+    private static EnumSet<Flag> toFlagSet(Flag[] flags) {
+        if (flags == null || flags.length == 0)
+            return null;
+
+        EnumSet<Flag> set = EnumSet.noneOf(Flag.class);
+        for (Flag f : flags) {
+            if (f != null) set.add(f);
+        }
+        return set.isEmpty() ? null : set;
+    }
+
+    private static boolean matchesMod(int mod, EnumSet<Flag> flags) {
+        boolean hasAccess = flags.contains(Flag.PUBLIC) || flags.contains(Flag.PROTECTED) || flags.contains(Flag.PACKAGE_PRIVATE) || flags.contains(Flag.PRIVATE);
+        if (hasAccess) {
+            boolean ok = (flags.contains(Flag.PUBLIC)          &&  Modifier.isPublic(mod))
+                      || (flags.contains(Flag.PROTECTED)       &&  Modifier.isProtected(mod))
+                      || (flags.contains(Flag.PRIVATE)         &&  Modifier.isPrivate(mod))
+                      || (flags.contains(Flag.PACKAGE_PRIVATE) && !Modifier.isPublic(mod)
+                                                               && !Modifier.isProtected(mod)
+                                                               && !Modifier.isPrivate(mod));
+            if (!ok) return false;
+        }
+        boolean hasStatic = flags.contains(Flag.STATIC) || flags.contains(Flag.INSTANCE);
+        if (hasStatic) {
+            boolean ok = (flags.contains(Flag.STATIC)   &&  Modifier.isStatic(mod))
+                      || (flags.contains(Flag.INSTANCE) && !Modifier.isStatic(mod));
+            if (!ok) return false;
+        }
+        return true;
     }
 
     /** Shorthand for {@code field(name).as(type)}. */
@@ -76,7 +179,9 @@ public final class Reflect {
     }
 
     public <T> Optional<T> as(Class<T> type) {
-        if (value == null || type == null || !type.isInstance(value)) return Optional.empty();
+        if (value == null || type == null || !type.isInstance(value))
+            return Optional.empty();
+
         return Optional.of(type.cast(value));
     }
 
