@@ -60,7 +60,7 @@ public class JavaStateDumper {
         for (var entry : Thread.getAllStackTraces().entrySet()) {
             Thread t = entry.getKey();
             StackTraceElement[] stack = entry.getValue();
-            Logger.info(String.format("Thread: %s (id=%d, state=%s)", t.getName(), t.threadId(), t.getState()));
+            Logger.info(String.format("Thread: %s (id=%d, state=%s)", t.getName(), t.getId(), t.getState()));
             for (StackTraceElement el : stack) {
                 Logger.info("    at " + el);
             }
