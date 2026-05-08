@@ -36,6 +36,8 @@ final class PatchTransformer {
         common_map.put(Type.getDescriptor(Patch.This.class),         Type.getDescriptor(Advice.This.class));
         common_map.put(Type.getDescriptor(Patch.Argument.class),     Type.getDescriptor(Advice.Argument.class));
         common_map.put(Type.getDescriptor(Patch.AllArguments.class), Type.getDescriptor(Advice.AllArguments.class));
+        common_map.put(Type.getDescriptor(Patch.Field.class),        Type.getDescriptor(Advice.FieldValue.class));
+        common_map.put(Type.getDescriptor(Patch.RWField.class),      Type.getDescriptor(Advice.FieldValue.class));
 
         ADVICE_DESCRIPTOR_MAP = new HashMap<>(common_map);
         ADVICE_DESCRIPTOR_MAP.put(Type.getDescriptor(Patch.Local.class),   Type.getDescriptor(Advice.Local.class));
@@ -95,6 +97,8 @@ final class PatchTransformer {
                             param.isAnnotationPresent(Patch.Thrown.class)      ||
                             param.isAnnotationPresent(Patch.This.class)        ||
                             param.isAnnotationPresent(Patch.Argument.class)    ||
+                            param.isAnnotationPresent(Patch.Field.class)       ||
+                            param.isAnnotationPresent(Patch.RWField.class)     ||
                             param.isAnnotationPresent(Patch.Local.class)       ||
                             param.isAnnotationPresent(Patch.SuperMethod.class) ||
                             param.isAnnotationPresent(Patch.SuperCall.class)) {
@@ -174,7 +178,14 @@ final class PatchTransformer {
 
                         @Override
                         public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor, boolean visible) {
-                            return super.visitParameterAnnotation(parameter, rewriteAnnotationDescriptor(descriptor, isDelegation), visible);
+                            AnnotationVisitor av = super.visitParameterAnnotation(parameter, rewriteAnnotationDescriptor(descriptor, isDelegation), visible);
+                            if (Type.getDescriptor(Patch.RWField.class).equals(descriptor)) {
+                                // Inject readOnly = false; Patch.RWField has no readOnly attribute of its own
+                                return new AnnotationVisitor(Opcodes.ASM9, av) {
+                                    @Override public void visitEnd() { super.visit("readOnly", false); super.visitEnd(); }
+                                };
+                            }
+                            return av;
                         }
                     };
                 }

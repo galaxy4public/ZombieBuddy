@@ -133,4 +133,19 @@ public @interface Patch {
   public @interface Local {
     String value();
   }
+
+  /** Alias for net.bytebuddy.asm.Advice.FieldValue - mods should use Patch.Field instead */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.PARAMETER)
+  public @interface Field {
+    String value();
+    boolean readOnly() default true;
+  }
+
+  /** Shorthand for @Patch.Field(value = ..., readOnly = false) */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.PARAMETER)
+  public @interface RWField {
+    String value();
+  }
 }

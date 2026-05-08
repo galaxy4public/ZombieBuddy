@@ -40,6 +40,7 @@ public final class PatchEngine {
             );
     private static final Set<Class<? extends Annotation>> ADVICE_PARAM_SPECIAL_ANNOTATIONS = Set.of(
             Advice.AllArguments.class,
+            Advice.FieldValue.class,
             Advice.Local.class,
             Advice.Return.class,
             Advice.This.class,

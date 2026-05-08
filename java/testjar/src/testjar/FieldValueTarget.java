@@ -1,0 +1,11 @@
+package testjar;
+
+public class FieldValueTarget {
+    public String name = "initial";
+    public int counter = 0;
+
+    public static String capturedName = null;
+
+    public void doSomething() {}
+    public void increment() {}
+}
