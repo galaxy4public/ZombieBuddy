@@ -20,6 +20,7 @@ import net.bytebuddy.jar.asm.AnnotationVisitor;
 import net.bytebuddy.jar.asm.ClassReader;
 import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.ClassWriter;
+import net.bytebuddy.jar.asm.Label;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.jar.asm.Type;
@@ -159,6 +160,7 @@ final class PatchTransformer {
             }
 
             final boolean isDelegation = isMethodDelegation;
+            final Map<String, String[]> paramNames = collectParamNames(classBytes);
             ClassReader cr = new ClassReader(classBytes);
             ClassWriter cw = typeAliases.isEmpty()
                 ? new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES)
@@ -176,6 +178,8 @@ final class PatchTransformer {
             cr.accept(new ClassVisitor(Opcodes.ASM9, sink) {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    final String mName = name;
+                    final String mDesc = descriptor;
                     MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
                     TrampolineProcessor.ResolvedMethod trampolineTarget = trampolines.get(name);
                     if (trampolineTarget != null) mv = TrampolineProcessor.makeBodyRewriter(mv, descriptor, trampolineTarget);
@@ -203,10 +207,19 @@ final class PatchTransformer {
                         @Override
                         public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor, boolean visible) {
                             AnnotationVisitor av = super.visitParameterAnnotation(parameter, rewriteAnnotationDescriptor(descriptor, isDelegation), visible);
-                            if (Type.getDescriptor(Patch.RWField.class).equals(descriptor)) {
-                                // Inject readOnly = false; Patch.RWField has no readOnly attribute of its own
+                            boolean isField   = Type.getDescriptor(Patch.Field.class).equals(descriptor);
+                            boolean isRWField = Type.getDescriptor(Patch.RWField.class).equals(descriptor);
+                            if (isField || isRWField) {
+                                String[] mParams = paramNames.get(mName + mDesc);
+                                String inferred  = (mParams != null && parameter < mParams.length) ? mParams[parameter] : null;
                                 return new AnnotationVisitor(Opcodes.ASM9, av) {
-                                    @Override public void visitEnd() { super.visit("readOnly", false); super.visitEnd(); }
+                                    private boolean hasValue = false;
+                                    @Override public void visit(String n, Object v) { if ("value".equals(n)) hasValue = true; super.visit(n, v); }
+                                    @Override public void visitEnd() {
+                                        if (!hasValue && inferred != null) super.visit("value", inferred);
+                                        if (isRWField) super.visit("readOnly", false);
+                                        super.visitEnd();
+                                    }
                                 };
                             }
                             return av;
@@ -303,5 +316,27 @@ final class PatchTransformer {
             }
         }
         return null;
+    }
+
+    /** Reads the LocalVariableTable of each method to extract parameter names. Key = methodName + descriptor. */
+    private static Map<String, String[]> collectParamNames(byte[] classBytes) {
+        Map<String, String[]> result = new HashMap<>();
+        new ClassReader(classBytes).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public MethodVisitor visitMethod(int access, String mName, String mDesc, String sig, String[] ex) {
+                boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
+                int paramCount = Type.getArgumentTypes(mDesc).length;
+                String[] names = new String[paramCount];
+                result.put(mName + mDesc, names);
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override
+                    public void visitLocalVariable(String varName, String varDesc, String varSig, Label start, Label end, int index) {
+                        int paramIdx = isStatic ? index : index - 1;
+                        if (paramIdx >= 0 && paramIdx < paramCount) names[paramIdx] = varName;
+                    }
+                };
+            }
+        }, ClassReader.SKIP_FRAMES);
+        return result;
     }
 }

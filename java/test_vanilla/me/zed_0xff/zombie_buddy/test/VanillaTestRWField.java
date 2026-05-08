@@ -13,4 +13,12 @@ public class VanillaTestRWField {
         t.increment();
         assertEquals(0, t.counter);
     }
+
+    @Test
+    void testUnpatchedExplicit() {
+        FieldValueTarget t = new FieldValueTarget();
+        t.counter = 0;
+        t.incrementExplicit();
+        assertEquals(0, t.counter);
+    }
 }

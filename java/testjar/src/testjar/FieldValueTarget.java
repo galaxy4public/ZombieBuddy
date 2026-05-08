@@ -7,5 +7,7 @@ public class FieldValueTarget {
     public static String capturedName = null;
 
     public void doSomething() {}
+    public void doSomethingExplicit() {}
     public void increment() {}
+    public void incrementExplicit() {}
 }

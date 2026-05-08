@@ -14,4 +14,13 @@ public class VanillaTestFieldValue {
         t.doSomething();
         assertNull(FieldValueTarget.capturedName);
     }
+
+    @Test
+    void testUnpatchedExplicit() {
+        FieldValueTarget t = new FieldValueTarget();
+        t.name = "hello";
+        FieldValueTarget.capturedName = null;
+        t.doSomethingExplicit();
+        assertNull(FieldValueTarget.capturedName);
+    }
 }

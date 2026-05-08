@@ -16,6 +16,15 @@ public class PatchedTestFieldValue {
     }
 
     @Test
+    void testFieldValueReadExplicit() {
+        FieldValueTarget t = new FieldValueTarget();
+        t.name = "hello";
+        FieldValueTarget.capturedName = null;
+        t.doSomethingExplicit();
+        assertEquals("hello", FieldValueTarget.capturedName);
+    }
+
+    @Test
     void testFieldValueReflectsInstance() {
         FieldValueTarget a = new FieldValueTarget();
         FieldValueTarget b = new FieldValueTarget();

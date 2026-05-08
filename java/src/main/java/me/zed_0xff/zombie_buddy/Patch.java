@@ -138,7 +138,7 @@ public @interface Patch {
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Field {
-    String value();
+    String value() default "";  // empty = infer from parameter name
     boolean readOnly() default true;
   }
 
@@ -146,7 +146,7 @@ public @interface Patch {
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface RWField {
-    String value();
+    String value() default "";  // empty = infer from parameter name
   }
 
   /**
