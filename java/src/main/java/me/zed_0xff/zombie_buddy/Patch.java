@@ -73,68 +73,84 @@ public @interface Patch {
   public abstract static class OnDefaultValue extends Throwable {}
   public abstract static class OnNonDefaultValue extends Throwable {}
   
-  /** Alias for net.bytebuddy.asm.Advice.Return - mods should use Patch.Return instead */
+  /** Binds the return value of the target method. {@code @Patch.OnExit} only. Use {@code readOnly = false} to overwrite it. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Return {
     boolean readOnly() default true;
   }
 
-  /** Alias for net.bytebuddy.asm.Advice.Thrown - mods should use Patch.Thrown instead */
+  /** Binds the exception thrown by the target method, or {@code null} if none. {@code @Patch.OnExit} only. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Thrown {
     boolean readOnly() default true;
   }
-  
-  /** Alias for net.bytebuddy.asm.Advice.This - mods should use Patch.This instead */
+
+  /** Binds the target object ({@code this}). Not available for static target methods. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface This {
     boolean readOnly() default true;
   }
-  
-  /** Alias for net.bytebuddy.asm.Advice.Argument - mods should use Patch.Argument instead */
+
+  /** Binds the n-th argument (0-based) of the target method. Use {@code readOnly = false} to overwrite it. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Argument {
     int value() default 0;
     boolean readOnly() default true;
   }
-  
-  /** Alias for net.bytebuddy.asm.Advice.AllArguments - mods should use Patch.AllArguments instead */
+
+  /** Binds all target method arguments as {@code Object[]}. Use {@code readOnly = false} to overwrite them. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface AllArguments {
     boolean readOnly() default true;
   }
-  
-  /** Alias for net.bytebuddy.implementation.bind.annotation.RuntimeType - mods should use Patch.RuntimeType instead */
+
+  /** Marks a {@code @Patch.OnEnter} / {@code @Patch.OnExit} method return type as dynamically typed (delegation only). */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.METHOD)
   public @interface RuntimeType {
   }
-  
-  /** Alias for net.bytebuddy.implementation.bind.annotation.SuperMethod - mods should use Patch.SuperMethod instead */
+
+  /** Binds a {@code Method} handle to the overridden super-method (delegation only). */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface SuperMethod {
   }
-  
-  /** Alias for net.bytebuddy.implementation.bind.annotation.SuperCall - mods should use Patch.SuperCall instead */
+
+  /** Binds a {@code Callable} that invokes the overridden super-method (delegation only). */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface SuperCall {
   }
-  
-  /** Alias for net.bytebuddy.asm.Advice.Local - mods should use Patch.Local instead */
+
+  /** Binds a named local variable of the target method. The variable must exist in the target's debug info. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Local {
     String value();
   }
 
-  /** Alias for net.bytebuddy.asm.Advice.FieldValue - mods should use Patch.Field instead */
+  /**
+   * Binds a parameter to an instance or static field of the target class (read-only by default).
+   *
+   * <p>The field name is inferred from the parameter name when {@link #value()} is omitted,
+   * which requires debug info (present in all standard Gradle builds).
+   * Provide {@link #value()} explicitly when the parameter name differs from the field name.
+   *
+   * <p>Use {@code readOnly = false} to write the (possibly modified) value back after the
+   * advice returns, or prefer the shorthand {@link RWField}.
+   *
+   * <pre>{@code
+   * @Patch.OnEnter
+   * public static void enter(@Patch.This Object self,
+   *                          @Patch.Field String name,              // inferred: reads field "name"
+   *                          @Patch.Field("counter") int c) { ... } // explicit field name
+   * }</pre>
+   */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Field {
@@ -142,7 +158,19 @@ public @interface Patch {
     boolean readOnly() default true;
   }
 
-  /** Shorthand for @Patch.Field(value = ..., readOnly = false) */
+  /**
+   * Shorthand for {@code @Patch.Field(readOnly = false)}: binds a parameter to an instance or
+   * static field of the target class and writes the value back after the advice returns.
+   *
+   * <p>The field name is inferred from the parameter name when {@link #value()} is omitted.
+   *
+   * <pre>{@code
+   * @Patch.OnEnter
+   * public static void enter(@Patch.RWField int counter) {
+   *     counter++;  // increments the field on the target object
+   * }
+   * }</pre>
+   */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface RWField {
@@ -175,5 +203,36 @@ public @interface Patch {
   @Target(ElementType.TYPE)
   public @interface TypeAlias {
     String value();  // fully qualified name of the real class
+  }
+
+  /**
+   * Marks a static field in the patch class as a stand-in for a static field in another
+   * (potentially inaccessible) class. PatchTransformer rewrites GETSTATIC/PUTSTATIC
+   * instructions referencing this stub field to the real class's field.
+   *
+   * <p>Since advice is inlined into the target class, the rewritten references have full
+   * access to the real type's private/package-private members without any reflection.
+   *
+   * <p>An annotation processor validates at compile time that the stub field is not {@code final}
+   * and that the enclosing class is annotated with {@code @Patch}.
+   *
+   * <pre>{@code
+   * @Patch(className = "game.Renderer", methodName = "render")
+   * public class RendererPatch {
+   *     @Patch.StaticFieldAlias(className = "game.VertexBuffer")
+   *     static int VERTEX_SIZE;   // alias for VertexBuffer.VERTEX_SIZE
+   *
+   *     @Patch.OnEnter
+   *     public static void enter() {
+   *         int stride = VERTEX_SIZE * 4;   // → GETSTATIC game/VertexBuffer.VERTEX_SIZE at runtime
+   *     }
+   * }
+   * }</pre>
+   */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.FIELD)
+  public @interface StaticFieldAlias {
+    String className() default "";  // empty = infer from enclosing @Patch.className()
+    boolean readOnly() default true;
   }
 }

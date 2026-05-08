@@ -228,7 +228,7 @@ public final class Accessor {
         }
         for (String className : classNames) {
             if (!Utils.isBlank(className)) {
-                String normalized = className.replace('/', '.');
+                String normalized = Utils.toCanonicalName(className);
                 Class<?> cls = classNameCache
                     .computeIfAbsent(normalized, k -> Optional.ofNullable(findClassUncached(k)))
                     .orElse(null);

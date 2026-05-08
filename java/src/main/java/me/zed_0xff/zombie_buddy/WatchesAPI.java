@@ -201,7 +201,7 @@ public class WatchesAPI {
             public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
                     ProtectionDomain protectionDomain, byte[] classfileBuffer) {
                 if (className == null || classfileBuffer == null) return null;
-                String dotName = className.replace('/', '.');
+                String dotName = Utils.toCanonicalName(className);
                 if (!hasWatchesForClass(dotName)) return null;
 
                 Set<String> methods = getWatchedMethodsForClass(dotName);
@@ -297,7 +297,7 @@ public class WatchesAPI {
     }
 
     private static String normalizeClassName(String className) {
-        return className != null ? className.replace('/', '.') : null;
+        return className != null ? Utils.toCanonicalName(className) : null;
     }
 
     /**

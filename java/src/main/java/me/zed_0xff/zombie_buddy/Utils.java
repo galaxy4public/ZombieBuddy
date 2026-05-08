@@ -17,6 +17,15 @@ import java.util.regex.Pattern;
 public final class Utils {
     private Utils() {}
 
+    /** Converts a canonical/binary class name (dots) to an ASM internal name (slashes). */
+    public static String toInternalName(String className) { return className.replace('.', '/'); }
+
+    /** Converts a class to its ASM internal name. */
+    public static String toInternalName(Class<?> cls) { return cls.getName().replace('.', '/'); }
+
+    /** Converts an ASM internal name (slashes) to a canonical class name (dots). */
+    public static String toCanonicalName(String internalName) { return internalName.replace('/', '.'); }
+
     private static final Pattern PRERELEASE_PATTERN = Pattern.compile("^([a-z]+)(\\d*)");
 
     static <T> T firstNonNull(Supplier<T>... suppliers) {

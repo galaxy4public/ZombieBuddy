@@ -118,7 +118,21 @@ final class PatchTransformer {
             for (Class<?> inner : patchClass.getDeclaredClasses()) {
                 Patch.TypeAlias ann = inner.getAnnotation(Patch.TypeAlias.class);
                 if (ann == null) continue;
-                typeAliases.put(inner.getName().replace('.', '/'), ann.value().replace('.', '/'));
+                typeAliases.put(Utils.toInternalName(inner), Utils.toInternalName(ann.value()));
+                needsTransformation = true;
+            }
+
+            Patch patchAnn = patchClass.getAnnotation(Patch.class);
+            String defaultTargetCls = (patchAnn != null) ? patchAnn.className() : "";
+
+            record StaticAlias(String owner, boolean readOnly) {}
+            Map<String, StaticAlias> staticAliases = new HashMap<>();
+            for (java.lang.reflect.Field f : patchClass.getDeclaredFields()) {
+                Patch.StaticFieldAlias ann = f.getAnnotation(Patch.StaticFieldAlias.class);
+                if (ann == null) continue;
+                String targetClass = ann.className().isEmpty() ? defaultTargetCls : ann.className();
+                if (targetClass.isEmpty()) { Logger.warn("StaticFieldAlias " + f.getName() + " has no target class"); continue; }
+                staticAliases.put(f.getName(), new StaticAlias(Utils.toInternalName(targetClass), ann.readOnly()));
                 needsTransformation = true;
             }
 
@@ -129,8 +143,6 @@ final class PatchTransformer {
 
             Map<String, TrampolineProcessor.ResolvedMethod> trampolines = new HashMap<>();
             if (hasAnyTrampolines) {
-                Patch defaultPatchAnn   = patchClass.getAnnotation(Patch.class);
-                String defaultTargetCls = (defaultPatchAnn != null) ? defaultPatchAnn.className() : "";
                 for (Method m : patchClass.getDeclaredMethods()) {
                     Patch.Trampoline ann = m.getAnnotation(Patch.Trampoline.class);
                     if (ann == null) continue;
@@ -140,7 +152,7 @@ final class PatchTransformer {
                         if (ann.onMethodMissing() == Patch.OnMethodMissing.SKIP_PATCH) return null;
                         continue; // RUN_BODY — leave method body unchanged
                     }
-                    Logger.debug("Trampoline resolved: " + m.getName() + " → " + target.owner().replace('/', '.') + "." + target.name());
+                    Logger.debug("Trampoline resolved: " + m.getName() + " -> " + target.owner() + "." + target.name());
                     trampolines.put(m.getName(), target);
                     needsTransformation = true;
                 }
@@ -149,7 +161,8 @@ final class PatchTransformer {
             if (verbosity > 1) Logger.info("class " + patchClass.getName() + " needs transformation: " + needsTransformation);
             if (!needsTransformation && trampolines.isEmpty()) return patchClass;
 
-            String resourceName = patchClass.getName().replace('.', '/') + ".class";
+            final String patchOwner = Utils.toInternalName(patchClass);
+            String resourceName = patchOwner + ".class";
             byte[] classBytes;
             try (var is = patchClass.getClassLoader().getResourceAsStream(resourceName)) {
                 if (is == null) { Logger.error("Could not read class file for " + patchClass.getName()); return patchClass; }
@@ -168,7 +181,7 @@ final class PatchTransformer {
             ClassVisitor sink = cw;
             if (!typeAliases.isEmpty()) {
                 final Set<String> stubNames = typeAliases.keySet();
-                sink = new ClassRemapper(cw, new SimpleRemapper(typeAliases)) {
+                sink = new ClassRemapper(cw, new SimpleRemapper(Opcodes.ASM9, typeAliases)) {
                     @Override public void visitInnerClass(String name, String outerName, String innerName, int access) {
                         if (!stubNames.contains(name)) super.visitInnerClass(name, outerName, innerName, access);
                     }
@@ -223,6 +236,18 @@ final class PatchTransformer {
                                 };
                             }
                             return av;
+                        }
+
+                        @Override
+                        public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+                            if (!staticAliases.isEmpty() && patchOwner.equals(owner)) {
+                                StaticAlias alias = staticAliases.get(name);
+                                if (alias != null && (opcode == Opcodes.GETSTATIC || (opcode == Opcodes.PUTSTATIC && !alias.readOnly()))) {
+                                    super.visitFieldInsn(opcode, alias.owner(), name, descriptor);
+                                    return;
+                                }
+                            }
+                            super.visitFieldInsn(opcode, owner, name, descriptor);
                         }
                     };
                 }
@@ -297,7 +322,7 @@ final class PatchTransformer {
 
     private static TrampolineProcessor.ResolvedMethod toResolved(Method m) {
         return new TrampolineProcessor.ResolvedMethod(
-            m.getDeclaringClass().getName().replace('.', '/'),
+            Utils.toInternalName(m.getDeclaringClass()),
             m.getName(),
             Type.getMethodDescriptor(m),
             Modifier.isStatic(m.getModifiers()),

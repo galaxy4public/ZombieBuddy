@@ -2,7 +2,7 @@ plugins {
     id 'java'
     id 'signing'
     id 'com.gradleup.shadow' version '9.2.2'
-    id 'io.github.zed-0xff.zb-gradle-plugin' version '1.0.1'
+    id 'io.github.zed-0xff.zb-gradle-plugin' version '1.0.2'
 }
 
 // Game classpath: comma-separated JARs or dirs. Set via -PgameClasspath=... and/or env PZ_CLASSPATH.
@@ -261,6 +261,13 @@ tasks.withType(JavaCompile).configureEach {
     doLast {
         delete "${buildDir}/tmp"
     }
+}
+
+// Enable annotation processor for testpatches (validates @Patch.StaticFieldAlias at compile time).
+// Must come after the tasks.withType(JavaCompile) block above to override annotationProcessorPath.
+compileTestpatchesJava {
+    dependsOn compileJava
+    options.annotationProcessorPath = files(sourceSets.main.output)
 }
 
 // Helper to recursively check for .class files

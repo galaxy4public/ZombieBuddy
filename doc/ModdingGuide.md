@@ -191,6 +191,127 @@ public static class SkipExample {
 | `methodName` | Name of the method to patch |
 | `warmUp` | If `true`, forces the class to load before patching (needed for some game classes) |
 | `isAdvice` | If `true` (default), uses advice-based patching. If `false`, uses method delegation (complete replacement) |
+| `strictMatch` | If `true`, an advice method with no parameters matches only target methods with no parameters. Default `false` matches any overload. |
+
+### Parameter Bindings
+
+Advice methods can bind to parts of the intercepted call using parameter annotations:
+
+| Annotation | Available in | Description |
+|------------|-------------|-------------|
+| `@Patch.This` | OnEnter, OnExit | The target object (`this`). Not available for static target methods. |
+| `@Patch.Argument(n)` | OnEnter, OnExit | The n-th method argument (0-based). `readOnly = false` to overwrite. |
+| `@Patch.AllArguments` | OnEnter, OnExit | All arguments as `Object[]`. `readOnly = false` to overwrite. |
+| `@Patch.Return` | OnExit only | The method's return value. `readOnly = false` to overwrite. |
+| `@Patch.Thrown` | OnExit only | The exception thrown, or `null` if none. |
+| `@Patch.Local("name")` | OnEnter, OnExit | A named local variable from the target's debug info. |
+| `@Patch.Field` | OnEnter, OnExit | An instance or static field of the target class (read-only by default). |
+| `@Patch.RWField` | OnEnter, OnExit | Shorthand for `@Patch.Field(readOnly = false)`: reads and writes back after advice returns. |
+
+```java
+@Patch(className = "zombie.characters.IsoGameCharacter", methodName = "attack")
+public class AttackPatch {
+    @Patch.OnEnter
+    public static void enter(@Patch.This Object self,
+                             @Patch.Argument(0) Object target,
+                             @Patch.AllArguments Object[] args) { }
+
+    @Patch.OnExit
+    public static void exit(@Patch.Return(readOnly = false) int result,
+                            @Patch.Thrown Throwable thrown) {
+        if (thrown == null) result = result * 2;
+    }
+}
+```
+
+### Reading and Writing Fields (@Patch.Field / @Patch.RWField)
+
+`@Patch.Field` reads an instance or static field of the target class. `@Patch.RWField` (shorthand for `@Patch.Field(readOnly = false)`) also writes the modified value back after the advice returns.
+
+The field name is inferred from the parameter name when the annotation `value()` is omitted. Provide an explicit name when the parameter name must differ.
+
+```java
+@Patch(className = "zombie.characters.IsoPlayer", methodName = "update")
+public class PlayerUpdatePatch {
+    @Patch.OnEnter
+    public static void enter(@Patch.This Object self,
+                             @Patch.Field String username,          // reads field "username"
+                             @Patch.Field("maxSpeed") float speed,  // reads field "maxSpeed"
+                             @Patch.RWField int stamina) {          // reads AND writes back field "stamina"
+        if (stamina < 10) stamina = 10;  // write-back happens after advice returns
+    }
+}
+```
+
+### Private Type Access (@Patch.TypeAlias)
+
+When a target method works with private inner classes, declare a stub class in the patch and annotate it with `@Patch.TypeAlias`. PatchEngine rewrites every bytecode reference to the stub to the real class at load time, giving the inlined advice full access to the type's private members without reflection.
+
+```java
+@Patch(className = "game.Foo", methodName = "bar")
+public class FooPatch {
+    @Patch.TypeAlias("game.Foo$Inner")
+    static class Inner { String field; Inner(String v) {} }
+
+    @Patch.OnEnter
+    public static void enter(@Patch.This Object self) {
+        Inner i = new Inner("x");   // → new game/Foo$Inner at runtime
+        String v = i.field;         // → GETFIELD game/Foo$Inner.field
+    }
+}
+```
+
+### Static Field Aliasing (@Patch.StaticFieldAlias)
+
+`@Patch.StaticFieldAlias` grants access to a static field from another (potentially inaccessible) class. Declare a stub `static` field in the patch class; PatchTransformer rewrites all `GETSTATIC`/`PUTSTATIC` references to the stub to the real class's field at load time.
+
+```java
+@Patch(className = "game.Renderer", methodName = "render")
+public class RendererPatch {
+    @Patch.StaticFieldAlias(className = "game.VertexBuffer")
+    static int VERTEX_SIZE;   // alias for VertexBuffer.VERTEX_SIZE
+
+    @Patch.OnEnter
+    public static void enter() {
+        int stride = VERTEX_SIZE * 4;   // → GETSTATIC game/VertexBuffer.VERTEX_SIZE at runtime
+    }
+}
+```
+
+When `className` is omitted the alias targets the same class as the enclosing `@Patch.className()`. Set `readOnly = false` to also allow writing to the target field via `PUTSTATIC`.
+
+> **Warning**: The stub field must **not** be `final`. A `static final int X = 32` causes javac to inline the constant everywhere it is used, so no `GETSTATIC` instruction is emitted and the alias never fires. The compile-time annotation processor enforces this and raises a compile error if you mark the stub `final`.
+
+### Type-safe Method References (@Patch.Trampoline)
+
+`@Patch.Trampoline` lets you call methods on inaccessible or version-varying game classes without reflection. Declare a `static` method in the patch class; PatchEngine rewrites its body at load time to a direct call to the resolved method with zero runtime overhead.
+
+For instance-method targets, the first parameter is the receiver object; the remaining parameters are the method arguments. For static targets, all parameters are arguments.
+
+```java
+@Patch(className = "zombie.characters.IsoGameCharacter", methodName = "update")
+public class CharacterPatch {
+    // tries "isNPC" then "isNpc" on IsoGameCharacter; first param = receiver
+    @Patch.Trampoline(methodNames = {"isNPC", "isNpc"})
+    public static boolean isNPC(IsoGameCharacter chr) { return false; }
+
+    // shorthand: target class = @Patch.className(), method name = annotated method name
+    @Patch.Trampoline
+    public static float getMaxSpeed(IsoGameCharacter chr) { return 0f; }
+
+    @Patch.OnEnter
+    public static void enter(@Patch.This Object self) {
+        IsoGameCharacter chr = (IsoGameCharacter) self;
+        if (!isNPC(chr)) { float speed = getMaxSpeed(chr); }
+    }
+}
+```
+
+| Option | Description |
+|--------|-------------|
+| `className` | Class to resolve the method on. Empty (default) = same as `@Patch.className()`. |
+| `methodNames` | Candidate names tried in order. Uses the annotated method's own name when empty. |
+| `onMethodMissing` | `SKIP_PATCH` (default): drop the whole patch class if no match. `RUN_BODY`: leave the body unchanged. |
 
 ---
 

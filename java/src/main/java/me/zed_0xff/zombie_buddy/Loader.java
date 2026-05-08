@@ -1052,7 +1052,7 @@ public class Loader {
             return false;
         }
         try {
-            String packagePath = packageName.replace('.', '/');
+            String packagePath = Utils.toInternalName(packageName);
             try (JarFile jf = new JarFile(jarPath.toFile())) {
                 var entries = jf.entries();
                 while (entries.hasMoreElements()) {
