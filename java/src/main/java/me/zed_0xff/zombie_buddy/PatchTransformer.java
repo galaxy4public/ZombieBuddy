@@ -8,6 +8,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+
+import net.bytebuddy.jar.asm.commons.ClassRemapper;
+import net.bytebuddy.jar.asm.commons.SimpleRemapper;
 
 import net.bytebuddy.dynamic.loading.ByteArrayClassLoader;
 
@@ -109,6 +113,14 @@ final class PatchTransformer {
                 }
             }
 
+            Map<String, String> typeAliases = new HashMap<>();
+            for (Class<?> inner : patchClass.getDeclaredClasses()) {
+                Patch.TypeAlias ann = inner.getAnnotation(Patch.TypeAlias.class);
+                if (ann == null) continue;
+                typeAliases.put(inner.getName().replace('.', '/'), ann.value().replace('.', '/'));
+                needsTransformation = true;
+            }
+
             if (!needsTransformation && !hasAnyTrampolines) {
                 if (verbosity > 1) Logger.info("class " + patchClass.getName() + " needs transformation: false");
                 return patchClass;
@@ -148,8 +160,20 @@ final class PatchTransformer {
 
             final boolean isDelegation = isMethodDelegation;
             ClassReader cr = new ClassReader(classBytes);
-            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES);
-            cr.accept(new ClassVisitor(Opcodes.ASM9, cw) {
+            ClassWriter cw = typeAliases.isEmpty()
+                ? new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES)
+                : new ClassWriter(ClassWriter.COMPUTE_FRAMES);
+            ClassVisitor sink = cw;
+            if (!typeAliases.isEmpty()) {
+                final Set<String> stubNames = typeAliases.keySet();
+                sink = new ClassRemapper(cw, new SimpleRemapper(typeAliases)) {
+                    @Override public void visitInnerClass(String name, String outerName, String innerName, int access) {
+                        if (!stubNames.contains(name)) super.visitInnerClass(name, outerName, innerName, access);
+                    }
+                };
+                if (verbosity > 0) Logger.debug("TypeAliases: " + typeAliases);
+            }
+            cr.accept(new ClassVisitor(Opcodes.ASM9, sink) {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                     MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);

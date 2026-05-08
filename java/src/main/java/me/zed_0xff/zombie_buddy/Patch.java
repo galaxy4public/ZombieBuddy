@@ -148,4 +148,32 @@ public @interface Patch {
   public @interface RWField {
     String value();
   }
+
+  /**
+   * Marks a nested stub class as a stand-in for an inaccessible type (e.g. a private inner class
+   * of the target). At patch transpile time PatchEngine rewrites every bytecode reference to the
+   * stub to the real class named by {@link #value()}.
+   *
+   * <p>Since advice is inlined into the target class's bytecode, the rewritten references have
+   * full access to the real type's private members without any reflection.
+   *
+   * <pre>{@code
+   * @Patch(className = "game.Foo", methodName = "bar")
+   * public class FooPatch {
+   *     @Patch.TypeAlias("game.Foo$Inner")
+   *     static class Inner { String field; Inner(String v) {} }
+   *
+   *     @Patch.OnEnter
+   *     public static void enter(@Patch.This Object self) {
+   *         Inner i = new Inner("x");   // → new game/Foo$Inner at runtime
+   *         Foo.result = i.field;       // → GETFIELD game/Foo$Inner.field
+   *     }
+   * }
+   * }</pre>
+   */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.TYPE)
+  public @interface TypeAlias {
+    String value();  // fully qualified name of the real class
+  }
 }
