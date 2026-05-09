@@ -7,7 +7,7 @@ import testjar.TrampolineTarget;
 @Patch(className = "testjar.TrampolineTarget", methodName = "checkRunBody")
 public class TrampolinePatchRunBody {
 
-    @Patch.Trampoline(className = "testjar.TrampolineHelper", methodNames = {"noSuchMethod"}, onMethodMissing = Patch.OnMethodMissing.RUN_BODY)
+    @Patch.Trampoline(methodName = "noSuchMethod", className = "testjar.TrampolineHelper", onMethodMissing = Patch.OnMethodMissing.RUN_BODY)
     public static int missingMethod(Object t) { return -42; }
 
     @Patch.OnEnter

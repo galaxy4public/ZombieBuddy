@@ -38,7 +38,7 @@ public @interface Patch {
    * Marks a static method as a trampoline: PatchEngine rewrites its body at load time to a
    * direct call to the resolved method in {@link #className()}, with zero runtime overhead.
    *
-   * <p><b>Name resolution:</b> if {@link #methodNames()} is non-empty, those names are tried in
+   * <p><b>Name resolution:</b> if {@link #value()} is non-empty, those names are tried in
    * order and the annotated method's own name is ignored. Otherwise the annotated method's name
    * is used as the sole candidate.
    *
@@ -53,7 +53,7 @@ public @interface Patch {
    * {@code @Patch} class, i.e. the same target class being patched.
    *
    * <pre>{@code
-   * @Patch.Trampoline(className = "IsoGameCharacter", methodNames = {"isNPC", "isNpc"})
+   * @Patch.Trampoline(value = {"isNPC", "isNpc"}, className = "IsoGameCharacter")
    * public static boolean isNPC(IsoGameCharacter chr) { return false; }
    *
    * // shorthand when target class == @Patch className:
@@ -64,8 +64,9 @@ public @interface Patch {
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.METHOD)
   public @interface Trampoline {
-    String className() default "";   // empty = same as enclosing @Patch className
-    String[] methodNames() default {};
+    String[] value() default {};
+    String[] methodName() default {};  // alias for value(); specifying both is a compile error
+    String className() default "";     // empty = same as enclosing @Patch className
     OnMethodMissing onMethodMissing() default OnMethodMissing.SKIP_PATCH;
   }
 
@@ -94,12 +95,14 @@ public @interface Patch {
     boolean readOnly() default true;
   }
 
-  /** Binds the n-th argument (0-based) of the target method. Use {@code readOnly = false} to overwrite it. */
+  /** Binds the n-th argument (0-based) of the target method. Use {@code readOnly = false} to overwrite it.
+   *  Set {@code optional = true} to bind null / the default primitive value when the index is out of range. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Argument {
     int value() default 0;
     boolean readOnly() default true;
+    boolean optional() default false;
   }
 
   /** Binds all target method arguments as {@code Object[]}. Use {@code readOnly = false} to overwrite them. */
@@ -140,22 +143,29 @@ public @interface Patch {
    * <p>The field name is inferred from the parameter name when {@link #value()} is omitted,
    * which requires debug info (present in all standard Gradle builds).
    * Provide {@link #value()} explicitly when the parameter name differs from the field name.
+   * Provide multiple names to try them in order; the first name that exists on the target class is used.
+   * Multi-name resolution requires the target class to be already loaded, so it cannot be used in preload-time patches.
    *
    * <p>Use {@code readOnly = false} to write the (possibly modified) value back after the
-   * advice returns, or prefer the shorthand {@link RWField}.
+   * advice returns, or prefer the shorthand {@link FieldRW}.
+   *
+   * <p>{@link #name()} is an alias for {@link #value()}; specifying both is a compile error.
    *
    * <pre>{@code
    * @Patch.OnEnter
    * public static void enter(@Patch.This Object self,
-   *                          @Patch.Field String name,              // inferred: reads field "name"
-   *                          @Patch.Field("counter") int c) { ... } // explicit field name
+   *                          @Patch.Field String name,                      // inferred: reads this.name
+   *                          @Patch.Field("counter") int c,                 // explicit field name
+   *                          @Patch.Field({"speedNew", "speed"}) float spd) // tries "speedNew", falls back to "speed"
    * }</pre>
    */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
   public @interface Field {
-    String value() default "";  // empty = infer from parameter name
+    String[] value() default {};  // field name(s): empty = infer from parameter name; multiple = try in order
+    String[] name() default {};   // alias for value(); specifying both is a compile error
     boolean readOnly() default true;
+    boolean optional() default false;
   }
 
   /**
@@ -163,18 +173,20 @@ public @interface Patch {
    * static field of the target class and writes the value back after the advice returns.
    *
    * <p>The field name is inferred from the parameter name when {@link #value()} is omitted.
+   * Multiple names may be specified and are tried in order against the target class.
+   * Multi-name resolution requires the target class to be already loaded, so it cannot be used in preload-time patches.
    *
    * <pre>{@code
    * @Patch.OnEnter
-   * public static void enter(@Patch.RWField int counter) {
+   * public static void enter(@Patch.FieldRW int counter) {
    *     counter++;  // increments the field on the target object
    * }
    * }</pre>
    */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
-  public @interface RWField {
-    String value() default "";  // empty = infer from parameter name
+  public @interface FieldRW {
+    String[] value() default {};  // empty = infer from parameter name; multiple = try in order
   }
 
   /**
@@ -215,12 +227,20 @@ public @interface Patch {
    *
    * <p>An annotation processor validates at compile time that the stub field is not {@code final}
    * and that the enclosing class is annotated with {@code @Patch}.
+   * Use {@link StaticFieldAliasRW} as a shorthand for {@code readOnly = false}.
+   *
+   * <p>The target field name is inferred from the stub field name when {@link #value()} is omitted.
+   * Provide multiple names to try them in order; the first that exists on the target class is used.
+   * Multi-name resolution requires the target class to be already loaded.
    *
    * <pre>{@code
    * @Patch(className = "game.Renderer", methodName = "render")
    * public class RendererPatch {
    *     @Patch.StaticFieldAlias(className = "game.VertexBuffer")
-   *     static int VERTEX_SIZE;   // alias for VertexBuffer.VERTEX_SIZE
+   *     static int VERTEX_SIZE;                               // alias for VertexBuffer.VERTEX_SIZE (inferred)
+   *
+   *     @Patch.StaticFieldAlias({"VERTEX_SIZE_NEW", "VERTEX_SIZE"}, className = "game.VertexBuffer")
+   *     static int VERTEX_SIZE_COMPAT;                        // tries new name, falls back to old
    *
    *     @Patch.OnEnter
    *     public static void enter() {
@@ -232,7 +252,19 @@ public @interface Patch {
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.FIELD)
   public @interface StaticFieldAlias {
+    String[] value() default {};    // empty = infer from stub field name; multiple = try in order
     String className() default "";  // empty = infer from enclosing @Patch.className()
     boolean readOnly() default true;
+  }
+
+  /**
+   * Shorthand for {@code @Patch.StaticFieldAlias(readOnly = false)}: allows both GETSTATIC and
+   * PUTSTATIC to be rewritten to the aliased field. Same validation rules as {@link StaticFieldAlias}.
+   */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.FIELD)
+  public @interface StaticFieldAliasRW {
+    String[] value() default {};    // empty = infer from stub field name; multiple = try in order
+    String className() default "";  // empty = infer from enclosing @Patch.className()
   }
 }

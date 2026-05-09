@@ -206,7 +206,7 @@ Advice methods can bind to parts of the intercepted call using parameter annotat
 | `@Patch.Thrown` | OnExit only | The exception thrown, or `null` if none. |
 | `@Patch.Local("name")` | OnEnter, OnExit | A named local variable from the target's debug info. |
 | `@Patch.Field` | OnEnter, OnExit | An instance or static field of the target class (read-only by default). |
-| `@Patch.RWField` | OnEnter, OnExit | Shorthand for `@Patch.Field(readOnly = false)`: reads and writes back after advice returns. |
+| `@Patch.FieldRW` | OnEnter, OnExit | Shorthand for `@Patch.Field(readOnly = false)`: reads and writes back after advice returns. |
 
 ```java
 @Patch(className = "zombie.characters.IsoGameCharacter", methodName = "attack")
@@ -224,20 +224,21 @@ public class AttackPatch {
 }
 ```
 
-### Reading and Writing Fields (@Patch.Field / @Patch.RWField)
+### Reading and Writing Fields (@Patch.Field / @Patch.FieldRW)
 
-`@Patch.Field` reads an instance or static field of the target class. `@Patch.RWField` (shorthand for `@Patch.Field(readOnly = false)`) also writes the modified value back after the advice returns.
+`@Patch.Field` reads an instance or static field of the target class. `@Patch.FieldRW` (shorthand for `@Patch.Field(readOnly = false)`) also writes the modified value back after the advice returns.
 
-The field name is inferred from the parameter name when the annotation `value()` is omitted. Provide an explicit name when the parameter name must differ.
+The field name is inferred from the parameter name when the annotation `value()` is omitted. Provide an explicit name when the parameter name must differ. Provide multiple names and the engine tries them in order, using the first one that exists on the target class — useful for patches that must work across game versions that renamed a field. Multi-name resolution requires the target class to be already loaded, so it cannot be used in preload-time patches.
 
 ```java
 @Patch(className = "zombie.characters.IsoPlayer", methodName = "update")
 public class PlayerUpdatePatch {
     @Patch.OnEnter
     public static void enter(@Patch.This Object self,
-                             @Patch.Field String username,          // reads field "username"
-                             @Patch.Field("maxSpeed") float speed,  // reads field "maxSpeed"
-                             @Patch.RWField int stamina) {          // reads AND writes back field "stamina"
+                             @Patch.Field String username,                       // inferred from parameter name
+                             @Patch.Field("maxSpeed") float speed,               // explicit name
+                             @Patch.Field({"speedNew", "speed"}) float spd,      // tries "speedNew", falls back to "speed"
+                             @Patch.FieldRW int stamina) {                       // reads AND writes back
         if (stamina < 10) stamina = 10;  // write-back happens after advice returns
     }
 }
@@ -261,24 +262,28 @@ public class FooPatch {
 }
 ```
 
-### Static Field Aliasing (@Patch.StaticFieldAlias)
+### Static Field Aliasing (@Patch.StaticFieldAlias / @Patch.StaticFieldAliasRW)
 
-`@Patch.StaticFieldAlias` grants access to a static field from another (potentially inaccessible) class. Declare a stub `static` field in the patch class; PatchTransformer rewrites all `GETSTATIC`/`PUTSTATIC` references to the stub to the real class's field at load time.
+`@Patch.StaticFieldAlias` grants access to a static field from another (potentially inaccessible) class. Declare a stub `static` field in the patch class; PatchTransformer rewrites all `GETSTATIC`/`PUTSTATIC` references to the stub to the real class's field at load time. Use `@Patch.StaticFieldAliasRW` as shorthand for `@Patch.StaticFieldAlias(readOnly = false)`.
 
 ```java
 @Patch(className = "game.Renderer", methodName = "render")
 public class RendererPatch {
     @Patch.StaticFieldAlias(className = "game.VertexBuffer")
-    static int VERTEX_SIZE;   // alias for VertexBuffer.VERTEX_SIZE
+    static int VERTEX_SIZE;   // alias for VertexBuffer.VERTEX_SIZE (read-only)
+
+    @Patch.StaticFieldAliasRW(className = "game.Renderer")
+    static int frameCount;    // alias for Renderer.frameCount (read-write)
 
     @Patch.OnEnter
     public static void enter() {
         int stride = VERTEX_SIZE * 4;   // → GETSTATIC game/VertexBuffer.VERTEX_SIZE at runtime
+        frameCount++;                   // → GETSTATIC + PUTSTATIC game/Renderer.frameCount
     }
 }
 ```
 
-When `className` is omitted the alias targets the same class as the enclosing `@Patch.className()`. Set `readOnly = false` to also allow writing to the target field via `PUTSTATIC`.
+When `className` is omitted the alias targets the same class as the enclosing `@Patch.className()`.
 
 > **Warning**: The stub field must **not** be `final`. A `static final int X = 32` causes javac to inline the constant everywhere it is used, so no `GETSTATIC` instruction is emitted and the alias never fires. The compile-time annotation processor enforces this and raises a compile error if you mark the stub `final`.
 
@@ -292,7 +297,7 @@ For instance-method targets, the first parameter is the receiver object; the rem
 @Patch(className = "zombie.characters.IsoGameCharacter", methodName = "update")
 public class CharacterPatch {
     // tries "isNPC" then "isNpc" on IsoGameCharacter; first param = receiver
-    @Patch.Trampoline(methodNames = {"isNPC", "isNpc"})
+    @Patch.Trampoline({"isNPC", "isNpc"})
     public static boolean isNPC(IsoGameCharacter chr) { return false; }
 
     // shorthand: target class = @Patch.className(), method name = annotated method name

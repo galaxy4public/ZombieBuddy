@@ -2,11 +2,14 @@ package me.zed_0xff.zombie_buddy;
 
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -42,7 +45,7 @@ final class PatchTransformer {
         common_map.put(Type.getDescriptor(Patch.Argument.class),     Type.getDescriptor(Advice.Argument.class));
         common_map.put(Type.getDescriptor(Patch.AllArguments.class), Type.getDescriptor(Advice.AllArguments.class));
         common_map.put(Type.getDescriptor(Patch.Field.class),        Type.getDescriptor(Advice.FieldValue.class));
-        common_map.put(Type.getDescriptor(Patch.RWField.class),      Type.getDescriptor(Advice.FieldValue.class));
+        common_map.put(Type.getDescriptor(Patch.FieldRW.class),      Type.getDescriptor(Advice.FieldValue.class));
 
         ADVICE_DESCRIPTOR_MAP = new HashMap<>(common_map);
         ADVICE_DESCRIPTOR_MAP.put(Type.getDescriptor(Patch.Local.class),   Type.getDescriptor(Advice.Local.class));
@@ -103,7 +106,7 @@ final class PatchTransformer {
                             param.isAnnotationPresent(Patch.This.class)        ||
                             param.isAnnotationPresent(Patch.Argument.class)    ||
                             param.isAnnotationPresent(Patch.Field.class)       ||
-                            param.isAnnotationPresent(Patch.RWField.class)     ||
+                            param.isAnnotationPresent(Patch.FieldRW.class)     ||
                             param.isAnnotationPresent(Patch.Local.class)       ||
                             param.isAnnotationPresent(Patch.SuperMethod.class) ||
                             param.isAnnotationPresent(Patch.SuperCall.class)) {
@@ -125,14 +128,28 @@ final class PatchTransformer {
             Patch patchAnn = patchClass.getAnnotation(Patch.class);
             String defaultTargetCls = (patchAnn != null) ? patchAnn.className() : "";
 
-            record StaticAlias(String owner, boolean readOnly) {}
+            record StaticAlias(String owner, String resolvedName, boolean readOnly) {}
             Map<String, StaticAlias> staticAliases = new HashMap<>();
             for (java.lang.reflect.Field f : patchClass.getDeclaredFields()) {
-                Patch.StaticFieldAlias ann = f.getAnnotation(Patch.StaticFieldAlias.class);
-                if (ann == null) continue;
-                String targetClass = ann.className().isEmpty() ? defaultTargetCls : ann.className();
+                Patch.StaticFieldAlias    ann   = f.getAnnotation(Patch.StaticFieldAlias.class);
+                Patch.StaticFieldAliasRW  annRW = f.getAnnotation(Patch.StaticFieldAliasRW.class);
+                if (ann == null && annRW == null) continue;
+                String   targetClass = ann != null
+                    ? (ann.className().isEmpty()   ? defaultTargetCls : ann.className())
+                    : (annRW.className().isEmpty()  ? defaultTargetCls : annRW.className());
+                boolean  readOnly    = ann != null && ann.readOnly();
+                String[] candidates  = ann != null ? ann.value() : annRW.value();
                 if (targetClass.isEmpty()) { Logger.warn("StaticFieldAlias " + f.getName() + " has no target class"); continue; }
-                staticAliases.put(f.getName(), new StaticAlias(Utils.toInternalName(targetClass), ann.readOnly()));
+                String resolvedName;
+                if (candidates.length == 0) {
+                    resolvedName = f.getName();
+                } else if (candidates.length == 1) {
+                    resolvedName = candidates[0];
+                } else {
+                    resolvedName = resolveFieldName(Arrays.asList(candidates), targetClass);
+                    if (resolvedName == null) resolvedName = candidates[0];
+                }
+                staticAliases.put(f.getName(), new StaticAlias(Utils.toInternalName(targetClass), resolvedName, readOnly));
                 needsTransformation = true;
             }
 
@@ -174,6 +191,8 @@ final class PatchTransformer {
 
             final boolean isDelegation = isMethodDelegation;
             final Map<String, String[]> paramNames = collectParamNames(classBytes);
+            final Map<String, String> fieldResolutions = new HashMap<>(); // paramName -> resolvedFieldName
+
             ClassReader cr = new ClassReader(classBytes);
             ClassWriter cw = typeAliases.isEmpty()
                 ? new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES)
@@ -221,15 +240,38 @@ final class PatchTransformer {
                         public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor, boolean visible) {
                             AnnotationVisitor av = super.visitParameterAnnotation(parameter, rewriteAnnotationDescriptor(descriptor, isDelegation), visible);
                             boolean isField   = Type.getDescriptor(Patch.Field.class).equals(descriptor);
-                            boolean isRWField = Type.getDescriptor(Patch.RWField.class).equals(descriptor);
+                            boolean isRWField = Type.getDescriptor(Patch.FieldRW.class).equals(descriptor);
                             if (isField || isRWField) {
                                 String[] mParams = paramNames.get(mName + mDesc);
                                 String inferred  = (mParams != null && parameter < mParams.length) ? mParams[parameter] : null;
                                 return new AnnotationVisitor(Opcodes.ASM9, av) {
-                                    private boolean hasValue = false;
-                                    @Override public void visit(String n, Object v) { if ("value".equals(n)) hasValue = true; super.visit(n, v); }
+                                    private final List<String> candidates = new ArrayList<>();
+                                    @Override public AnnotationVisitor visitArray(String n) {
+                                        if ("value".equals(n) || "name".equals(n)) {
+                                            return new AnnotationVisitor(Opcodes.ASM9) {
+                                                @Override public void visit(String ignored, Object v) {
+                                                    if (v instanceof String s) candidates.add(s);
+                                                }
+                                            };
+                                        }
+                                        return super.visitArray(n);
+                                    }
+                                    @Override public void visit(String n, Object v) {
+                                        if ("optional".equals(n)) return; // Advice.FieldValue has no optional
+                                        super.visit(n, v);
+                                    }
                                     @Override public void visitEnd() {
-                                        if (!hasValue && inferred != null) super.visit("value", inferred);
+                                        String resolved;
+                                        if (candidates.isEmpty()) {
+                                            resolved = inferred;
+                                        } else if (candidates.size() == 1) {
+                                            resolved = candidates.get(0);
+                                        } else {
+                                            resolved = resolveFieldName(candidates, defaultTargetCls);
+                                            if (resolved == null) resolved = candidates.get(0);
+                                        }
+                                        if (resolved != null && inferred != null) fieldResolutions.putIfAbsent(inferred, resolved);
+                                        if (resolved != null) super.visit("value", resolved);
                                         if (isRWField) super.visit("readOnly", false);
                                         super.visitEnd();
                                     }
@@ -243,7 +285,7 @@ final class PatchTransformer {
                             if (!staticAliases.isEmpty() && patchOwner.equals(owner)) {
                                 StaticAlias alias = staticAliases.get(name);
                                 if (alias != null && (opcode == Opcodes.GETSTATIC || (opcode == Opcodes.PUTSTATIC && !alias.readOnly()))) {
-                                    super.visitFieldInsn(opcode, alias.owner(), name, descriptor);
+                                    super.visitFieldInsn(opcode, alias.owner(), alias.resolvedName(), descriptor);
                                     return;
                                 }
                             }
@@ -270,7 +312,9 @@ final class PatchTransformer {
                         patchClass.getClassLoader(),
                         Collections.singletonMap(patchClass.getName(), transformedBytes),
                         ByteArrayClassLoader.PersistenceHandler.MANIFEST);
-                return freshLoader.loadClass(patchClass.getName());
+                Class<?> freshClass = freshLoader.loadClass(patchClass.getName());
+                populateResolvedFields(freshClass, defaultTargetCls, fieldResolutions);
+                return freshClass;
             } catch (Exception e) {
                 Logger.error("Failed to load transformed class " + patchClass.getName() + ": " + e.getMessage());
                 if (verbosity > 0) Logger.printStackTrace(e);
@@ -306,7 +350,7 @@ final class PatchTransformer {
             Logger.warn("Trampoline target class not yet loadable (preload-time limitation): " + targetClassName);
             return null;
         }
-        String[]   names   = ann.methodNames().length > 0 ? ann.methodNames() : new String[]{ trampolineMethod.getName() };
+        String[]   names   = ann.value().length > 0 ? ann.value() : ann.methodName().length > 0 ? ann.methodName() : new String[]{ trampolineMethod.getName() };
         Class<?>[] tParams = trampolineMethod.getParameterTypes();
         Class<?>   tReturn = trampolineMethod.getReturnType();
         for (String name : names) {
@@ -339,6 +383,47 @@ final class PatchTransformer {
                 if (!Arrays.equals(m.getParameterTypes(), params)) continue;
                 return m;
             }
+        }
+        return null;
+    }
+
+    /**
+     * If the transformed patch class declares a {@code static Map<String, String> ZB_RESOLVED_FIELDS},
+     * fills it from the pre-collected {@code fieldResolutions} map (paramName → resolvedFieldName)
+     * that was built during the ASM pass.
+     */
+    @SuppressWarnings("unchecked")
+    private static void populateResolvedFields(Class<?> transformedClass, String targetClassName, Map<String, String> fieldResolutions) {
+        if (fieldResolutions.isEmpty()) return;
+        Field mapField;
+        try {
+            mapField = transformedClass.getDeclaredField("ZB_RESOLVED_FIELDS");
+        } catch (NoSuchFieldException e) {
+            return;
+        }
+        if (!java.util.Map.class.isAssignableFrom(mapField.getType())) return;
+        mapField.setAccessible(true);
+        java.util.Map<String, String> map;
+        try {
+            map = (java.util.Map<String, String>) mapField.get(null);
+        } catch (IllegalAccessException e) {
+            return;
+        }
+        if (map != null) map.putAll(fieldResolutions);
+    }
+
+    /** Returns the first name from {@code candidates} that exists as a field on {@code targetClassName} or any superclass. */
+    private static String resolveFieldName(List<String> candidates, String targetClassName) {
+        if (targetClassName.isEmpty()) return null;
+        try {
+            Class<?> cls = Class.forName(targetClassName);
+            for (String name : candidates) {
+                for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
+                    try { c.getDeclaredField(name); return name; } catch (NoSuchFieldException ignored) {}
+                }
+            }
+        } catch (ClassNotFoundException e) {
+            Logger.warn("Field name resolution: target class not found: " + targetClassName);
         }
         return null;
     }
