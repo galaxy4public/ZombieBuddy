@@ -477,7 +477,7 @@ public final class PatchEngine {
                                 inferredTypes = null; // Clear inferred types to force name-based matching
                             }
 
-                            Logger.info(
+                            Logger.debug(
                                     "hasMultipleSignatures: " + hasMultipleSignatures +
                                     ", hasAllArguments: " + hasAllArguments +
                                     ", hasNoParamMethod: " + hasNoParamMethod +

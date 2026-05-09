@@ -32,8 +32,6 @@ public @interface Patch {
     Class<? extends Throwable> suppress() default NoException.class;
   }
 
-  enum OnMethodMissing { SKIP_PATCH, RUN_BODY }
-
   /**
    * Marks a static method as a trampoline: PatchEngine rewrites its body at load time to a
    * direct call to the resolved method in {@link #className()}, with zero runtime overhead.
@@ -46,8 +44,8 @@ public @interface Patch {
    * targets, the first parameter is the receiver and the remaining parameters are the method
    * arguments. For static targets, all parameters are arguments. Return type must match exactly.
    *
-   * <p><b>Missing method:</b> {@link OnMethodMissing#SKIP_PATCH} (default) drops the entire
-   * containing patch class; {@link OnMethodMissing#RUN_BODY} leaves the method body unchanged.
+   * <p><b>Missing method:</b> when {@code optional = false} (default) the entire containing patch
+   * class is dropped; when {@code optional = true} the method body is left unchanged (runs as-is).
    *
    * <p><b>className:</b> if empty, defaults to the {@link Patch#className()} of the enclosing
    * {@code @Patch} class, i.e. the same target class being patched.
@@ -67,7 +65,7 @@ public @interface Patch {
     String[] value() default {};
     String[] methodName() default {};  // alias for value(); specifying both is a compile error
     String className() default "";     // empty = same as enclosing @Patch className
-    OnMethodMissing onMethodMissing() default OnMethodMissing.SKIP_PATCH;
+    boolean optional() default false;  // false = drop patch class on missing method; true = leave body unchanged
   }
 
   public abstract static class NoException extends Throwable {}
@@ -266,5 +264,16 @@ public @interface Patch {
   public @interface StaticFieldAliasRW {
     String[] value() default {};    // empty = infer from stub field name; multiple = try in order
     String className() default "";  // empty = infer from enclosing @Patch.className()
+  }
+
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.FIELD)
+  public @interface MemberHandle {
+    String[] value() default {};              // empty = infer from stub field name; multiple = try in order
+    String[] name() default {};               // alias for value(); specifying both is a compile error
+    String className() default "";            // empty = infer from enclosing @Patch.className()
+    boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
+    Class<?> returnType() default void.class; // the return type of the _method_ handle
+    Class<?>[] parameterTypes() default {};   // the parameter types of the _method_ handle
   }
 }

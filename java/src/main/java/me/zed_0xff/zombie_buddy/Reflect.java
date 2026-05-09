@@ -1,10 +1,14 @@
 package me.zed_0xff.zombie_buddy;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +43,8 @@ public final class Reflect {
 
     private static final Reflect REFLECT_NULL = new Reflect(null);
 
+    private static final Object MISS = new Object();
+
     private final Object value;
 
     private Reflect(Object value) {
@@ -54,6 +60,21 @@ public final class Reflect {
             return new Reflect(Accessor.findClass(s));
         }
         return new Reflect(obj);
+    }
+
+    static final record ClassInfo(
+            MethodHandles.Lookup lookup,
+            ConcurrentHashMap<String, Object> varCache
+    ) {
+        ClassInfo(Class<?> cls) throws IllegalAccessException {
+            this(MethodHandles.privateLookupIn(cls, MethodHandles.lookup()), new ConcurrentHashMap<>());
+        }
+    }
+
+    private static final ConcurrentHashMap<Class<?>, ClassInfo> _cache = new ConcurrentHashMap<>();
+
+    public static void clearCaches() {
+        _cache.clear();
     }
 
     public Reflect field(String fieldName) {
@@ -195,5 +216,47 @@ public final class Reflect {
 
     public boolean isPresent() {
         return value != null;
+    }
+
+    // call it once and cache the result
+    public VarHandle getVarHandle(Class<?> type, String... names) {
+        if (value == null) return null;
+    
+        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
+
+        ClassInfo cinfo;
+        cinfo = _cache.computeIfAbsent(cls, c -> {
+                try {
+                    return new ClassInfo(c);
+                } catch (Exception e) {
+                    Logger.error("Failed to create ClassInfo for %s: %s", c, e);
+                    return null;
+                }
+            }
+        );
+        if (cinfo == null) return null;
+
+        var varCache = cinfo.varCache();
+        for (String fieldName : names) {
+            Object v = varCache.get(fieldName);
+
+            if (v == null) {
+                try {
+                    VarHandle vh = cinfo.lookup().findVarHandle(cls, fieldName, type);
+                    v = (vh != null) ? vh : MISS;
+                } catch (NoSuchFieldException | IllegalAccessException e) {
+                    v = MISS;
+                }
+
+                varCache.put(fieldName, v);
+            }
+
+            // v cannot be null here because ConcurrentHashMap doesn't allow null values
+            if (v instanceof VarHandle vh) {
+                return vh;
+            }
+        }
+
+        return null;
     }
 }

@@ -16,6 +16,7 @@ import javax.tools.Diagnostic;
 
 @SupportedAnnotationTypes({
     "me.zed_0xff.zombie_buddy.Patch.Field",
+    "me.zed_0xff.zombie_buddy.Patch.MemberHandle",
     "me.zed_0xff.zombie_buddy.Patch.StaticFieldAlias",
     "me.zed_0xff.zombie_buddy.Patch.StaticFieldAliasRW",
     "me.zed_0xff.zombie_buddy.Patch.Trampoline"
@@ -29,9 +30,10 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
         for (TypeElement annotation : annotations) {
             String name = annotation.getQualifiedName().toString();
             for (Element elem : roundEnv.getElementsAnnotatedWith(annotation)) {
-                if (name.endsWith(".Field"))                                                    processField(elem);
-                else if (name.endsWith(".StaticFieldAlias") || name.endsWith(".StaticFieldAliasRW")) processStaticFieldAlias(elem);
-                else if (name.endsWith(".Trampoline"))                                          processTrampoline(elem);
+                if (name.endsWith(".Field"))                 processField(elem);
+                else if (name.endsWith(".MemberHandle"))     processMemberHandle(elem);
+                else if (name.contains(".StaticFieldAlias")) processStaticFieldAlias(elem);
+                else if (name.endsWith(".Trampoline"))       processTrampoline(elem);
             }
         }
         return true;
@@ -60,15 +62,46 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
         }
     }
 
-    private void processStaticFieldAlias(Element elem) {
+    private void processMemberHandle(Element elem) {
         if (!(elem instanceof VariableElement field)) return;
+        String typeName = field.asType().toString();
+        if (!typeName.equals("java.lang.invoke.MethodHandle") && !typeName.equals("java.lang.invoke.VarHandle")) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                "@Patch.MemberHandle field must be of type MethodHandle or VarHandle", elem);
+        }
+        if (!field.getModifiers().contains(Modifier.PUBLIC)) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                "@Patch.MemberHandle field should be public; inlined advice in a different package will throw IllegalAccessError", elem);
+        }
         if (field.getModifiers().contains(Modifier.FINAL)) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.StaticFieldAlias/@Patch.StaticFieldAliasRW field must not be final", elem);
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.MemberHandle field must not be final", elem);
         }
         boolean hasPatch = field.getEnclosingElement().getAnnotationMirrors().stream()
             .anyMatch(m -> m.getAnnotationType().asElement().toString().equals("me.zed_0xff.zombie_buddy.Patch"));
         if (!hasPatch) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.StaticFieldAlias/@Patch.StaticFieldAliasRW can only be used in a class annotated with @Patch", elem);
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.MemberHandle can only be used in a class annotated with @Patch", elem);
+        }
+        for (AnnotationMirror mirror : elem.getAnnotationMirrors()) {
+            if (!mirror.getAnnotationType().asElement().toString().equals("me.zed_0xff.zombie_buddy.Patch.MemberHandle")) continue;
+            Map<? extends ExecutableElement, ? extends AnnotationValue> vals = mirror.getElementValues();
+            boolean hasValue = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("value"));
+            boolean hasName  = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("name"));
+            if (hasValue && hasName) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "@Patch.MemberHandle: specify either 'value' or 'name', not both", elem, mirror);
+            }
+        }
+    }
+
+    private void processStaticFieldAlias(Element elem) {
+        if (!(elem instanceof VariableElement field)) return;
+        if (field.getModifiers().contains(Modifier.FINAL)) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.StaticFieldAlias[RW] field must not be final", elem);
+        }
+        boolean hasPatch = field.getEnclosingElement().getAnnotationMirrors().stream()
+            .anyMatch(m -> m.getAnnotationType().asElement().toString().equals("me.zed_0xff.zombie_buddy.Patch"));
+        if (!hasPatch) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.StaticFieldAlias[RW] can only be used in a class annotated with @Patch", elem);
         }
     }
 
