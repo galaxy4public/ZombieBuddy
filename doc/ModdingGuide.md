@@ -207,6 +207,8 @@ Advice methods can bind to parts of the intercepted call using parameter annotat
 | `@Patch.Local("name")` | OnEnter, OnExit | A named local variable from the target's debug info. |
 | `@Patch.Field` | OnEnter, OnExit | An instance or static field of the target class (read-only by default). |
 | `@Patch.FieldRW` | OnEnter, OnExit | Shorthand for `@Patch.Field(readOnly = false)`: reads and writes back after advice returns. |
+| `@Patch.MemberHandle` | OnEnter, OnExit | A `MethodHandle` or `VarHandle` for a member of the target class, resolved at instrumentation time. |
+| `@Patch.NameMap` | OnEnter, OnExit | Immutable `Map<String, String>` of resolved field names for `@Patch.Field` / `@Patch.FieldRW` params in this method. |
 
 ```java
 @Patch(className = "zombie.characters.IsoGameCharacter", methodName = "attack")
@@ -261,6 +263,89 @@ public class FooPatch {
     }
 }
 ```
+
+### Accessing Private Members with Handles (@Patch.MemberHandle)
+
+`@Patch.MemberHandle` obtains a `MethodHandle` or `VarHandle` for a member of the target class at instrumentation time and injects it into the advice. It can annotate a class field (resolved once, stored in a static field) or an advice method parameter (resolved per-advice invocation from a runtime store).
+
+**Field form** — declare a `public`, non-`final` static `MethodHandle` or `VarHandle` field in the `@Patch` class:
+
+```java
+@Patch(className = "zombie.SomeClass", methodName = "someMethod")
+public class SomePatch {
+    @Patch.MemberHandle(returnType = int.class, parameterTypes = {})
+    public static MethodHandle getPrivateValue;
+
+    @Patch.OnEnter
+    public static void enter(@Patch.This Object self) throws Throwable {
+        int v = (int) getPrivateValue.invoke(self);
+    }
+}
+```
+
+**Parameter form** — annotate an advice method parameter; the handle is injected inline:
+
+```java
+@Patch(className = "zombie.SomeClass", methodName = "someMethod")
+public class SomePatch {
+    @Patch.OnEnter
+    public static void enter(
+            @Patch.This Object self,
+            @Patch.MemberHandle(returnType = int.class, parameterTypes = {}) final MethodHandle getPrivateValue) throws Throwable {
+        int v = (int) getPrivateValue.invoke(self);
+    }
+}
+```
+
+**VarHandle** (direct field access without reflection):
+
+```java
+@Patch(className = "zombie.SomeClass", methodName = "someMethod")
+public class SomePatch {
+    @Patch.MemberHandle(type = int.class)
+    public static VarHandle privateCount;
+
+    @Patch.OnEnter
+    public static void enter(@Patch.This Object self) {
+        int v = (int) privateCount.get(self);
+    }
+}
+```
+
+**Attributes**:
+
+| Attribute | Description |
+|-----------|-------------|
+| `value` / `name` | Member name(s) to look up. Empty = infer from field/parameter name. Multiple = tried in order. |
+| `className` | Fully qualified owner class. Empty = infer from `@Patch.className()`. Mutually exclusive with `owner`. |
+| `owner` | Type-safe class reference. Mutually exclusive with `className`. |
+| `optional` | `false` (default): drop the patch class if the member is missing. `true`: leave the handle `null`. |
+| `returnType` | **Required for MethodHandle.** Return type of the target method. |
+| `parameterTypes` | **Required for MethodHandle.** Parameter types of the target method. |
+| `type` | **Required for VarHandle.** Type of the target field. |
+
+### Resolving Field Names at Runtime (@Patch.NameMap)
+
+When `@Patch.Field` / `@Patch.FieldRW` have multiple candidate names, the engine picks the first one that exists on the target class. To find out which name was actually chosen, add a `@Patch.NameMap final Map<String, String>` parameter:
+
+```java
+import java.util.Map;
+
+@Patch(className = "zombie.iso.IsoChunkMap", methodName = "CalcChunkWidth")
+public class IsoChunkMapPatch {
+    @Patch.OnExit
+    public static void exit(
+            @Patch.FieldRW({"chunkGridWidth", "ChunkGridWidth"}) int chunkGridWidth,
+            @Patch.NameMap final Map<String, String> names) {
+        // names.get("chunkGridWidth") → e.g. "ChunkGridWidth" (whichever name was resolved)
+        someTable.rawset(names.get("chunkGridWidth"), chunkGridWidth);
+    }
+}
+```
+
+Keys are parameter names; values are the actual field names on the target class. The map is immutable — declare the parameter `final` (the annotation processor will warn otherwise).
+
+---
 
 ## Exposing Classes to Lua
 

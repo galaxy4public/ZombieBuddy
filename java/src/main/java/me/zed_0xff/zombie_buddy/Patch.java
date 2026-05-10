@@ -6,6 +6,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.VarHandle;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Retention(RetentionPolicy.RUNTIME)
@@ -207,6 +208,39 @@ public @interface Patch {
 
     // VarHandle:
     Class<?> type() default void.class;
+  }
+
+  /**
+   * Binds a {@code Map<String, String>} parameter to the immutable field-name resolution map
+   * for the enclosing advice method.
+   *
+   * <p>Keys are parameter names (e.g. {@code "chunkGridWidth"}); values are the actual field
+   * names resolved on the target class (e.g. {@code "ChunkGridWidth"}).
+   * Only {@link Field} / {@link FieldRW} params with multiple candidate names or inferred names
+   * produce entries. The map is immutable.
+   *
+   * <pre>{@code
+   * @Patch.OnExit
+   * public static void exit(
+   *         @Patch.NameMap Map<String, String> names,
+   *         @Patch.FieldRW({"chunkGridWidth", "ChunkGridWidth"}) int chunkGridWidth) {
+   *     tbl.rawset(names.get("chunkGridWidth"), chunkGridWidth);
+   * }
+   * }</pre>
+   */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.PARAMETER)
+  public @interface NameMap {}
+
+  /** Runtime registry for field-name resolution maps bound via {@code @Patch.NameMap} parameters.
+   *  Populated by PatchTransformer at instrumentation time; read by inlined advice bytecode. */
+  public final class NameStore {
+      private static final ConcurrentHashMap<String, Map<String, String>> store = new ConcurrentHashMap<>();
+
+      public static Map<String, String> get(String key) { return store.get(key); }
+      static void put(String key, Map<String, String> map) { if (map != null) store.put(key, map); }
+
+      private NameStore() {}
   }
 
   @Retention(RetentionPolicy.RUNTIME)

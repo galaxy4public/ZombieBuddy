@@ -217,13 +217,15 @@ final class PatchTransformer {
 
             final boolean isDelegation = isMethodDelegation;
             final Map<String, String[]> paramNames = collectParamNames(classBytes);
-            final Map<String, String> fieldResolutions = new HashMap<>(); // paramName -> resolvedFieldName
+            final Map<String, Map<String, String>> methodResolutions = new HashMap<>(); // methodName -> (paramName -> resolvedFieldName)
             final boolean[] hasUnresolvableField = {false};
 
-            // Pre-scan parameter-level @Patch.MemberHandle annotations.
+            // Pre-scan parameter-level @Patch.MemberHandle and @Patch.NameMap annotations.
             // Maps (methodName+descriptor) -> (paramSlot -> storeKey).
             final Map<String, Map<Integer, String>> paramAllHandleSlots = new HashMap<>();
             final Map<String, IMemberHandle> paramHandleInfos = new HashMap<>();
+            final Map<String, Map<Integer, String>> paramNameMapSlots = new HashMap<>(); // slot -> storeKey for @Patch.NameMap params
+            final Map<String, String> nameMapKeyToMethod = new HashMap<>();              // storeKey -> methodName
             final boolean[] hasUnresolvableParamHandle = {false};
             for (Method method : patchClass.getDeclaredMethods()) {
                 java.lang.annotation.Annotation[][] paramAnns = method.getParameterAnnotations();
@@ -235,6 +237,12 @@ final class PatchTransformer {
                 int slot = isStaticM ? 0 : 1;
                 for (int pi = 0; pi < paramAnns.length; pi++) {
                     for (java.lang.annotation.Annotation a : paramAnns[pi]) {
+                        if (a instanceof Patch.NameMap) {
+                            String storeKey = patchClass.getName() + "#" + method.getName() + "#" + pi;
+                            paramNameMapSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
+                            nameMapKeyToMethod.put(storeKey, method.getName());
+                            continue;
+                        }
                         if (!(a instanceof Patch.MemberHandle mh)) continue;
                         boolean isVarHandleParam = method.getParameterTypes()[pi] == java.lang.invoke.VarHandle.class;
                         String pName = (pNames != null && pi < pNames.length && pNames[pi] != null) ? pNames[pi] : null;
@@ -289,8 +297,9 @@ final class PatchTransformer {
                     final int mAccess = access;
                     MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
                     return new MethodVisitor(Opcodes.ASM9, mv) {
-                        // slot -> storeKey for @Patch.MemberHandle parameters of THIS method
+                        // slot -> storeKey for @Patch.MemberHandle / @Patch.NameMap parameters of THIS method
                         private final Map<Integer, String> allHandleSlots = new HashMap<>();
+                        private final Map<Integer, String> nameMapSlots   = new HashMap<>();
                         @Override
                         public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
                             String newDescriptor = rewriteAnnotationDescriptor(descriptor, isDelegation);
@@ -324,25 +333,40 @@ final class PatchTransformer {
                                         false);
                                     return;
                                 }
+                                storeKey = nameMapSlots.get(var);
+                                if (storeKey != null) {
+                                    mv.visitLdcInsn(storeKey);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "me/zed_0xff/zombie_buddy/Patch$NameStore",
+                                        "get", "(Ljava/lang/String;)Ljava/util/Map;", false);
+                                    return;
+                                }
                             }
                             super.visitVarInsn(opcode, var);
                         }
 
                         @Override
                         public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor, boolean visible) {
-                            if (Type.getDescriptor(Patch.MemberHandle.class).equals(descriptor)) {
+                            if (Type.getDescriptor(Patch.MemberHandle.class).equals(descriptor) ||
+                                Type.getDescriptor(Patch.NameMap.class).equals(descriptor)) {
                                 // Compute the local variable slot for this parameter
                                 Type[] argTypes = Type.getArgumentTypes(mDesc);
                                 boolean isSt = (mAccess & Opcodes.ACC_STATIC) != 0;
                                 int s = isSt ? 0 : 1;
                                 for (int i = 0; i < parameter && i < argTypes.length; i++) s += argTypes[i].getSize();
-                                // Populate allHandleSlots for use in visitVarInsn
-                                Map<Integer, String> slotMap = paramAllHandleSlots.get(mName + mDesc);
-                                if (slotMap != null) { String key = slotMap.get(s); if (key != null) allHandleSlots.put(s, key); }
+                                // Populate the appropriate slot map for use in visitVarInsn
+                                if (Type.getDescriptor(Patch.MemberHandle.class).equals(descriptor)) {
+                                    Map<Integer, String> slotMap = paramAllHandleSlots.get(mName + mDesc);
+                                    if (slotMap != null) { String key = slotMap.get(s); if (key != null) allHandleSlots.put(s, key); }
+                                } else {
+                                    Map<Integer, String> slotMap = paramNameMapSlots.get(mName + mDesc);
+                                    if (slotMap != null) { String key = slotMap.get(s); if (key != null) nameMapSlots.put(s, key); }
+                                }
                                 // Replace with @Advice.Local so ByteBuddy recognizes the parameter slot;
-                                // the actual value is provided at runtime by the ALOAD→HandleStore.get/getVar rewrite above.
+                                // the actual value is provided at runtime by the ALOAD rewrite above.
+                                String localName = Type.getDescriptor(Patch.NameMap.class).equals(descriptor)
+                                    ? "__nm_param_" + parameter + "__" : "__mh_param_" + parameter + "__";
                                 AnnotationVisitor av = super.visitParameterAnnotation(parameter, Type.getDescriptor(Advice.Local.class), visible);
-                                if (av != null) { av.visit("value", "__mh_param_" + parameter + "__"); av.visitEnd(); }
+                                if (av != null) { av.visit("value", localName); av.visitEnd(); }
                                 return null;
                             }
                             AnnotationVisitor av = super.visitParameterAnnotation(parameter, rewriteAnnotationDescriptor(descriptor, isDelegation), visible);
@@ -386,7 +410,7 @@ final class PatchTransformer {
                                             super.visitEnd();
                                             return;
                                         }
-                                        if (inferred != null) fieldResolutions.putIfAbsent(inferred, resolved);
+                                        if (inferred != null) methodResolutions.computeIfAbsent(mName, k -> new HashMap<>()).putIfAbsent(inferred, resolved);
                                         super.visit("value", resolved);
                                         if (isFieldRW) super.visit("readOnly", false);
                                         super.visitEnd();
@@ -423,7 +447,8 @@ final class PatchTransformer {
                         Collections.singletonMap(patchClass.getName(), transformedBytes),
                         ByteArrayClassLoader.PersistenceHandler.MANIFEST);
                 Class<?> freshClass = freshLoader.loadClass(patchClass.getName());
-                populateResolvedFields(freshClass, defaultTargetCls, fieldResolutions);
+                for (var e : nameMapKeyToMethod.entrySet())
+                    Patch.NameStore.put(e.getKey(), Map.copyOf(methodResolutions.getOrDefault(e.getValue(), Map.of())));
                 if (!memberHandles.isEmpty() && !populateMemberHandles(freshClass, patchClass, memberHandles)) return null;
                 if (!paramHandleInfos.isEmpty() && !populateParamHandles(paramHandleInfos)) return null;
                 return freshClass;
@@ -443,32 +468,6 @@ final class PatchTransformer {
     private static String rewriteAnnotationDescriptor(String descriptor, boolean isMethodDelegation) {
         Map<String, String> map = isMethodDelegation ? DELEGATION_DESCRIPTOR_MAP : ADVICE_DESCRIPTOR_MAP;
         return map.getOrDefault(descriptor, descriptor);
-    }
-
-    /**
-     * If the transformed patch class declares a {@code static Map<String, String> ZB_RESOLVED_FIELDS},
-     * fills it from the pre-collected {@code fieldResolutions} map (paramName → resolvedFieldName)
-     * that was built during the ASM pass.
-     */
-    @SuppressWarnings("unchecked")
-    private static void populateResolvedFields(Class<?> transformedClass, String targetClassName, Map<String, String> fieldResolutions) {
-        if (fieldResolutions.isEmpty()) return;
-
-        Field mapField;
-        try {
-            mapField = transformedClass.getDeclaredField("ZB_RESOLVED_FIELDS");
-        } catch (NoSuchFieldException e) {
-            return;
-        }
-        if (!java.util.Map.class.isAssignableFrom(mapField.getType())) return;
-        mapField.setAccessible(true);
-        java.util.Map<String, String> map;
-        try {
-            map = (java.util.Map<String, String>) mapField.get(null);
-        } catch (IllegalAccessException e) {
-            return;
-        }
-        if (map != null) map.putAll(fieldResolutions);
     }
 
     private static boolean populateHandles(Map<String, IMemberHandle> infos,

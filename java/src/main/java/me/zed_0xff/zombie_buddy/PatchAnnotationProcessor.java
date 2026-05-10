@@ -16,7 +16,8 @@ import javax.tools.Diagnostic;
 
 @SupportedAnnotationTypes({
     "me.zed_0xff.zombie_buddy.Patch.Field",
-    "me.zed_0xff.zombie_buddy.Patch.MemberHandle"
+    "me.zed_0xff.zombie_buddy.Patch.MemberHandle",
+    "me.zed_0xff.zombie_buddy.Patch.NameMap"
 })
 public class PatchAnnotationProcessor extends AbstractProcessor {
     @Override
@@ -29,6 +30,7 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
             for (Element elem : roundEnv.getElementsAnnotatedWith(annotation)) {
                 if (name.endsWith(".Field"))             processField(elem);
                 else if (name.endsWith(".MemberHandle")) processMemberHandle(elem);
+                else if (name.endsWith(".NameMap"))      processNameMap(elem);
             }
         }
         return true;
@@ -54,6 +56,23 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
                     "@Patch.Field readOnly=true; declare the parameter final OR set readOnly=false OR use @Patch.FieldRW", elem, mirror);
             }
+        }
+    }
+
+    private void processNameMap(Element elem) {
+        if (!(elem instanceof VariableElement param)) return;
+        String typeName = param.asType().toString();
+        if (!typeName.startsWith("java.util.Map<") && !typeName.equals("java.util.Map")) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                "@Patch.NameMap parameter must be of type Map<String, String>", elem);
+        }
+        if (param.getKind() != javax.lang.model.element.ElementKind.PARAMETER) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                "@Patch.NameMap must annotate a method parameter", elem);
+        }
+        if (!param.getModifiers().contains(Modifier.FINAL)) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                "@Patch.NameMap binds an immutable map; declare the parameter final", elem);
         }
     }
 
