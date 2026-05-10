@@ -44,7 +44,7 @@ public class Exposer {
     private static final HashMap<Class<?>, HashSet<String>> g_exposed_methods = new HashMap<>();
     private static final HashSet<Class<?>> g_classesWithGlobalLuaMethod = new HashSet<>();
 
-    public static boolean hasGlobalLuaMethod(Class<?> cls) {
+    static boolean hasGlobalLuaMethod(Class<?> cls) {
         for (Method m : Accessor.allMethods(cls)) {
             LuaMethod ann = m.getAnnotation(LuaMethod.class);
             if (ann != null && ann.global()) {
@@ -54,21 +54,23 @@ public class Exposer {
         return false;
     }
 
-    public static void addClassWithGlobalLuaMethod(Class<?> cls) {
+    static void addClassWithGlobalLuaMethod(Class<?> cls) {
         if (cls != null && hasGlobalLuaMethod(cls)) {
             g_classesWithGlobalLuaMethod.add(cls);
         }
     }
 
-    public static List<Class<?>> getClassesWithGlobalLuaMethod() {
+    static List<Class<?>> getClassesWithGlobalLuaMethod() {
         return new ArrayList<>(g_classesWithGlobalLuaMethod);
     }
 
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static void exposeClassToLua(Class<?> cls) {
         Logger.warn("exposeClassToLua() method is deprecated, use exposeClass() or @LuaClass annotation instead");
         exposeClass(cls, null);
     }
 
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static boolean exposeClassToLua(String className) {
         Logger.warn("exposeClassToLua() method is deprecated, use exposeClass() or @LuaClass annotation instead");
         return exposeClass(className);
@@ -291,7 +293,7 @@ public class Exposer {
         return ctor.newInstance();
     }
 
-    public static void exposeAnnotatedClasses(String packageName) {
+    static void exposeAnnotatedClasses(String packageName) {
         try (var scanResult = new io.github.classgraph.ClassGraph()
                 .acceptPackages(packageName)
                 .enableAnnotationInfo()
@@ -300,11 +302,12 @@ public class Exposer {
         }
     }
 
-    public static void exposeAnnotatedClasses(io.github.classgraph.ScanResult scanResult, String packageName) {
+    static void exposeAnnotatedClasses(io.github.classgraph.ScanResult scanResult, String packageName) {
         for (var classInfo : scanResult.getClassesWithAnnotation(LuaClass.class.getName())) {
             if (Utils.isBlank(packageName) || !classInfo.getPackageName().equals(packageName)) {
-                Logger.error("Class " + classInfo.getName() + " is annotated with @LuaClass but is not in the exact package "
-                        + packageName + ", skipping exposure");
+                if (!"me.zed_0xff.zombie_buddy.patches".equals(packageName)) {
+                    Logger.error("Class " + classInfo.getName() + " is annotated with @LuaClass but is not in the exact package " + packageName + ", skipping exposure");
+                }
                 continue;
             }
             try {

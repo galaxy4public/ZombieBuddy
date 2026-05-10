@@ -4,6 +4,7 @@ import me.zed_0xff.zombie_buddy.frontend.LogOverlay;
 
 import java.io.PrintStream;
 import java.util.Arrays;
+import java.util.stream.Collectors;
 
 public class Logger {
     private static final String PREFIX = "[ZB] ";
@@ -52,7 +53,7 @@ public class Logger {
             case INFO  -> out_msg(message);
             case WARN  -> err_msg("[?] " + message);
             case ERROR -> err_msg("[!] " + message);
-            default -> out_msg("[x] " + message);
+            default    -> out_msg("[x] " + message);
         }
     }
 
@@ -79,10 +80,37 @@ public class Logger {
         }
     }
 
+    private static String formatRecord(Object record) {
+        Class<?> cls = record.getClass();
+
+        return Arrays.stream(cls.getRecordComponents())
+            .map(rc -> {
+                try {
+                    Object value = rc.getAccessor().invoke(record);
+                    return rc.getName() + "=" + formatArg(value);
+                } catch (ReflectiveOperationException e) {
+                    return rc.getName() + "=<error>";
+                }
+            })
+        .collect(Collectors.joining(", ", "<record " + cls.getSimpleName() + " ", ">"));
+    }
+
+    public static String formatArray(Object[] arr) {
+        return Arrays.stream(arr)
+            .map(Logger::formatArg)
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+
     /** Format an object for logging: strings quoted, arrays expanded, length capped. */
     public static String formatArg(Object o) {
         if (o == null) return "null";
-        if (o instanceof Object[] arr) return Arrays.toString(arr);
+
+        if (o instanceof Object[] arr)
+            return formatArray(arr);
+
+        if (o.getClass().isRecord())
+            return formatRecord(o);
+
         String s = o.toString();
         if (s.length() > MAX_ARG_STRING_LENGTH) s = s.substring(0, MAX_ARG_STRING_LENGTH - 3) + "...";
         if (o instanceof String) return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";

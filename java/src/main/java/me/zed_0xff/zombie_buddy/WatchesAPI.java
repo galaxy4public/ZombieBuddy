@@ -198,9 +198,9 @@ public class WatchesAPI {
     private static ClassFileTransformer createTransformer() {
         return new ClassFileTransformer() {
             @Override
-            public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
-                    ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+            public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer) {
                 if (className == null || classfileBuffer == null) return null;
+
                 String dotName = Utils.toCanonicalName(className);
                 if (!hasWatchesForClass(dotName)) return null;
 

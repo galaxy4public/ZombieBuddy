@@ -191,7 +191,7 @@ final class PatchTransformer {
                             : ann.className();
                 String[] cs = ann.value().length > 0 ? ann.value() : ann.name().length > 0 ? ann.name() : new String[]{ f.getName() };
                 IMemberHandle info = f.getType() == java.lang.invoke.VarHandle.class
-                    ? new VarHandleInfo(tc, cs, ann.optional(), resolveVarHandleFieldType(tc, cs, ann))
+                    ? new VarHandleInfo(tc, cs, ann.optional(), ann.type())
                     : new MemberHandleInfo(tc, cs, ann.optional(), ann.returnType(), ann.parameterTypes());
                 memberHandles.put(f.getName(), info);
                 needsTransformation = true;
@@ -256,7 +256,7 @@ final class PatchTransformer {
                         String storeKey = patchClass.getName() + "#" + method.getName() + "#" + pi;
                         paramAllHandleSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
                         paramHandleInfos.put(storeKey, isVarHandleParam
-                            ? new VarHandleInfo(tc, cs, mh.optional(), resolveVarHandleFieldType(tc, cs, mh))
+                            ? new VarHandleInfo(tc, cs, mh.optional(), mh.type())
                             : new MemberHandleInfo(tc, cs, mh.optional(), mh.returnType(), mh.parameterTypes()));
                     }
                     if (pi < argTypes.length) slot += argTypes[pi].getSize();
@@ -319,7 +319,7 @@ final class PatchTransformer {
                                     boolean isVar = paramHandleInfos.get(storeKey) instanceof IVarHandle;
                                     mv.visitLdcInsn(storeKey);
                                     mv.visitMethodInsn(Opcodes.INVOKESTATIC, "me/zed_0xff/zombie_buddy/Patch$HandleStore",
-                                        isVar ? "getVar" : "get",
+                                        isVar ? "getVar" : "getMethod",
                                         isVar ? "(Ljava/lang/String;)Ljava/lang/invoke/VarHandle;" : "(Ljava/lang/String;)Ljava/lang/invoke/MethodHandle;",
                                         false);
                                     return;
@@ -502,8 +502,8 @@ final class PatchTransformer {
         return populateHandles(infos,
             (k, i) -> "Parameter MemberHandle not resolved: " + k,
             (k, h) -> {
-                if (h instanceof MethodHandle mh) { Patch.HandleStore.put(k, mh); return true; }
-                if (h instanceof VarHandle   vh) { Patch.HandleStore.putVar(k, vh); return true; }
+                if (h instanceof MethodHandle mh) { Patch.HandleStore.putMethod(k, mh); return true; }
+                if (h instanceof VarHandle    vh) { Patch.HandleStore.putVar(k, vh); return true; }
                 Logger.error("Parameter MemberHandle resolved to unexpected type " + h.getClass() + " for key " + k);
                 return false;
             });
@@ -532,14 +532,7 @@ final class PatchTransformer {
         }
 
         if (info instanceof IVarHandle ivh) {
-            // Reflect.getVarHandle uses findVarHandle which only covers instance fields; use unreflectVarHandle for both
-            for (String name : ivh.candidates()) {
-                java.lang.reflect.Field f = findMemberHandleField(targetClass, name);
-                if (f == null) continue;
-                try { f.setAccessible(true); return lookup.unreflectVarHandle(f); }
-                catch (Exception e) { Logger.warn("VarHandle unreflect failed for " + name + ": " + e.getMessage()); }
-            }
-            return null;
+            return Reflect.on(targetClass).getVarHandle(ivh.fieldType(), ivh.candidates());
         }
 
         if (info instanceof IMethodHandle imh) {
@@ -551,19 +544,6 @@ final class PatchTransformer {
                     catch (Exception e) { Logger.warn("MemberHandle unreflect failed for " + name + ": " + e.getMessage()); }
                 }
             }
-        }
-        return null;
-    }
-
-    /** Returns the field type for a VarHandle stub: uses {@code ann.type()} if specified, otherwise
-     *  looks up the actual field type from the target class by candidate name. */
-    private static Class<?> resolveVarHandleFieldType(String targetClassName, String[] candidates, Patch.MemberHandle ann) {
-        if (ann.type() != void.class) return ann.type();
-        Class<?> cls = findClass(targetClassName);
-        if (cls == null) return null;
-        for (String name : candidates) {
-            java.lang.reflect.Field f = findMemberHandleField(cls, name);
-            if (f != null) return f.getType();
         }
         return null;
     }

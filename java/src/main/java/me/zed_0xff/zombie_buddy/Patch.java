@@ -221,10 +221,10 @@ public @interface Patch {
       private static final ConcurrentHashMap<String, MethodHandle> methodHandles = new ConcurrentHashMap<>();
       private static final ConcurrentHashMap<String, VarHandle>    varHandles    = new ConcurrentHashMap<>();
 
-      public static MethodHandle get(String key)    { return methodHandles.get(key); }
-      public static VarHandle    getVar(String key) { return varHandles.get(key); }
-      static void put(String key, MethodHandle mh)  { if (mh != null) methodHandles.put(key, mh); }
-      static void putVar(String key, VarHandle vh)  { if (vh != null) varHandles.put(key, vh); }
+      public static MethodHandle getMethod(String key)   { return methodHandles.get(key); }
+      public static VarHandle    getVar(String key)      { return varHandles.get(key); }
+      static void putMethod(String key, MethodHandle mh) { if (mh != null) methodHandles.put(key, mh); }
+      static void putVar(String key, VarHandle vh)       { if (vh != null) varHandles.put(key, vh); }
 
       private HandleStore() {}
   }

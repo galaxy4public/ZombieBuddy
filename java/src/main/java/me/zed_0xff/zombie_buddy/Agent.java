@@ -24,6 +24,7 @@ public class Agent {
 
         Logger.info("activating " + ZombieBuddy.getFullVersionString());
         Loader.g_instrumentation = inst;
+        Reflect.init(inst);
 
         if (!Utils.isBlank(agentArgs)) {
             String[] args = agentArgs.split(",");
