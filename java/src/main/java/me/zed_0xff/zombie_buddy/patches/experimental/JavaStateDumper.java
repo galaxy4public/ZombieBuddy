@@ -60,7 +60,8 @@ public class JavaStateDumper {
         for (var entry : Thread.getAllStackTraces().entrySet()) {
             Thread t = entry.getKey();
             StackTraceElement[] stack = entry.getValue();
-            Logger.info(String.format("Thread: %s (id=%d, state=%s)", t.getName(), t.getId(), t.getState()));
+            // Logger.info(String.format("Thread: %s (id=%d, state=%s)", t.getName(), t.getId(), t.getState())); // getId() is deprecated on Java 19+
+            Logger.info(String.format("Thread: %s (state=%s)", t.getName(), t.getState()));
             for (StackTraceElement el : stack) {
                 Logger.info("    at " + el);
             }
