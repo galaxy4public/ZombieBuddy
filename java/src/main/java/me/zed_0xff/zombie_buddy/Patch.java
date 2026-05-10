@@ -217,7 +217,7 @@ public @interface Patch {
 
   /** Runtime registry for method handles bound via parameter-level {@code @Patch.MemberHandle}.
    *  Populated by PatchTransformer at instrumentation time; read by inlined advice bytecode. */
-  public final class HandleStore {
+  final class HandleStore {
       private static final ConcurrentHashMap<String, MethodHandle> methodHandles = new ConcurrentHashMap<>();
       private static final ConcurrentHashMap<String, VarHandle>    varHandles    = new ConcurrentHashMap<>();
 

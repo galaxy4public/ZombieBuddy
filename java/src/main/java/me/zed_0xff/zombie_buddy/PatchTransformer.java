@@ -453,6 +453,7 @@ final class PatchTransformer {
     @SuppressWarnings("unchecked")
     private static void populateResolvedFields(Class<?> transformedClass, String targetClassName, Map<String, String> fieldResolutions) {
         if (fieldResolutions.isEmpty()) return;
+
         Field mapField;
         try {
             mapField = transformedClass.getDeclaredField("ZB_RESOLVED_FIELDS");

@@ -49,7 +49,6 @@ public final class Accessor {
     }
 
     private static void prewarm(Class<?> cls, ClassInfo info) {
-        Logger.debug("Prewarming Accessor cache for " + cls.getName());
         for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
             for (Field f : c.getDeclaredFields()) {
                 info.fields.putIfAbsent(f.getName(), Optional.of(f));
