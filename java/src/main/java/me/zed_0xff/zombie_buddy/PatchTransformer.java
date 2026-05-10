@@ -181,31 +181,6 @@ final class PatchTransformer {
             Patch patchAnn = patchClass.getAnnotation(Patch.class);
             String defaultTargetCls = (patchAnn != null) ? patchAnn.className() : "";
 
-            record StaticAlias(String owner, String resolvedName, boolean readOnly) {}
-            Map<String, StaticAlias> staticAliases = new HashMap<>();
-            for (java.lang.reflect.Field f : patchClass.getDeclaredFields()) {
-                Patch.StaticFieldAlias    ann   = f.getAnnotation(Patch.StaticFieldAlias.class);
-                Patch.StaticFieldAliasRW  annRW = f.getAnnotation(Patch.StaticFieldAliasRW.class);
-                if (ann == null && annRW == null) continue;
-                String   targetClass = ann != null
-                    ? (ann.className().isEmpty()   ? defaultTargetCls : ann.className())
-                    : (annRW.className().isEmpty()  ? defaultTargetCls : annRW.className());
-                boolean  readOnly    = ann != null && ann.readOnly();
-                String[] candidates  = ann != null ? ann.value() : annRW.value();
-                if (targetClass.isEmpty()) { Logger.warn("StaticFieldAlias " + f.getName() + " has no target class"); continue; }
-                String resolvedName;
-                if (candidates.length == 0) {
-                    resolvedName = f.getName();
-                } else if (candidates.length == 1) {
-                    resolvedName = candidates[0];
-                } else {
-                    resolvedName = resolveFieldName(Arrays.asList(candidates), targetClass, f.getName(), td);
-                    if (resolvedName == null) resolvedName = candidates[0];
-                }
-                staticAliases.put(f.getName(), new StaticAlias(Utils.toInternalName(targetClass), resolvedName, readOnly));
-                needsTransformation = true;
-            }
-
             Map<String, IMemberHandle> memberHandles = new HashMap<>();
             for (java.lang.reflect.Field f : patchClass.getDeclaredFields()) {
                 Patch.MemberHandle ann = f.getAnnotation(Patch.MemberHandle.class);
@@ -433,17 +408,6 @@ final class PatchTransformer {
                             return av;
                         }
 
-                        @Override
-                        public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-                            if (!staticAliases.isEmpty() && patchOwner.equals(owner)) {
-                                StaticAlias alias = staticAliases.get(name);
-                                if (alias != null && (opcode == Opcodes.GETSTATIC || (opcode == Opcodes.PUTSTATIC && !alias.readOnly()))) {
-                                    super.visitFieldInsn(opcode, alias.owner(), alias.resolvedName(), descriptor);
-                                    return;
-                                }
-                            }
-                            super.visitFieldInsn(opcode, owner, name, descriptor);
-                        }
                     };
                 }
             }, ClassReader.EXPAND_FRAMES);

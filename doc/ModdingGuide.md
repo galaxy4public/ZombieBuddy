@@ -262,39 +262,6 @@ public class FooPatch {
 }
 ```
 
-### Static Field Aliasing (@Patch.StaticFieldAlias / @Patch.StaticFieldAliasRW)
-
-`@Patch.StaticFieldAlias` grants access to a static field from another (potentially inaccessible) class. Declare a stub `static` field in the patch class; PatchTransformer rewrites all `GETSTATIC`/`PUTSTATIC` references to the stub to the real class's field at load time. Use `@Patch.StaticFieldAliasRW` as shorthand for `@Patch.StaticFieldAlias(readOnly = false)`.
-
-```java
-@Patch(className = "game.Renderer", methodName = "render")
-public class RendererPatch {
-    @Patch.StaticFieldAlias(className = "game.VertexBuffer")
-    static int VERTEX_SIZE;   // alias for VertexBuffer.VERTEX_SIZE (read-only)
-
-    @Patch.StaticFieldAliasRW(className = "game.Renderer")
-    static int frameCount;    // alias for Renderer.frameCount (read-write)
-
-    @Patch.OnEnter
-    public static void enter() {
-        int stride = VERTEX_SIZE * 4;   // → GETSTATIC game/VertexBuffer.VERTEX_SIZE at runtime
-        frameCount++;                   // → GETSTATIC + PUTSTATIC game/Renderer.frameCount
-    }
-}
-```
-
-When `className` is omitted the alias targets the same class as the enclosing `@Patch.className()`.
-
-> **Warning**: The stub field must **not** be `final`. A `static final int X = 32` causes javac to inline the constant everywhere it is used, so no `GETSTATIC` instruction is emitted and the alias never fires. The compile-time annotation processor enforces this and raises a compile error if you mark the stub `final`.
-
-| Option | Description |
-|--------|-------------|
-| `className` | Class to resolve the method on. Empty (default) = same as `@Patch.className()`. |
-| `methodNames` | Candidate names tried in order. Uses the annotated method's own name when empty. |
-| `onMethodMissing` | `SKIP_PATCH` (default): drop the whole patch class if no match. `RUN_BODY`: leave the body unchanged. |
-
----
-
 ## Exposing Classes to Lua
 
 ### Annotation-based (recommended)

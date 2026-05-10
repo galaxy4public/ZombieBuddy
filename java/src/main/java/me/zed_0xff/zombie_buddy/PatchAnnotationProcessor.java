@@ -16,9 +16,7 @@ import javax.tools.Diagnostic;
 
 @SupportedAnnotationTypes({
     "me.zed_0xff.zombie_buddy.Patch.Field",
-    "me.zed_0xff.zombie_buddy.Patch.MemberHandle",
-    "me.zed_0xff.zombie_buddy.Patch.StaticFieldAlias",
-    "me.zed_0xff.zombie_buddy.Patch.StaticFieldAliasRW"
+    "me.zed_0xff.zombie_buddy.Patch.MemberHandle"
 })
 public class PatchAnnotationProcessor extends AbstractProcessor {
     @Override
@@ -29,9 +27,8 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
         for (TypeElement annotation : annotations) {
             String name = annotation.getQualifiedName().toString();
             for (Element elem : roundEnv.getElementsAnnotatedWith(annotation)) {
-                if (name.endsWith(".Field"))                 processField(elem);
-                else if (name.endsWith(".MemberHandle"))     processMemberHandle(elem);
-                else if (name.contains(".StaticFieldAlias")) processStaticFieldAlias(elem);
+                if (name.endsWith(".Field"))             processField(elem);
+                else if (name.endsWith(".MemberHandle")) processMemberHandle(elem);
             }
         }
         return true;
@@ -113,18 +110,5 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
             }
         }
     }
-
-    private void processStaticFieldAlias(Element elem) {
-        if (!(elem instanceof VariableElement field)) return;
-        if (field.getModifiers().contains(Modifier.FINAL)) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.StaticFieldAlias[RW] field must not be final", elem);
-        }
-        boolean hasPatch = field.getEnclosingElement().getAnnotationMirrors().stream()
-            .anyMatch(m -> m.getAnnotationType().asElement().toString().equals("me.zed_0xff.zombie_buddy.Patch"));
-        if (!hasPatch) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.StaticFieldAlias[RW] can only be used in a class annotated with @Patch", elem);
-        }
-    }
-
 
 }

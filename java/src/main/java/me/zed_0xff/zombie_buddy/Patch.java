@@ -189,57 +189,6 @@ public @interface Patch {
     String value();  // fully qualified name of the real class
   }
 
-  /**
-   * Marks a static field in the patch class as a stand-in for a static field in another
-   * (potentially inaccessible) class. PatchTransformer rewrites GETSTATIC/PUTSTATIC
-   * instructions referencing this stub field to the real class's field.
-   *
-   * <p>Since advice is inlined into the target class, the rewritten references have full
-   * access to the real type's private/package-private members without any reflection.
-   *
-   * <p>An annotation processor validates at compile time that the stub field is not {@code final}
-   * and that the enclosing class is annotated with {@code @Patch}.
-   * Use {@link StaticFieldAliasRW} as a shorthand for {@code readOnly = false}.
-   *
-   * <p>The target field name is inferred from the stub field name when {@link #value()} is omitted.
-   * Provide multiple names to try them in order; the first that exists on the target class is used.
-   * Multi-name resolution requires the target class to be already loaded.
-   *
-   * <pre>{@code
-   * @Patch(className = "game.Renderer", methodName = "render")
-   * public class RendererPatch {
-   *     @Patch.StaticFieldAlias(className = "game.VertexBuffer")
-   *     static int VERTEX_SIZE;                               // alias for VertexBuffer.VERTEX_SIZE (inferred)
-   *
-   *     @Patch.StaticFieldAlias({"VERTEX_SIZE_NEW", "VERTEX_SIZE"}, className = "game.VertexBuffer")
-   *     static int VERTEX_SIZE_COMPAT;                        // tries new name, falls back to old
-   *
-   *     @Patch.OnEnter
-   *     public static void enter() {
-   *         int stride = VERTEX_SIZE * 4;   // → GETSTATIC game/VertexBuffer.VERTEX_SIZE at runtime
-   *     }
-   * }
-   * }</pre>
-   */
-  @Retention(RetentionPolicy.RUNTIME)
-  @Target(ElementType.FIELD)
-  public @interface StaticFieldAlias {
-    String[] value() default {};    // empty = infer from stub field name; multiple = try in order
-    String className() default "";  // empty = infer from enclosing @Patch.className()
-    boolean readOnly() default true;
-  }
-
-  /**
-   * Shorthand for {@code @Patch.StaticFieldAlias(readOnly = false)}: allows both GETSTATIC and
-   * PUTSTATIC to be rewritten to the aliased field. Same validation rules as {@link StaticFieldAlias}.
-   */
-  @Retention(RetentionPolicy.RUNTIME)
-  @Target(ElementType.FIELD)
-  public @interface StaticFieldAliasRW {
-    String[] value() default {};    // empty = infer from stub field name; multiple = try in order
-    String className() default "";  // empty = infer from enclosing @Patch.className()
-  }
-
   // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.Handle.html            - returns only MethodHandle, no VarHandle support
   // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldGetterHandle.html - respects field visibility
   // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldSetterHandle.html - --//--
