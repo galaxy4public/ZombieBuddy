@@ -32,42 +32,6 @@ public @interface Patch {
     Class<? extends Throwable> suppress() default NoException.class;
   }
 
-  /**
-   * Marks a static method as a trampoline: PatchEngine rewrites its body at load time to a
-   * direct call to the resolved method in {@link #className()}, with zero runtime overhead.
-   *
-   * <p><b>Name resolution:</b> if {@link #value()} is non-empty, those names are tried in
-   * order and the annotated method's own name is ignored. Otherwise the annotated method's name
-   * is used as the sole candidate.
-   *
-   * <p><b>Signature matching:</b> the annotated method must be {@code static}. For instance
-   * targets, the first parameter is the receiver and the remaining parameters are the method
-   * arguments. For static targets, all parameters are arguments. Return type must match exactly.
-   *
-   * <p><b>Missing method:</b> when {@code optional = false} (default) the entire containing patch
-   * class is dropped; when {@code optional = true} the method body is left unchanged (runs as-is).
-   *
-   * <p><b>className:</b> if empty, defaults to the {@link Patch#className()} of the enclosing
-   * {@code @Patch} class, i.e. the same target class being patched.
-   *
-   * <pre>{@code
-   * @Patch.Trampoline(value = {"isNPC", "isNpc"}, className = "IsoGameCharacter")
-   * public static boolean isNPC(IsoGameCharacter chr) { return false; }
-   *
-   * // shorthand when target class == @Patch className:
-   * @Patch.Trampoline
-   * public static boolean isNPC(IsoGameCharacter chr) { return false; }
-   * }</pre>
-   */
-  @Retention(RetentionPolicy.RUNTIME)
-  @Target(ElementType.METHOD)
-  public @interface Trampoline {
-    String[] value() default {};
-    String[] methodName() default {};  // alias for value(); specifying both is a compile error
-    String className() default "";     // empty = same as enclosing @Patch className
-    boolean optional() default false;  // false = drop patch class on missing method; true = leave body unchanged
-  }
-
   public abstract static class NoException extends Throwable {}
   public abstract static class OnDefaultValue extends Throwable {}
   public abstract static class OnNonDefaultValue extends Throwable {}
@@ -158,7 +122,7 @@ public @interface Patch {
    * }</pre>
    */
   @Retention(RetentionPolicy.RUNTIME)
-  @Target(ElementType.PARAMETER)
+  @Target({ElementType.PARAMETER, ElementType.FIELD, ElementType.METHOD})
   public @interface Field {
     String[] value() default {};  // field name(s): empty = infer from parameter name; multiple = try in order
     String[] name() default {};   // alias for value(); specifying both is a compile error
@@ -182,8 +146,14 @@ public @interface Patch {
    * }</pre>
    */
   @Retention(RetentionPolicy.RUNTIME)
-  @Target(ElementType.PARAMETER)
+  @Target({ElementType.PARAMETER, ElementType.METHOD})
   public @interface FieldRW {
+    String[] value() default {};  // empty = infer from parameter name; multiple = try in order
+  }
+
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.METHOD)
+  public @interface Method {
     String[] value() default {};  // empty = infer from parameter name; multiple = try in order
   }
 
@@ -271,9 +241,16 @@ public @interface Patch {
   public @interface MemberHandle {
     String[] value() default {};              // empty = infer from stub field name; multiple = try in order
     String[] name() default {};               // alias for value(); specifying both is a compile error
-    String className() default "";            // empty = infer from enclosing @Patch.className()
+    String className() default "";            // empty = infer from enclosing @Patch.className(); mutually exclusive with owner()
+    Class<?> owner() default void.class;      // type-safe alternative to className(); mutually exclusive with className()
     boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
     Class<?> returnType() default void.class; // the return type of the _method_ handle
     Class<?>[] parameterTypes() default {};   // the parameter types of the _method_ handle
+  }
+
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target({ElementType.PARAMETER, ElementType.TYPE})
+  public @interface Adapter {
+      Class<?> value() default void.class;    // void.class = infer from enclosing @Patch.className()
   }
 }

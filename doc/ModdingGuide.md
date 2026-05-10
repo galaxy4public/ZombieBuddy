@@ -287,31 +287,6 @@ When `className` is omitted the alias targets the same class as the enclosing `@
 
 > **Warning**: The stub field must **not** be `final`. A `static final int X = 32` causes javac to inline the constant everywhere it is used, so no `GETSTATIC` instruction is emitted and the alias never fires. The compile-time annotation processor enforces this and raises a compile error if you mark the stub `final`.
 
-### Type-safe Method References (@Patch.Trampoline)
-
-`@Patch.Trampoline` lets you call methods on inaccessible or version-varying game classes without reflection. Declare a `static` method in the patch class; PatchEngine rewrites its body at load time to a direct call to the resolved method with zero runtime overhead.
-
-For instance-method targets, the first parameter is the receiver object; the remaining parameters are the method arguments. For static targets, all parameters are arguments.
-
-```java
-@Patch(className = "zombie.characters.IsoGameCharacter", methodName = "update")
-public class CharacterPatch {
-    // tries "isNPC" then "isNpc" on IsoGameCharacter; first param = receiver
-    @Patch.Trampoline({"isNPC", "isNpc"})
-    public static boolean isNPC(IsoGameCharacter chr) { return false; }
-
-    // shorthand: target class = @Patch.className(), method name = annotated method name
-    @Patch.Trampoline
-    public static float getMaxSpeed(IsoGameCharacter chr) { return 0f; }
-
-    @Patch.OnEnter
-    public static void enter(@Patch.This Object self) {
-        IsoGameCharacter chr = (IsoGameCharacter) self;
-        if (!isNPC(chr)) { float speed = getMaxSpeed(chr); }
-    }
-}
-```
-
 | Option | Description |
 |--------|-------------|
 | `className` | Class to resolve the method on. Empty (default) = same as `@Patch.className()`. |

@@ -18,8 +18,7 @@ import javax.tools.Diagnostic;
     "me.zed_0xff.zombie_buddy.Patch.Field",
     "me.zed_0xff.zombie_buddy.Patch.MemberHandle",
     "me.zed_0xff.zombie_buddy.Patch.StaticFieldAlias",
-    "me.zed_0xff.zombie_buddy.Patch.StaticFieldAliasRW",
-    "me.zed_0xff.zombie_buddy.Patch.Trampoline"
+    "me.zed_0xff.zombie_buddy.Patch.StaticFieldAliasRW"
 })
 public class PatchAnnotationProcessor extends AbstractProcessor {
     @Override
@@ -33,7 +32,6 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
                 if (name.endsWith(".Field"))                 processField(elem);
                 else if (name.endsWith(".MemberHandle"))     processMemberHandle(elem);
                 else if (name.contains(".StaticFieldAlias")) processStaticFieldAlias(elem);
-                else if (name.endsWith(".Trampoline"))       processTrampoline(elem);
             }
         }
         return true;
@@ -84,11 +82,17 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
         for (AnnotationMirror mirror : elem.getAnnotationMirrors()) {
             if (!mirror.getAnnotationType().asElement().toString().equals("me.zed_0xff.zombie_buddy.Patch.MemberHandle")) continue;
             Map<? extends ExecutableElement, ? extends AnnotationValue> vals = mirror.getElementValues();
-            boolean hasValue = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("value"));
-            boolean hasName  = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("name"));
+            boolean hasValue     = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("value"));
+            boolean hasName      = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("name"));
+            boolean hasClassName = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("className"));
+            boolean hasOwner     = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("owner"));
             if (hasValue && hasName) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "@Patch.MemberHandle: specify either 'value' or 'name', not both", elem, mirror);
+            }
+            if (hasClassName && hasOwner) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "@Patch.MemberHandle: specify either 'className' or 'owner', not both", elem, mirror);
             }
         }
     }
@@ -105,16 +109,5 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
         }
     }
 
-    private void processTrampoline(Element elem) {
-        for (AnnotationMirror mirror : elem.getAnnotationMirrors()) {
-            if (!mirror.getAnnotationType().asElement().toString().equals("me.zed_0xff.zombie_buddy.Patch.Trampoline")) continue;
-            Map<? extends ExecutableElement, ? extends AnnotationValue> vals = mirror.getElementValues();
-            boolean hasValue      = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("value"));
-            boolean hasMethodName = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("methodName"));
-            if (hasValue && hasMethodName) {
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                    "@Patch.Trampoline: specify either 'value' or 'methodName', not both", elem, mirror);
-            }
-        }
-    }
+
 }

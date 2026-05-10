@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import net.bytebuddy.jar.asm.commons.ClassRemapper;
 import net.bytebuddy.jar.asm.commons.SimpleRemapper;
 
@@ -32,11 +31,17 @@ import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.jar.asm.Type;
 
 /**
- * Transforms patch classes by replacing Patch.* annotations with ByteBuddy equivalents and
- * rewriting @Patch.Trampoline method bodies to direct INVOKEVIRTUAL/INVOKESTATIC calls.
+ * Transforms patch classes by replacing Patch.* annotations with ByteBuddy equivalents.
  */
 final class PatchTransformer {
     private static final Type NO_EXCEPTION_HANDLER = Type.getType("Lnet/bytebuddy/asm/Advice$NoExceptionHandler;"); // private
+
+    // Track the class currently being transformed in a new-load callback. When Class.forName is
+    // called on this same class from inside the callback, it triggers a circular inner load that
+    // defines the class prematurely; the outer defineClass then fails with "duplicate class
+    // definition". forName() uses these to avoid loading a class that's still being defined.
+    private static final ThreadLocal<String>      g_transformingClass  = new ThreadLocal<>();
+    private static final ThreadLocal<ClassLoader> g_transformingLoader = new ThreadLocal<>();
 
     private static final Map<String, String> ADVICE_DESCRIPTOR_MAP;
     private static final Map<String, String> DELEGATION_DESCRIPTOR_MAP;
@@ -45,6 +50,7 @@ final class PatchTransformer {
     static {
         final Map<String, String> common_map = new HashMap<>();
         common_map.put(Type.getDescriptor(Patch.This.class),         Type.getDescriptor(Advice.This.class));
+        common_map.put(Type.getDescriptor(Patch.Adapter.class),      Type.getDescriptor(Advice.Local.class));
         common_map.put(Type.getDescriptor(Patch.Argument.class),     Type.getDescriptor(Advice.Argument.class));
         common_map.put(Type.getDescriptor(Patch.AllArguments.class), Type.getDescriptor(Advice.AllArguments.class));
         common_map.put(Type.getDescriptor(Patch.Field.class),        Type.getDescriptor(Advice.FieldValue.class));
@@ -76,19 +82,29 @@ final class PatchTransformer {
 
     /**
      * Transforms a patch class: replaces Patch.* annotations with ByteBuddy equivalents and
-     * rewrites @Patch.Trampoline method bodies to direct INVOKEVIRTUAL/INVOKESTATIC calls.
-     * Returns null if a non-optional trampoline or MemberHandle cannot be resolved (caller should drop the patch).
-     *
-     * NOTE: Trampoline resolution uses Class.forName, so the target class must already be loaded
-     * at the time this method is called. Trampolines cannot be used when intercepting the first
-     * load of a class (preload-time patching); they work only with retransformation (already-loaded classes).
+     * Returns null if a non-optional MemberHandle cannot be resolved (caller should drop the patch).
      */
     public static Class<?> transformPatchClass(Class<?> patchClass, Instrumentation instrumentation, int verbosity, boolean isMethodDelegation) {
+        Patch patchAnn0 = patchClass.getAnnotation(Patch.class);
+        String targetCls0 = (patchAnn0 != null) ? patchAnn0.className() : "";
+        String prevClass = g_transformingClass.get();
+        ClassLoader prevLoader = g_transformingLoader.get();
+        if (!targetCls0.isEmpty()) {
+            g_transformingClass.set(targetCls0);
+            g_transformingLoader.set(patchClass.getClassLoader());
+        }
+        try {
+        return transformPatchClassInner(patchClass, instrumentation, verbosity, isMethodDelegation);
+        } finally {
+            if (prevClass != null) { g_transformingClass.set(prevClass); g_transformingLoader.set(prevLoader); }
+            else { g_transformingClass.remove(); g_transformingLoader.remove(); }
+        }
+    }
+
+    private static Class<?> transformPatchClassInner(Class<?> patchClass, Instrumentation instrumentation, int verbosity, boolean isMethodDelegation) {
         try {
             boolean needsTransformation = false;
-            boolean hasAnyTrampolines   = false;
             for (Method method : patchClass.getDeclaredMethods()) {
-                if (method.isAnnotationPresent(Patch.Trampoline.class)) { hasAnyTrampolines = true; continue; }
                 boolean hasOnEnter     = method.isAnnotationPresent(Patch.OnEnter.class);
                 boolean hasOnExit      = method.isAnnotationPresent(Patch.OnExit.class);
                 boolean hasRuntimeType = method.isAnnotationPresent(Patch.RuntimeType.class);
@@ -107,15 +123,16 @@ final class PatchTransformer {
                 }
                 if (!needsTransformation) {
                     for (java.lang.reflect.Parameter param : method.getParameters()) {
-                        if (param.isAnnotationPresent(Patch.Return.class)      ||
-                            param.isAnnotationPresent(Patch.Thrown.class)      ||
-                            param.isAnnotationPresent(Patch.This.class)        ||
+                        if (param.isAnnotationPresent(Patch.Adapter.class)     ||
                             param.isAnnotationPresent(Patch.Argument.class)    ||
                             param.isAnnotationPresent(Patch.Field.class)       ||
                             param.isAnnotationPresent(Patch.FieldRW.class)     ||
                             param.isAnnotationPresent(Patch.Local.class)       ||
+                            param.isAnnotationPresent(Patch.SuperCall.class)   ||
                             param.isAnnotationPresent(Patch.SuperMethod.class) ||
-                            param.isAnnotationPresent(Patch.SuperCall.class)) {
+                            param.isAnnotationPresent(Patch.This.class)        ||
+                            param.isAnnotationPresent(Patch.Thrown.class)      ||
+                            param.isAnnotationPresent(Patch.Return.class)) {
                             needsTransformation = true;
                             break;
                         }
@@ -152,7 +169,7 @@ final class PatchTransformer {
                 } else if (candidates.length == 1) {
                     resolvedName = candidates[0];
                 } else {
-                    resolvedName = resolveFieldName(Arrays.asList(candidates), targetClass);
+                    resolvedName = resolveFieldName(Arrays.asList(candidates), targetClass, f.getName());
                     if (resolvedName == null) resolvedName = candidates[0];
                 }
                 staticAliases.put(f.getName(), new StaticAlias(Utils.toInternalName(targetClass), resolvedName, readOnly));
@@ -163,36 +180,20 @@ final class PatchTransformer {
             for (java.lang.reflect.Field f : patchClass.getDeclaredFields()) {
                 Patch.MemberHandle ann = f.getAnnotation(Patch.MemberHandle.class);
                 if (ann == null) continue;
-                String tc   = ann.className().isEmpty() ? defaultTargetCls : ann.className();
+                String tc   = ann.owner() != void.class ? ann.owner().getName()
+                            : ann.className().isEmpty()  ? defaultTargetCls
+                            : ann.className();
                 String[] cs = ann.value().length > 0 ? ann.value() : ann.name().length > 0 ? ann.name() : new String[]{ f.getName() };
                 memberHandles.put(f.getName(), new MemberHandleInfo(tc, cs, ann.optional(), ann.returnType(), ann.parameterTypes(), f.getType() == VarHandle.class));
                 needsTransformation = true;
             }
 
-            if (!needsTransformation && !hasAnyTrampolines) {
+            if (!needsTransformation) {
                 if (verbosity > 1) Logger.info("class " + patchClass.getName() + " needs transformation: false");
                 return patchClass;
             }
 
-            Map<String, TrampolineProcessor.ResolvedMethod> trampolines = new HashMap<>();
-            if (hasAnyTrampolines) {
-                for (Method m : patchClass.getDeclaredMethods()) {
-                    Patch.Trampoline ann = m.getAnnotation(Patch.Trampoline.class);
-                    if (ann == null) continue;
-                    TrampolineProcessor.ResolvedMethod target = resolveTrampoline(m, ann, defaultTargetCls);
-                    if (target == null) {
-                        Logger.warn("Trampoline not resolved: " + patchClass.getSimpleName() + "." + m.getName());
-                        if (!ann.optional()) return null;
-                        continue; // optional — leave method body unchanged
-                    }
-                    Logger.debug("Trampoline resolved: " + m.getName() + " -> " + target.owner() + "." + target.name());
-                    trampolines.put(m.getName(), target);
-                    needsTransformation = true;
-                }
-            }
-
-            if (verbosity > 1) Logger.info("class " + patchClass.getName() + " needs transformation: " + needsTransformation);
-            if (!needsTransformation && trampolines.isEmpty()) return patchClass;
+            if (verbosity > 1) Logger.info("class " + patchClass.getName() + " needs transformation: true");
 
             final String patchOwner = Utils.toInternalName(patchClass);
             String resourceName = patchOwner + ".class";
@@ -230,8 +231,6 @@ final class PatchTransformer {
                     final String mName = name;
                     final String mDesc = descriptor;
                     MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
-                    TrampolineProcessor.ResolvedMethod trampolineTarget = trampolines.get(name);
-                    if (trampolineTarget != null) mv = TrampolineProcessor.makeBodyRewriter(mv, descriptor, trampolineTarget);
                     return new MethodVisitor(Opcodes.ASM9, mv) {
                         @Override
                         public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
@@ -256,9 +255,11 @@ final class PatchTransformer {
                         @Override
                         public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor, boolean visible) {
                             AnnotationVisitor av = super.visitParameterAnnotation(parameter, rewriteAnnotationDescriptor(descriptor, isDelegation), visible);
-                            boolean isField   = Type.getDescriptor(Patch.Field.class).equals(descriptor);
-                            boolean isRWField = Type.getDescriptor(Patch.FieldRW.class).equals(descriptor);
-                            if (isField || isRWField) {
+                            boolean isField      = Type.getDescriptor(Patch.Field.class).equals(descriptor);
+                            boolean isFieldRW    = Type.getDescriptor(Patch.FieldRW.class).equals(descriptor);
+                            boolean isAdapter    = Type.getDescriptor(Patch.Adapter.class).equals(descriptor);
+
+                            if (isField || isFieldRW) {
                                 String[] mParams = paramNames.get(mName + mDesc);
                                 String inferred  = (mParams != null && parameter < mParams.length) ? mParams[parameter] : null;
                                 return new AnnotationVisitor(Opcodes.ASM9, av) {
@@ -284,7 +285,7 @@ final class PatchTransformer {
                                         } else if (candidates.size() == 1) {
                                             resolved = candidates.get(0);
                                         } else {
-                                            resolved = resolveFieldName(candidates, defaultTargetCls);
+                                            resolved = resolveFieldName(candidates, defaultTargetCls, descriptor);
                                             if (resolved == null) resolved = candidates.get(0);
                                         }
                                         if (resolved == null) {
@@ -297,10 +298,11 @@ final class PatchTransformer {
                                         }
                                         if (inferred != null) fieldResolutions.putIfAbsent(inferred, resolved);
                                         super.visit("value", resolved);
-                                        if (isRWField) super.visit("readOnly", false);
+                                        if (isFieldRW) super.visit("readOnly", false);
                                         super.visitEnd();
                                     }
                                 };
+                            } else if (isAdapter) {
                             }
                             return av;
                         }
@@ -346,7 +348,7 @@ final class PatchTransformer {
                         ByteArrayClassLoader.PersistenceHandler.MANIFEST);
                 Class<?> freshClass = freshLoader.loadClass(patchClass.getName());
                 populateResolvedFields(freshClass, defaultTargetCls, fieldResolutions);
-                if (!memberHandles.isEmpty() && !populateMemberHandles(freshClass, patchClass, memberHandles, defaultTargetCls, patchClass.getClassLoader())) return null;
+                if (!memberHandles.isEmpty() && !populateMemberHandles(freshClass, patchClass, memberHandles)) return null;
                 return freshClass;
             } catch (Exception e) {
                 Logger.error("Failed to load transformed class " + patchClass.getName() + ": " + e.getMessage());
@@ -364,60 +366,6 @@ final class PatchTransformer {
     private static String rewriteAnnotationDescriptor(String descriptor, boolean isMethodDelegation) {
         Map<String, String> map = isMethodDelegation ? DELEGATION_DESCRIPTOR_MAP : ADVICE_DESCRIPTOR_MAP;
         return map.getOrDefault(descriptor, descriptor);
-    }
-
-    private static TrampolineProcessor.ResolvedMethod resolveTrampoline(Method trampolineMethod, Patch.Trampoline ann, String defaultTargetClass) {
-        String targetClassName = ann.className().isEmpty() ? defaultTargetClass : ann.className();
-        if (targetClassName.isEmpty()) {
-            Logger.warn("Trampoline " + trampolineMethod.getName() + " has no target class");
-            return null;
-        }
-        Class<?> targetClass;
-        try {
-            targetClass = Class.forName(targetClassName);
-        } catch (ClassNotFoundException e) {
-            Logger.warn("Trampoline target class not found: " + targetClassName);
-            return null;
-        } catch (LinkageError e) {
-            // Target class is currently being loaded (preload-time intercept) — trampolines can't resolve in this case.
-            Logger.warn("Trampoline target class not yet loadable (preload-time limitation): " + targetClassName);
-            return null;
-        }
-        String[]   names   = ann.value().length > 0 ? ann.value() : ann.methodName().length > 0 ? ann.methodName() : new String[]{ trampolineMethod.getName() };
-        Class<?>[] tParams = trampolineMethod.getParameterTypes();
-        Class<?>   tReturn = trampolineMethod.getReturnType();
-        for (String name : names) {
-            if (tParams.length > 0) {
-                Method m = findTrampolineTarget(targetClass, name, tReturn, Arrays.copyOfRange(tParams, 1, tParams.length), false);
-                if (m != null) return toResolved(m);
-            }
-            Method m = findTrampolineTarget(targetClass, name, tReturn, tParams, true);
-            if (m != null) return toResolved(m);
-        }
-        return null;
-    }
-
-    private static TrampolineProcessor.ResolvedMethod toResolved(Method m) {
-        return new TrampolineProcessor.ResolvedMethod(
-            Utils.toInternalName(m.getDeclaringClass()),
-            m.getName(),
-            Type.getMethodDescriptor(m),
-            Modifier.isStatic(m.getModifiers()),
-            m.getDeclaringClass().isInterface()
-        );
-    }
-
-    private static Method findTrampolineTarget(Class<?> cls, String name, Class<?> returnType, Class<?>[] params, boolean wantStatic) {
-        for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
-            for (Method m : c.getDeclaredMethods()) {
-                if (!m.getName().equals(name)) continue;
-                if (Modifier.isStatic(m.getModifiers()) != wantStatic) continue;
-                if (!m.getReturnType().equals(returnType)) continue;
-                if (!Arrays.equals(m.getParameterTypes(), params)) continue;
-                return m;
-            }
-        }
-        return null;
     }
 
     /**
@@ -449,15 +397,13 @@ final class PatchTransformer {
      *  Sets the field on both {@code freshClass} (used by ByteBuddy for advice reading) and {@code originalClass}
      *  (whose static fields are accessed at runtime when the inlined advice executes in the target class).
      *  Returns false if any non-optional handle could not be resolved (caller should drop the patch). */
-    private static boolean populateMemberHandles(Class<?> freshClass, Class<?> originalClass,
-                                                  Map<String, MemberHandleInfo> infos,
-                                                  String patchTargetClass, ClassLoader patchLoader) {
+    private static boolean populateMemberHandles(Class<?> freshClass, Class<?> originalClass, Map<String, MemberHandleInfo> infos) {
         MethodHandles.Lookup lookup = MethodHandles.lookup();
         boolean allOk = true;
         for (Map.Entry<String, MemberHandleInfo> entry : infos.entrySet()) {
             String fieldName = entry.getKey();
             MemberHandleInfo info = entry.getValue();
-            Object handle = resolveMemberHandle(info, lookup, patchTargetClass, patchLoader);
+            Object handle = resolveMemberHandle(info, lookup);
             if (handle == null) {
                 if (!info.optional()) {
                     Logger.error("MemberHandle not resolved: " + fieldName + " in " + info.targetClass());
@@ -481,25 +427,10 @@ final class PatchTransformer {
         }
     }
 
-    private static Object resolveMemberHandle(MemberHandleInfo info, MethodHandles.Lookup lookup,
-                                               String patchTargetClass, ClassLoader patchLoader) {
+    private static Object resolveMemberHandle(MemberHandleInfo info, MethodHandles.Lookup lookup) {
         if (info.targetClass().isEmpty()) { Logger.warn("MemberHandle has no target class"); return null; }
-        Class<?> targetClass;
-        // Guard against circular class loading: if the target is the same class currently being
-        // transformed (new-load scenario), Class.forName would define it prematurely and cause a
-        // duplicate-class-definition LinkageError on the outer defineClass call.
-        // Check whether the class is already defined; if not and it equals the patch target, skip.
-        if (info.targetClass().equals(patchTargetClass)) {
-            targetClass = findAlreadyLoadedClass(patchLoader, patchTargetClass);
-            if (targetClass == null) {
-                Logger.warn("MemberHandle target class not yet loaded (same as patch target, only works with retransformation): " + info.targetClass());
-                return null;
-            }
-        } else {
-            try { targetClass = Class.forName(info.targetClass()); }
-            catch (ClassNotFoundException e) { Logger.warn("MemberHandle target class not found: " + info.targetClass()); return null; }
-            catch (LinkageError e) { Logger.warn("MemberHandle target class not yet loadable (preload-time limitation): " + info.targetClass()); return null; }
-        }
+        Class<?> targetClass = forName(info.targetClass());
+        if (targetClass == null) { Logger.warn("MemberHandle target class not found or not yet loaded: " + info.targetClass()); return null; }
         if (info.isVarHandle()) {
             for (String name : info.candidates()) {
                 Field f = findMemberHandleField(targetClass, name);
@@ -520,6 +451,19 @@ final class PatchTransformer {
             }
         }
         return null;
+    }
+
+    /** Class.forName that avoids circular loading: if {@code name} equals the class currently being
+     *  transformed (new-load callback), uses findAlreadyLoadedClass to avoid a premature defineClass
+     *  that would cause "duplicate class definition" when the outer defineClass fires. Returns null
+     *  on ClassNotFoundException, LinkageError, or when the class is still being loaded. */
+    private static Class<?> forName(String name) {
+        String busy = g_transformingClass.get();
+        if (busy != null && busy.equals(name)) {
+            return findAlreadyLoadedClass(g_transformingLoader.get(), name);
+        }
+        try { return Class.forName(name); }
+        catch (ClassNotFoundException | LinkageError e) { return null; }
     }
 
     /** Returns the class if already loaded by {@code cl} without triggering a new class load. */
@@ -555,17 +499,17 @@ final class PatchTransformer {
     }
 
     /** Returns the first name from {@code candidates} that exists as a field on {@code targetClassName} or any superclass. */
-    private static String resolveFieldName(List<String> candidates, String targetClassName) {
+    private static String resolveFieldName(List<String> candidates, String targetClassName, String fieldName) {
         if (targetClassName.isEmpty()) return null;
-        try {
-            Class<?> cls = Class.forName(targetClassName);
-            for (String name : candidates) {
-                for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
-                    try { c.getDeclaredField(name); return name; } catch (NoSuchFieldException ignored) {}
-                }
+        Class<?> cls = forName(targetClassName);
+        if (cls == null) {
+            Logger.warn("Field " + fieldName + ": target class " + targetClassName + " not found or not yet loaded");
+            return null;
+        }
+        for (String name : candidates) {
+            for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
+                try { c.getDeclaredField(name); return name; } catch (NoSuchFieldException ignored) {}
             }
-        } catch (ClassNotFoundException e) {
-            Logger.warn("Field name resolution: target class not found: " + targetClassName);
         }
         return null;
     }
