@@ -263,7 +263,7 @@ tasks.withType(JavaCompile).configureEach {
     }
 }
 
-// Enable annotation processor for testpatches (validates @Patch.StaticFieldAlias at compile time).
+// Enable annotation processor for testpatches (validates patches at compile time).
 // Must come after the tasks.withType(JavaCompile) block above to override annotationProcessorPath.
 compileTestpatchesJava {
     dependsOn compileJava

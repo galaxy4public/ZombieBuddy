@@ -4,6 +4,9 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.VarHandle;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
@@ -124,8 +127,9 @@ public @interface Patch {
   @Retention(RetentionPolicy.RUNTIME)
   @Target({ElementType.PARAMETER, ElementType.FIELD, ElementType.METHOD})
   public @interface Field {
-    String[] value() default {};  // field name(s): empty = infer from parameter name; multiple = try in order
-    String[] name() default {};   // alias for value(); specifying both is a compile error
+    String[] value() default {};    // field name(s): empty = infer from parameter name; multiple = try in order
+    String[] name() default {};     // alias for value(); specifying both is a compile error
+    Class<?> declaringType() default void.class; // the class that declares the field; void.class = infer from target class
     boolean readOnly() default true;
     boolean optional() default false;
   }
@@ -236,21 +240,43 @@ public @interface Patch {
     String className() default "";  // empty = infer from enclosing @Patch.className()
   }
 
+  // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.Handle.html            - returns only MethodHandle, no VarHandle support
+  // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldGetterHandle.html - respects field visibility
+  // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldSetterHandle.html - --//--
   @Retention(RetentionPolicy.RUNTIME)
-  @Target(ElementType.FIELD)
+  @Target({ElementType.FIELD, ElementType.PARAMETER})
   public @interface MemberHandle {
     String[] value() default {};              // empty = infer from stub field name; multiple = try in order
     String[] name() default {};               // alias for value(); specifying both is a compile error
     String className() default "";            // empty = infer from enclosing @Patch.className(); mutually exclusive with owner()
     Class<?> owner() default void.class;      // type-safe alternative to className(); mutually exclusive with className()
     boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
-    Class<?> returnType() default void.class; // the return type of the _method_ handle
-    Class<?>[] parameterTypes() default {};   // the parameter types of the _method_ handle
+
+    // MethodHandle:
+    Class<?> returnType() default void.class;
+    Class<?>[] parameterTypes() default {};
+
+    // VarHandle:
+    Class<?> type() default void.class;
   }
 
   @Retention(RetentionPolicy.RUNTIME)
   @Target({ElementType.PARAMETER, ElementType.TYPE})
   public @interface Adapter {
       Class<?> value() default void.class;    // void.class = infer from enclosing @Patch.className()
+  }
+
+  /** Runtime registry for method handles bound via parameter-level {@code @Patch.MemberHandle}.
+   *  Populated by PatchTransformer at instrumentation time; read by inlined advice bytecode. */
+  public final class HandleStore {
+      private static final ConcurrentHashMap<String, MethodHandle> methodHandles = new ConcurrentHashMap<>();
+      private static final ConcurrentHashMap<String, VarHandle>    varHandles    = new ConcurrentHashMap<>();
+
+      public static MethodHandle get(String key)    { return methodHandles.get(key); }
+      public static VarHandle    getVar(String key) { return varHandles.get(key); }
+      static void put(String key, MethodHandle mh)  { if (mh != null) methodHandles.put(key, mh); }
+      static void putVar(String key, VarHandle vh)  { if (vh != null) varHandles.put(key, vh); }
+
+      private HandleStore() {}
   }
 }

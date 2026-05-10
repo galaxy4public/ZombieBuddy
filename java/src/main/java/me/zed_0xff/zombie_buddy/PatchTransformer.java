@@ -15,16 +15,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import net.bytebuddy.jar.asm.commons.ClassRemapper;
-import net.bytebuddy.jar.asm.commons.SimpleRemapper;
-
-import net.bytebuddy.dynamic.loading.ByteArrayClassLoader;
 
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.loading.ByteArrayClassLoader;
 import net.bytebuddy.jar.asm.AnnotationVisitor;
 import net.bytebuddy.jar.asm.ClassReader;
 import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.ClassWriter;
+import net.bytebuddy.jar.asm.commons.ClassRemapper;
+import net.bytebuddy.jar.asm.commons.SimpleRemapper;
 import net.bytebuddy.jar.asm.Label;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
@@ -39,7 +39,7 @@ final class PatchTransformer {
     // Track the class currently being transformed in a new-load callback. When Class.forName is
     // called on this same class from inside the callback, it triggers a circular inner load that
     // defines the class prematurely; the outer defineClass then fails with "duplicate class
-    // definition". forName() uses these to avoid loading a class that's still being defined.
+    // definition". findClass() uses these to avoid loading a class that's still being defined.
     private static final ThreadLocal<String>      g_transformingClass  = new ThreadLocal<>();
     private static final ThreadLocal<ClassLoader> g_transformingLoader = new ThreadLocal<>();
 
@@ -77,14 +77,43 @@ final class PatchTransformer {
         TYPE_MAP.put(Type.getType(Patch.OnNonDefaultValue.class), Type.getType(Advice.OnNonDefaultValue.class));
     }
 
-    private record MemberHandleInfo(String targetClass, String[] candidates, boolean optional,
-                                    Class<?> returnType, Class<?>[] parameterTypes, boolean isVarHandle) {}
+    private abstract interface IMemberHandle {
+        String targetClass();
+        String[] candidates();
+        boolean optional();
+    }
+
+    private interface IVarHandle extends IMemberHandle {
+        Class<?> fieldType();
+    }
+
+    private interface IMethodHandle extends IMemberHandle {
+        Class<?> returnType();
+        Class<?>[] parameterTypes();
+    }
+
+    private record MemberHandleInfo (
+            String targetClass,
+            String[] candidates,
+            boolean optional,
+
+            Class<?> returnType,
+            Class<?>[] parameterTypes
+    ) implements IMethodHandle {}
+
+    private record VarHandleInfo (
+            String targetClass,
+            String[] candidates,
+            boolean optional,
+
+            Class<?> fieldType
+    ) implements IVarHandle {}
 
     /**
      * Transforms a patch class: replaces Patch.* annotations with ByteBuddy equivalents and
      * Returns null if a non-optional MemberHandle cannot be resolved (caller should drop the patch).
      */
-    public static Class<?> transformPatchClass(Class<?> patchClass, Instrumentation instrumentation, int verbosity, boolean isMethodDelegation) {
+    public static Class<?> transformPatch(Class<?> patchClass, TypeDescription td, int verbosity, boolean isMethodDelegation) {
         Patch patchAnn0 = patchClass.getAnnotation(Patch.class);
         String targetCls0 = (patchAnn0 != null) ? patchAnn0.className() : "";
         String prevClass = g_transformingClass.get();
@@ -94,14 +123,14 @@ final class PatchTransformer {
             g_transformingLoader.set(patchClass.getClassLoader());
         }
         try {
-        return transformPatchClassInner(patchClass, instrumentation, verbosity, isMethodDelegation);
+            return transformPatchClassInner(patchClass, td, verbosity, isMethodDelegation);
         } finally {
             if (prevClass != null) { g_transformingClass.set(prevClass); g_transformingLoader.set(prevLoader); }
             else { g_transformingClass.remove(); g_transformingLoader.remove(); }
         }
     }
 
-    private static Class<?> transformPatchClassInner(Class<?> patchClass, Instrumentation instrumentation, int verbosity, boolean isMethodDelegation) {
+    private static Class<?> transformPatchClassInner(Class<?> patchClass, TypeDescription td, int verbosity, boolean isMethodDelegation) {
         try {
             boolean needsTransformation = false;
             for (Method method : patchClass.getDeclaredMethods()) {
@@ -123,15 +152,16 @@ final class PatchTransformer {
                 }
                 if (!needsTransformation) {
                     for (java.lang.reflect.Parameter param : method.getParameters()) {
-                        if (param.isAnnotationPresent(Patch.Adapter.class)     ||
-                            param.isAnnotationPresent(Patch.Argument.class)    ||
-                            param.isAnnotationPresent(Patch.Field.class)       ||
-                            param.isAnnotationPresent(Patch.FieldRW.class)     ||
-                            param.isAnnotationPresent(Patch.Local.class)       ||
-                            param.isAnnotationPresent(Patch.SuperCall.class)   ||
-                            param.isAnnotationPresent(Patch.SuperMethod.class) ||
-                            param.isAnnotationPresent(Patch.This.class)        ||
-                            param.isAnnotationPresent(Patch.Thrown.class)      ||
+                        if (param.isAnnotationPresent(Patch.Adapter.class)      ||
+                            param.isAnnotationPresent(Patch.Argument.class)     ||
+                            param.isAnnotationPresent(Patch.Field.class)        ||
+                            param.isAnnotationPresent(Patch.FieldRW.class)      ||
+                            param.isAnnotationPresent(Patch.Local.class)        ||
+                            param.isAnnotationPresent(Patch.MemberHandle.class) ||
+                            param.isAnnotationPresent(Patch.SuperCall.class)    ||
+                            param.isAnnotationPresent(Patch.SuperMethod.class)  ||
+                            param.isAnnotationPresent(Patch.This.class)         ||
+                            param.isAnnotationPresent(Patch.Thrown.class)       ||
                             param.isAnnotationPresent(Patch.Return.class)) {
                             needsTransformation = true;
                             break;
@@ -169,14 +199,14 @@ final class PatchTransformer {
                 } else if (candidates.length == 1) {
                     resolvedName = candidates[0];
                 } else {
-                    resolvedName = resolveFieldName(Arrays.asList(candidates), targetClass, f.getName());
+                    resolvedName = resolveFieldName(Arrays.asList(candidates), targetClass, f.getName(), td);
                     if (resolvedName == null) resolvedName = candidates[0];
                 }
                 staticAliases.put(f.getName(), new StaticAlias(Utils.toInternalName(targetClass), resolvedName, readOnly));
                 needsTransformation = true;
             }
 
-            Map<String, MemberHandleInfo> memberHandles = new HashMap<>();
+            Map<String, IMemberHandle> memberHandles = new HashMap<>();
             for (java.lang.reflect.Field f : patchClass.getDeclaredFields()) {
                 Patch.MemberHandle ann = f.getAnnotation(Patch.MemberHandle.class);
                 if (ann == null) continue;
@@ -184,7 +214,10 @@ final class PatchTransformer {
                             : ann.className().isEmpty()  ? defaultTargetCls
                             : ann.className();
                 String[] cs = ann.value().length > 0 ? ann.value() : ann.name().length > 0 ? ann.name() : new String[]{ f.getName() };
-                memberHandles.put(f.getName(), new MemberHandleInfo(tc, cs, ann.optional(), ann.returnType(), ann.parameterTypes(), f.getType() == VarHandle.class));
+                IMemberHandle info = f.getType() == java.lang.invoke.VarHandle.class
+                    ? new VarHandleInfo(tc, cs, ann.optional(), resolveVarHandleFieldType(tc, cs, ann))
+                    : new MemberHandleInfo(tc, cs, ann.optional(), ann.returnType(), ann.parameterTypes());
+                memberHandles.put(f.getName(), info);
                 needsTransformation = true;
             }
 
@@ -211,6 +244,57 @@ final class PatchTransformer {
             final Map<String, String> fieldResolutions = new HashMap<>(); // paramName -> resolvedFieldName
             final boolean[] hasUnresolvableField = {false};
 
+            // Pre-scan parameter-level @Patch.MemberHandle annotations.
+            // Maps (methodName+descriptor) -> (paramSlot -> storeKey).
+            final Map<String, Map<Integer, String>> paramHandleSlots    = new HashMap<>();
+            final Map<String, Map<Integer, String>> paramVarHandleSlots = new HashMap<>();
+            final Map<String, IMemberHandle> paramHandleInfos = new HashMap<>();
+            final boolean[] hasUnresolvableParamHandle = {false};
+            for (Method method : patchClass.getDeclaredMethods()) {
+                java.lang.annotation.Annotation[][] paramAnns = method.getParameterAnnotations();
+                if (paramAnns.length == 0) continue;
+                boolean isStaticM = java.lang.reflect.Modifier.isStatic(method.getModifiers());
+                String mKey = method.getName() + Type.getMethodDescriptor(method);
+                String[] pNames = paramNames.get(mKey);
+                Type[] argTypes = Type.getArgumentTypes(Type.getMethodDescriptor(method));
+                int slot = isStaticM ? 0 : 1;
+                for (int pi = 0; pi < paramAnns.length; pi++) {
+                    for (java.lang.annotation.Annotation a : paramAnns[pi]) {
+                        if (!(a instanceof Patch.MemberHandle mh)) continue;
+                        boolean isVarHandleParam = method.getParameterTypes()[pi] == java.lang.invoke.VarHandle.class;
+                        String pName = (pNames != null && pi < pNames.length && pNames[pi] != null) ? pNames[pi] : null;
+                        String tc = mh.owner() != void.class  ? mh.owner().getName()
+                                  : !mh.className().isEmpty() ? mh.className()
+                                  : defaultTargetCls;
+
+                        String[] cs = mh.value().length > 0 ? mh.value()
+                                    : mh.name().length > 0  ? mh.name()
+                                    : pName != null         ? new String[]{pName}
+                                    : new String[]{};
+
+                        if (tc.isEmpty() || cs.length == 0) {
+                            Logger.error("@Patch.MemberHandle on param " + pi + " of " + method.getName() + " in " + patchClass.getName() +
+                                (tc.isEmpty() ? ": no target class" : ": no candidate names (specify value/name or compile with -g)"));
+                            if (!mh.optional()) hasUnresolvableParamHandle[0] = true;
+                            break;
+                        }
+                        String storeKey = patchClass.getName() + "#" + method.getName() + "#" + pi;
+                        if (isVarHandleParam) {
+                            paramVarHandleSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
+                            paramHandleInfos.put(storeKey, new VarHandleInfo(tc, cs, mh.optional(), resolveVarHandleFieldType(tc, cs, mh)));
+                        } else {
+                            paramHandleSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
+                            paramHandleInfos.put(storeKey, new MemberHandleInfo(tc, cs, mh.optional(), mh.returnType(), mh.parameterTypes()));
+                        }
+                    }
+                    if (pi < argTypes.length) slot += argTypes[pi].getSize();
+                }
+            }
+            if (hasUnresolvableParamHandle[0]) {
+                Logger.error("Dropping patch class " + patchClass.getName() + " due to unresolvable parameter-level @Patch.MemberHandle");
+                return null;
+            }
+
             ClassReader cr = new ClassReader(classBytes);
             ClassWriter cw = typeAliases.isEmpty()
                 ? new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES)
@@ -230,8 +314,12 @@ final class PatchTransformer {
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                     final String mName = name;
                     final String mDesc = descriptor;
+                    final int mAccess = access;
                     MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
                     return new MethodVisitor(Opcodes.ASM9, mv) {
+                        // slot -> storeKey for @Patch.MemberHandle parameters of THIS method
+                        private final Map<Integer, String> handleSlots    = new HashMap<>();
+                        private final Map<Integer, String> varHandleSlots = new HashMap<>();
                         @Override
                         public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
                             String newDescriptor = rewriteAnnotationDescriptor(descriptor, isDelegation);
@@ -253,11 +341,50 @@ final class PatchTransformer {
                         }
 
                         @Override
+                        public void visitVarInsn(int opcode, int var) {
+                            if (opcode == Opcodes.ALOAD) {
+                                String storeKey = handleSlots.get(var);
+                                if (storeKey != null) {
+                                    mv.visitLdcInsn(storeKey);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                        "me/zed_0xff/zombie_buddy/Patch$HandleStore",
+                                        "get", "(Ljava/lang/String;)Ljava/lang/invoke/MethodHandle;", false);
+                                    return;
+                                }
+                                storeKey = varHandleSlots.get(var);
+                                if (storeKey != null) {
+                                    mv.visitLdcInsn(storeKey);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                        "me/zed_0xff/zombie_buddy/Patch$HandleStore",
+                                        "getVar", "(Ljava/lang/String;)Ljava/lang/invoke/VarHandle;", false);
+                                    return;
+                                }
+                            }
+                            super.visitVarInsn(opcode, var);
+                        }
+
+                        @Override
                         public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor, boolean visible) {
+                            if (Type.getDescriptor(Patch.MemberHandle.class).equals(descriptor)) {
+                                // Compute the local variable slot for this parameter
+                                Type[] argTypes = Type.getArgumentTypes(mDesc);
+                                boolean isSt = (mAccess & Opcodes.ACC_STATIC) != 0;
+                                int s = isSt ? 0 : 1;
+                                for (int i = 0; i < parameter && i < argTypes.length; i++) s += argTypes[i].getSize();
+                                // Populate handleSlots / varHandleSlots for use in visitVarInsn
+                                Map<Integer, String> slotMap = paramHandleSlots.get(mName + mDesc);
+                                if (slotMap != null) { String key = slotMap.get(s); if (key != null) handleSlots.put(s, key); }
+                                Map<Integer, String> varSlotMap = paramVarHandleSlots.get(mName + mDesc);
+                                if (varSlotMap != null) { String key = varSlotMap.get(s); if (key != null) varHandleSlots.put(s, key); }
+                                // Replace with @Advice.Local so ByteBuddy recognizes the parameter slot;
+                                // the actual value is provided at runtime by the ALOAD→HandleStore.get/getVar rewrite above.
+                                AnnotationVisitor av = super.visitParameterAnnotation(parameter, Type.getDescriptor(Advice.Local.class), visible);
+                                if (av != null) { av.visit("value", "__mh_param_" + parameter + "__"); av.visitEnd(); }
+                                return null;
+                            }
                             AnnotationVisitor av = super.visitParameterAnnotation(parameter, rewriteAnnotationDescriptor(descriptor, isDelegation), visible);
                             boolean isField      = Type.getDescriptor(Patch.Field.class).equals(descriptor);
                             boolean isFieldRW    = Type.getDescriptor(Patch.FieldRW.class).equals(descriptor);
-                            boolean isAdapter    = Type.getDescriptor(Patch.Adapter.class).equals(descriptor);
 
                             if (isField || isFieldRW) {
                                 String[] mParams = paramNames.get(mName + mDesc);
@@ -274,9 +401,9 @@ final class PatchTransformer {
                                         }
                                         return super.visitArray(n);
                                     }
-                                    @Override public void visit(String n, Object v) {
-                                        if ("optional".equals(n)) return; // Advice.FieldValue has no optional
-                                        super.visit(n, v);
+                                    @Override public void visit(String paramName, Object paramValue) {
+                                        if ("optional".equals(paramName)) return; // Advice.FieldValue has no optional
+                                        super.visit(paramName, paramValue);
                                     }
                                     @Override public void visitEnd() {
                                         String resolved;
@@ -285,7 +412,7 @@ final class PatchTransformer {
                                         } else if (candidates.size() == 1) {
                                             resolved = candidates.get(0);
                                         } else {
-                                            resolved = resolveFieldName(candidates, defaultTargetCls, descriptor);
+                                            resolved = resolveFieldName(candidates, defaultTargetCls, patchClass.getName(), td);
                                             if (resolved == null) resolved = candidates.get(0);
                                         }
                                         if (resolved == null) {
@@ -302,7 +429,6 @@ final class PatchTransformer {
                                         super.visitEnd();
                                     }
                                 };
-                            } else if (isAdapter) {
                             }
                             return av;
                         }
@@ -329,14 +455,12 @@ final class PatchTransformer {
 
             byte[] transformedBytes = cw.toByteArray();
 
-            if (instrumentation != null) {
-                try {
-                    instrumentation.redefineClasses(new java.lang.instrument.ClassDefinition(patchClass, transformedBytes));
-                } catch (Exception e) {
-                    // Non-fatal: ChildFirst loader carries the updated bytes. Failure is expected when
-                    // TypeAlias remapping changes NestHost/NestMembers attributes (JVM forbids that change).
-                    Logger.debug("Could not redefine patch class " + patchClass.getName() + " (non-fatal): " + e.getMessage());
-                }
+            try {
+                Loader.g_instrumentation.redefineClasses(new java.lang.instrument.ClassDefinition(patchClass, transformedBytes));
+            } catch (Exception e) {
+                // Non-fatal: ChildFirst loader carries the updated bytes. Failure is expected when
+                // TypeAlias remapping changes NestHost/NestMembers attributes (JVM forbids that change).
+                Logger.debug("Could not redefine patch class " + patchClass.getName() + " (non-fatal): " + e.getMessage());
             }
 
             // Load in a fresh ChildFirst ClassLoader so Java reflection sees updated annotations
@@ -349,6 +473,7 @@ final class PatchTransformer {
                 Class<?> freshClass = freshLoader.loadClass(patchClass.getName());
                 populateResolvedFields(freshClass, defaultTargetCls, fieldResolutions);
                 if (!memberHandles.isEmpty() && !populateMemberHandles(freshClass, patchClass, memberHandles)) return null;
+                if (!paramHandleInfos.isEmpty() && !populateParamHandles(paramHandleInfos)) return null;
                 return freshClass;
             } catch (Exception e) {
                 Logger.error("Failed to load transformed class " + patchClass.getName() + ": " + e.getMessage());
@@ -397,12 +522,12 @@ final class PatchTransformer {
      *  Sets the field on both {@code freshClass} (used by ByteBuddy for advice reading) and {@code originalClass}
      *  (whose static fields are accessed at runtime when the inlined advice executes in the target class).
      *  Returns false if any non-optional handle could not be resolved (caller should drop the patch). */
-    private static boolean populateMemberHandles(Class<?> freshClass, Class<?> originalClass, Map<String, MemberHandleInfo> infos) {
+    private static boolean populateMemberHandles(Class<?> freshClass, Class<?> originalClass, Map<String, IMemberHandle> infos) {
         MethodHandles.Lookup lookup = MethodHandles.lookup();
         boolean allOk = true;
-        for (Map.Entry<String, MemberHandleInfo> entry : infos.entrySet()) {
+        for (Map.Entry<String, IMemberHandle> entry : infos.entrySet()) {
             String fieldName = entry.getKey();
-            MemberHandleInfo info = entry.getValue();
+            IMemberHandle info = entry.getValue();
             Object handle = resolveMemberHandle(info, lookup);
             if (handle == null) {
                 if (!info.optional()) {
@@ -417,6 +542,34 @@ final class PatchTransformer {
         return allOk;
     }
 
+    /** Resolves handles for parameter-level {@code @Patch.MemberHandle} and stores them in {@link Patch.HandleStore}.
+     *  Returns false if any non-optional handle could not be resolved (caller should drop the patch). */
+    private static boolean populateParamHandles(Map<String, IMemberHandle> infos) {
+        MethodHandles.Lookup lookup = MethodHandles.lookup();
+        boolean allOk = true;
+        for (Map.Entry<String, IMemberHandle> entry : infos.entrySet()) {
+            String storeKey = entry.getKey();
+            IMemberHandle info = entry.getValue();
+            Object handle = resolveMemberHandle(info, lookup);
+            if (handle == null) {
+                if (!info.optional()) {
+                    Logger.error("Parameter MemberHandle not resolved: " + storeKey);
+                    allOk = false;
+                }
+                continue;
+            }
+            if (handle instanceof java.lang.invoke.MethodHandle mh) {
+                Patch.HandleStore.put(storeKey, mh);
+            } else if (handle instanceof java.lang.invoke.VarHandle vh) {
+                Patch.HandleStore.putVar(storeKey, vh);
+            } else {
+                Logger.error("Parameter MemberHandle resolved to unexpected type " + handle.getClass() + " for key " + storeKey);
+                allOk = false;
+            }
+        }
+        return allOk;
+    }
+
     private static void setStaticField(Class<?> cls, String fieldName, Object value) {
         try {
             java.lang.reflect.Field f = cls.getDeclaredField(fieldName);
@@ -427,28 +580,51 @@ final class PatchTransformer {
         }
     }
 
-    private static Object resolveMemberHandle(MemberHandleInfo info, MethodHandles.Lookup lookup) {
-        if (info.targetClass().isEmpty()) { Logger.warn("MemberHandle has no target class"); return null; }
-        Class<?> targetClass = forName(info.targetClass());
-        if (targetClass == null) { Logger.warn("MemberHandle target class not found or not yet loaded: " + info.targetClass()); return null; }
-        if (info.isVarHandle()) {
-            for (String name : info.candidates()) {
-                Field f = findMemberHandleField(targetClass, name);
-                if (f != null) {
-                    try { f.setAccessible(true); return lookup.unreflectVarHandle(f); }
-                    catch (Exception e) { Logger.warn("MemberHandle(VarHandle) unreflect failed for " + name + ": " + e.getMessage()); }
-                }
+    private static Object resolveMemberHandle(IMemberHandle info, MethodHandles.Lookup lookup) {
+        if (info.targetClass().isEmpty()) {
+            Logger.warn("MemberHandle has no target class");
+            return null;
+        }
+
+        Class<?> targetClass = findClass(info.targetClass());
+        if (targetClass == null) {
+            Logger.warn("MemberHandle target class " + info.targetClass() + " not found");
+            return null;
+        }
+
+        if (info instanceof IVarHandle ivh) {
+            // Reflect.getVarHandle uses findVarHandle which only covers instance fields; use unreflectVarHandle for both
+            for (String name : ivh.candidates()) {
+                java.lang.reflect.Field f = findMemberHandleField(targetClass, name);
+                if (f == null) continue;
+                try { f.setAccessible(true); return lookup.unreflectVarHandle(f); }
+                catch (Exception e) { Logger.warn("VarHandle unreflect failed for " + name + ": " + e.getMessage()); }
             }
             return null;
         }
-        // Use signature only when caller specified something non-default
-        boolean hasSignature = info.returnType() != void.class || info.parameterTypes().length > 0;
-        for (String name : info.candidates()) {
-            Method m = findMemberHandleMethod(targetClass, name, hasSignature ? info.returnType() : null, info.parameterTypes());
-            if (m != null) {
-                try { m.setAccessible(true); return lookup.unreflect(m); }
-                catch (Exception e) { Logger.warn("MemberHandle unreflect failed for " + name + ": " + e.getMessage()); }
+
+        if (info instanceof IMethodHandle imh) {
+            boolean hasSignature = imh.returnType() != void.class || imh.parameterTypes().length > 0;
+            for (String name : info.candidates()) {
+                Method m = findMemberHandleMethod(targetClass, name, hasSignature ? imh.returnType() : null, imh.parameterTypes());
+                if (m != null) {
+                    try { m.setAccessible(true); return lookup.unreflect(m); }
+                    catch (Exception e) { Logger.warn("MemberHandle unreflect failed for " + name + ": " + e.getMessage()); }
+                }
             }
+        }
+        return null;
+    }
+
+    /** Returns the field type for a VarHandle stub: uses {@code ann.type()} if specified, otherwise
+     *  looks up the actual field type from the target class by candidate name. */
+    private static Class<?> resolveVarHandleFieldType(String targetClassName, String[] candidates, Patch.MemberHandle ann) {
+        if (ann.type() != void.class) return ann.type();
+        Class<?> cls = findClass(targetClassName);
+        if (cls == null) return null;
+        for (String name : candidates) {
+            java.lang.reflect.Field f = findMemberHandleField(cls, name);
+            if (f != null) return f.getType();
         }
         return null;
     }
@@ -457,13 +633,12 @@ final class PatchTransformer {
      *  transformed (new-load callback), uses findAlreadyLoadedClass to avoid a premature defineClass
      *  that would cause "duplicate class definition" when the outer defineClass fires. Returns null
      *  on ClassNotFoundException, LinkageError, or when the class is still being loaded. */
-    private static Class<?> forName(String name) {
+    private static Class<?> findClass(String name) {
         String busy = g_transformingClass.get();
         if (busy != null && busy.equals(name)) {
             return findAlreadyLoadedClass(g_transformingLoader.get(), name);
         }
-        try { return Class.forName(name); }
-        catch (ClassNotFoundException | LinkageError e) { return null; }
+        return Accessor.findClass(name);
     }
 
     /** Returns the class if already loaded by {@code cl} without triggering a new class load. */
@@ -499,11 +674,22 @@ final class PatchTransformer {
     }
 
     /** Returns the first name from {@code candidates} that exists as a field on {@code targetClassName} or any superclass. */
-    private static String resolveFieldName(List<String> candidates, String targetClassName, String fieldName) {
-        if (targetClassName.isEmpty()) return null;
-        Class<?> cls = forName(targetClassName);
+    private static String resolveFieldName(List<String> candidates, String targetClassName, String title, TypeDescription td) {
+        if (Utils.isBlank(targetClassName)) return null;
+
+        if (targetClassName.equals(td.getCanonicalName())) {
+            while (td != null) {
+                for(var field : td.getDeclaredFields()) {
+                    if (candidates.contains(field.getName())) return field.getName();
+                }
+                td = td.getSuperClass() != null ? td.getSuperClass().asErasure() : null;
+            }
+            return null;
+        }
+
+        Class<?> cls = findClass(targetClassName);
         if (cls == null) {
-            Logger.warn("Field " + fieldName + ": target class " + targetClassName + " not found or not yet loaded");
+            Logger.warn(title + ": target class " + targetClassName + " not found");
             return null;
         }
         for (String name : candidates) {

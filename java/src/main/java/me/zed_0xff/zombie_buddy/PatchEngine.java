@@ -33,19 +33,24 @@ public final class PatchEngine {
             Advice.OnMethodEnter.class,
             Advice.OnMethodExit.class
             );
-    private static final Set<Class<? extends Annotation>> DELEGATION_PARAM_SPECIAL_ANNOTATIONS = Set.of(
-            net.bytebuddy.implementation.bind.annotation.SuperCall.class,
-            net.bytebuddy.implementation.bind.annotation.SuperMethod.class,
-            net.bytebuddy.implementation.bind.annotation.This.class
-            );
-    private static final Set<Class<? extends Annotation>> ADVICE_PARAM_SPECIAL_ANNOTATIONS = Set.of(
-            Advice.AllArguments.class,
-            Advice.FieldValue.class,
-            Advice.Local.class,
-            Advice.Return.class,
-            Advice.This.class,
-            Advice.Thrown.class
-            );
+
+    // arguments are "non-special"
+    private static final HashSet<Class<? extends Annotation>> ARGUMENT_ANNOTATIONS = new HashSet<>(List.of(
+            Advice.Argument.class,
+            net.bytebuddy.implementation.bind.annotation.Argument.class
+            ));
+
+    private static boolean isSpecialAnnotation(Annotation ann) {
+        var annType = ann.annotationType();
+        if (ARGUMENT_ANNOTATIONS.contains(annType)) {
+            return false;
+        }
+
+        String annTypeName = annType.getName();
+        boolean result = annTypeName.startsWith("net.bytebuddy.implementation.bind.annotation.") || annTypeName.startsWith("net.bytebuddy.asm.Advice");
+        // Logger.trace("isSpecialAnnotation: " + ann + " -> " + result);
+        return result;
+    }
 
     private static boolean hasAnnotation(Method method, List<Class<? extends Annotation>> annTypes) {
         for (var annType : annTypes) {
@@ -77,7 +82,7 @@ public final class PatchEngine {
         return false;
     }
 
-    private static List<Class<?>> inferSignatureFromMethod(Method patchMethod, Set<Class<? extends Annotation>> specialAnnotationTypes) {
+    private static List<Class<?>> inferSignatureFromMethod(Method patchMethod) {
         Annotation[][] paramAnns = patchMethod.getParameterAnnotations();
         Class<?>[] paramTypes = patchMethod.getParameterTypes();
         Map<Integer, Class<?>> argumentMap = new HashMap<>();
@@ -87,7 +92,7 @@ public final class PatchEngine {
             int argumentIndex = -1;
 
             for (Annotation ann : paramAnns[i]) {
-                if (specialAnnotationTypes.contains(ann.annotationType())) {
+                if (isSpecialAnnotation(ann)) {
                     isSpecial = true;
                     break;
                 }
@@ -304,7 +309,7 @@ public final class PatchEngine {
                             // Transform patch class to replace Patch.* annotations with ByteBuddy's
                             Class<?> transformedClass;
                             try {
-                                transformedClass = PatchTransformer.transformPatchClass(adviceClass, Loader.g_instrumentation, Loader.g_verbosity, false);
+                                transformedClass = PatchTransformer.transformPatch(adviceClass, td, Loader.g_verbosity, false);
                                 if (transformedClass == null) continue;
                             } catch (Exception e) {
                                 Logger.error("ERROR: Failed to transform patch class " + adviceClass.getName() + ": " + e.getMessage());
@@ -374,7 +379,7 @@ public final class PatchEngine {
 
                                             // Skip @Local / @This / @Return parameters - they're not part of the target method signature
                                             // (@AllArguments already handled above)
-                                            if (ADVICE_PARAM_SPECIAL_ANNOTATIONS.contains(ann.annotationType())) {
+                                            if (isSpecialAnnotation(ann)) {
                                                 skip = true;
                                                 break;
                                             }
@@ -445,7 +450,7 @@ public final class PatchEngine {
                                         for (int idx = 0; idx < paramTypes.length; idx++) {
                                             boolean isSpecial = false;
                                             for (Annotation ann : paramAnns[idx]) {
-                                                if (ADVICE_PARAM_SPECIAL_ANNOTATIONS.contains(ann.annotationType())) {
+                                                if (isSpecialAnnotation(ann)) {
                                                     isSpecial = true;
                                                     break;
                                                 }
@@ -561,7 +566,7 @@ public final class PatchEngine {
                         Class<?> delegationClass = entry.getValue();
                         
                         // Transform the delegation class to convert Patch.* annotations to ByteBuddy annotations
-                        Class<?> transformedDelegationClass = PatchTransformer.transformPatchClass(delegationClass, Loader.g_instrumentation, Loader.g_verbosity, true);
+                        Class<?> transformedDelegationClass = PatchTransformer.transformPatch(delegationClass, td, Loader.g_verbosity, true);
                         if (transformedDelegationClass == null) continue;
                         
                         Logger.info("patching " + className + "." + methodName + " with delegation");
@@ -573,7 +578,7 @@ public final class PatchEngine {
                                 Method delegationMethod = findMethodWithAnnotation(transformedDelegationClass, RuntimeType.class);
                                 List<Class<?>> inferredConstructorSignature = null;
                                 if (delegationMethod != null) {
-                                    inferredConstructorSignature = inferSignatureFromMethod(delegationMethod, DELEGATION_PARAM_SPECIAL_ANNOTATIONS);
+                                    inferredConstructorSignature = inferSignatureFromMethod(delegationMethod);
                                 }
                                 
                                 // Build constructor matcher based on inferred signature

@@ -27,4 +27,18 @@ public class VanillaTestMemberHandle {
         new MemberHandleTarget().doVarHandle();
         assertNull(MemberHandleHelper.capturedVarHandle);
     }
+
+    @Test
+    void testNoParamHandleWithoutPatch() {
+        MemberHandleHelper.capturedParamHandle = null;
+        new MemberHandleTarget().doParamHandle();
+        assertNull(MemberHandleHelper.capturedParamHandle);
+    }
+
+    @Test
+    void testNoParamVarHandleWithoutPatch() {
+        MemberHandleHelper.capturedParamVarHandle = null;
+        new MemberHandleTarget().doParamVarHandle();
+        assertNull(MemberHandleHelper.capturedParamVarHandle);
+    }
 }

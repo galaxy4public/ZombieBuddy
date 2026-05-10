@@ -62,19 +62,25 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
 
     private void processMemberHandle(Element elem) {
         if (!(elem instanceof VariableElement field)) return;
+        boolean isParam = field.getKind() == javax.lang.model.element.ElementKind.PARAMETER;
         String typeName = field.asType().toString();
-        if (!typeName.equals("java.lang.invoke.MethodHandle") && !typeName.equals("java.lang.invoke.VarHandle")) {
+        boolean isMethodHandle = typeName.equals("java.lang.invoke.MethodHandle");
+        boolean isVarHandle    = typeName.equals("java.lang.invoke.VarHandle");
+        if (!isMethodHandle && !isVarHandle) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
-                "@Patch.MemberHandle field must be of type MethodHandle or VarHandle", elem);
+                "@Patch.MemberHandle " + (isParam ? "parameter" : "field") + " must be of type MethodHandle or VarHandle", elem);
         }
-        if (!field.getModifiers().contains(Modifier.PUBLIC)) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
-                "@Patch.MemberHandle field should be public; inlined advice in a different package will throw IllegalAccessError", elem);
+        if (!isParam) {
+            if (!field.getModifiers().contains(Modifier.PUBLIC)) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                    "@Patch.MemberHandle field should be public; inlined advice in a different package will throw IllegalAccessError", elem);
+            }
+            if (field.getModifiers().contains(Modifier.FINAL)) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.MemberHandle field must not be final", elem);
+            }
         }
-        if (field.getModifiers().contains(Modifier.FINAL)) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.MemberHandle field must not be final", elem);
-        }
-        boolean hasPatch = field.getEnclosingElement().getAnnotationMirrors().stream()
+        Element enclosing = isParam ? field.getEnclosingElement().getEnclosingElement() : field.getEnclosingElement();
+        boolean hasPatch = enclosing.getAnnotationMirrors().stream()
             .anyMatch(m -> m.getAnnotationType().asElement().toString().equals("me.zed_0xff.zombie_buddy.Patch"));
         if (!hasPatch) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "@Patch.MemberHandle can only be used in a class annotated with @Patch", elem);
@@ -82,10 +88,13 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
         for (AnnotationMirror mirror : elem.getAnnotationMirrors()) {
             if (!mirror.getAnnotationType().asElement().toString().equals("me.zed_0xff.zombie_buddy.Patch.MemberHandle")) continue;
             Map<? extends ExecutableElement, ? extends AnnotationValue> vals = mirror.getElementValues();
-            boolean hasValue     = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("value"));
-            boolean hasName      = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("name"));
-            boolean hasClassName = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("className"));
-            boolean hasOwner     = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("owner"));
+            boolean hasValue          = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("value"));
+            boolean hasName           = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("name"));
+            boolean hasClassName      = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("className"));
+            boolean hasOwner          = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("owner"));
+            boolean hasReturnType     = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("returnType"));
+            boolean hasParameterTypes = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("parameterTypes"));
+            boolean hasType           = vals.keySet().stream().anyMatch(k -> k.getSimpleName().contentEquals("type"));
             if (hasValue && hasName) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "@Patch.MemberHandle: specify either 'value' or 'name', not both", elem, mirror);
@@ -93,6 +102,14 @@ public class PatchAnnotationProcessor extends AbstractProcessor {
             if (hasClassName && hasOwner) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "@Patch.MemberHandle: specify either 'className' or 'owner', not both", elem, mirror);
+            }
+            if (isMethodHandle && (!hasReturnType || !hasParameterTypes)) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "@Patch.MemberHandle on MethodHandle: returnType and parameterTypes must both be specified", elem, mirror);
+            }
+            if (isVarHandle && !hasType) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "@Patch.MemberHandle on VarHandle: type must be specified", elem, mirror);
             }
         }
     }

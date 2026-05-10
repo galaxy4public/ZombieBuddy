@@ -10,7 +10,7 @@ import testjar.MemberHandleHelper;
 @Patch(className = "testjar.MemberHandleTarget", methodName = "doVarHandle")
 public class PatchMemberHandleVarHandle {
     // field name inferred from stub: targets MemberHandleHelper.capturedVarHandle (static String)
-    @Patch.MemberHandle(className = "testjar.MemberHandleHelper")
+    @Patch.MemberHandle(className = "testjar.MemberHandleHelper", type = String.class)
     public static VarHandle capturedVarHandle;
 
     @Patch.OnEnter

@@ -27,4 +27,18 @@ public class PatchedTestMemberHandle {
         new MemberHandleTarget().doVarHandle();
         assertEquals("via_varhandle", MemberHandleHelper.capturedVarHandle);
     }
+
+    @Test
+    void testParamMemberHandleResolvedAndCalled() {
+        MemberHandleHelper.capturedParamHandle = null;
+        new MemberHandleTarget().doParamHandle();
+        assertEquals("param world", MemberHandleHelper.capturedParamHandle);
+    }
+
+    @Test
+    void testParamVarHandleResolvedAndCalled() {
+        MemberHandleHelper.capturedParamVarHandle = null;
+        new MemberHandleTarget().doParamVarHandle();
+        assertEquals("via_param_varhandle", MemberHandleHelper.capturedParamVarHandle);
+    }
 }

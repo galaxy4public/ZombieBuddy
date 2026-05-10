@@ -243,6 +243,9 @@ public final class Reflect {
             if (v == null) {
                 try {
                     VarHandle vh = cinfo.lookup().findVarHandle(cls, fieldName, type);
+                    if (vh == null) {
+                        vh = cinfo.lookup().findStaticVarHandle(cls, fieldName, type);
+                    }
                     v = (vh != null) ? vh : MISS;
                 } catch (NoSuchFieldException | IllegalAccessException e) {
                     v = MISS;

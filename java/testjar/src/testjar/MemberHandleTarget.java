@@ -7,4 +7,6 @@ public class MemberHandleTarget {
     public void doSkipPatch() {}
     public void doNoArgs() {}
     public void doVarHandle() {}
+    public void doParamHandle() {}
+    public void doParamVarHandle() {}
 }

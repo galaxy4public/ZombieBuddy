@@ -7,7 +7,7 @@ import testjar.MemberHandleHelper;
 // verifies: non-optional unresolvable @MemberHandle drops the entire patch class
 @Patch(className = "testjar.MemberHandleTarget", methodName = "doSkipPatch")
 public class PatchMemberHandleSkip {
-    @Patch.MemberHandle(value = "noSuchMethod", className = "testjar.MemberHandleHelper")
+    @Patch.MemberHandle(value = "noSuchMethod", className = "testjar.MemberHandleHelper", returnType = void.class, parameterTypes = {})
     static MethodHandle missing;
 
     @Patch.OnEnter
