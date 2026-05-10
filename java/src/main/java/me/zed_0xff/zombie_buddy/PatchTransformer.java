@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -221,8 +222,7 @@ final class PatchTransformer {
 
             // Pre-scan parameter-level @Patch.MemberHandle annotations.
             // Maps (methodName+descriptor) -> (paramSlot -> storeKey).
-            final Map<String, Map<Integer, String>> paramHandleSlots    = new HashMap<>();
-            final Map<String, Map<Integer, String>> paramVarHandleSlots = new HashMap<>();
+            final Map<String, Map<Integer, String>> paramAllHandleSlots = new HashMap<>();
             final Map<String, IMemberHandle> paramHandleInfos = new HashMap<>();
             final boolean[] hasUnresolvableParamHandle = {false};
             for (Method method : patchClass.getDeclaredMethods()) {
@@ -254,13 +254,10 @@ final class PatchTransformer {
                             break;
                         }
                         String storeKey = patchClass.getName() + "#" + method.getName() + "#" + pi;
-                        if (isVarHandleParam) {
-                            paramVarHandleSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
-                            paramHandleInfos.put(storeKey, new VarHandleInfo(tc, cs, mh.optional(), resolveVarHandleFieldType(tc, cs, mh)));
-                        } else {
-                            paramHandleSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
-                            paramHandleInfos.put(storeKey, new MemberHandleInfo(tc, cs, mh.optional(), mh.returnType(), mh.parameterTypes()));
-                        }
+                        paramAllHandleSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
+                        paramHandleInfos.put(storeKey, isVarHandleParam
+                            ? new VarHandleInfo(tc, cs, mh.optional(), resolveVarHandleFieldType(tc, cs, mh))
+                            : new MemberHandleInfo(tc, cs, mh.optional(), mh.returnType(), mh.parameterTypes()));
                     }
                     if (pi < argTypes.length) slot += argTypes[pi].getSize();
                 }
@@ -293,8 +290,7 @@ final class PatchTransformer {
                     MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
                     return new MethodVisitor(Opcodes.ASM9, mv) {
                         // slot -> storeKey for @Patch.MemberHandle parameters of THIS method
-                        private final Map<Integer, String> handleSlots    = new HashMap<>();
-                        private final Map<Integer, String> varHandleSlots = new HashMap<>();
+                        private final Map<Integer, String> allHandleSlots = new HashMap<>();
                         @Override
                         public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
                             String newDescriptor = rewriteAnnotationDescriptor(descriptor, isDelegation);
@@ -318,20 +314,14 @@ final class PatchTransformer {
                         @Override
                         public void visitVarInsn(int opcode, int var) {
                             if (opcode == Opcodes.ALOAD) {
-                                String storeKey = handleSlots.get(var);
+                                String storeKey = allHandleSlots.get(var);
                                 if (storeKey != null) {
+                                    boolean isVar = paramHandleInfos.get(storeKey) instanceof IVarHandle;
                                     mv.visitLdcInsn(storeKey);
-                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-                                        "me/zed_0xff/zombie_buddy/Patch$HandleStore",
-                                        "get", "(Ljava/lang/String;)Ljava/lang/invoke/MethodHandle;", false);
-                                    return;
-                                }
-                                storeKey = varHandleSlots.get(var);
-                                if (storeKey != null) {
-                                    mv.visitLdcInsn(storeKey);
-                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-                                        "me/zed_0xff/zombie_buddy/Patch$HandleStore",
-                                        "getVar", "(Ljava/lang/String;)Ljava/lang/invoke/VarHandle;", false);
+                                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "me/zed_0xff/zombie_buddy/Patch$HandleStore",
+                                        isVar ? "getVar" : "get",
+                                        isVar ? "(Ljava/lang/String;)Ljava/lang/invoke/VarHandle;" : "(Ljava/lang/String;)Ljava/lang/invoke/MethodHandle;",
+                                        false);
                                     return;
                                 }
                             }
@@ -346,11 +336,9 @@ final class PatchTransformer {
                                 boolean isSt = (mAccess & Opcodes.ACC_STATIC) != 0;
                                 int s = isSt ? 0 : 1;
                                 for (int i = 0; i < parameter && i < argTypes.length; i++) s += argTypes[i].getSize();
-                                // Populate handleSlots / varHandleSlots for use in visitVarInsn
-                                Map<Integer, String> slotMap = paramHandleSlots.get(mName + mDesc);
-                                if (slotMap != null) { String key = slotMap.get(s); if (key != null) handleSlots.put(s, key); }
-                                Map<Integer, String> varSlotMap = paramVarHandleSlots.get(mName + mDesc);
-                                if (varSlotMap != null) { String key = varSlotMap.get(s); if (key != null) varHandleSlots.put(s, key); }
+                                // Populate allHandleSlots for use in visitVarInsn
+                                Map<Integer, String> slotMap = paramAllHandleSlots.get(mName + mDesc);
+                                if (slotMap != null) { String key = slotMap.get(s); if (key != null) allHandleSlots.put(s, key); }
                                 // Replace with @Advice.Local so ByteBuddy recognizes the parameter slot;
                                 // the actual value is provided at runtime by the ALOAD→HandleStore.get/getVar rewrite above.
                                 AnnotationVisitor av = super.visitParameterAnnotation(parameter, Type.getDescriptor(Advice.Local.class), visible);
@@ -482,56 +470,43 @@ final class PatchTransformer {
         if (map != null) map.putAll(fieldResolutions);
     }
 
+    private static boolean populateHandles(Map<String, IMemberHandle> infos,
+            BiFunction<String, IMemberHandle, String> nullMsg, BiFunction<String, Object, Boolean> setter) {
+        MethodHandles.Lookup lookup = MethodHandles.lookup();
+        boolean allOk = true;
+        for (var entry : infos.entrySet()) {
+            String key = entry.getKey(); IMemberHandle info = entry.getValue();
+            Object handle = resolveMemberHandle(info, lookup);
+            if (handle == null) {
+                if (!info.optional()) { Logger.error(nullMsg.apply(key, info)); allOk = false; }
+                continue;
+            }
+            if (!setter.apply(key, handle)) allOk = false;
+        }
+        return allOk;
+    }
+
     /** Injects resolved {@link MethodHandle}s into static fields annotated with {@code @Patch.MemberHandle}.
      *  Sets the field on both {@code freshClass} (used by ByteBuddy for advice reading) and {@code originalClass}
      *  (whose static fields are accessed at runtime when the inlined advice executes in the target class).
      *  Returns false if any non-optional handle could not be resolved (caller should drop the patch). */
     private static boolean populateMemberHandles(Class<?> freshClass, Class<?> originalClass, Map<String, IMemberHandle> infos) {
-        MethodHandles.Lookup lookup = MethodHandles.lookup();
-        boolean allOk = true;
-        for (Map.Entry<String, IMemberHandle> entry : infos.entrySet()) {
-            String fieldName = entry.getKey();
-            IMemberHandle info = entry.getValue();
-            Object handle = resolveMemberHandle(info, lookup);
-            if (handle == null) {
-                if (!info.optional()) {
-                    Logger.error("MemberHandle not resolved: " + fieldName + " in " + info.targetClass());
-                    allOk = false;
-                }
-                continue;
-            }
-            setStaticField(freshClass, fieldName, handle);
-            if (originalClass != freshClass) setStaticField(originalClass, fieldName, handle);
-        }
-        return allOk;
+        return populateHandles(infos,
+            (k, i) -> "MemberHandle not resolved: " + k + " in " + i.targetClass(),
+            (k, h) -> { setStaticField(freshClass, k, h); if (originalClass != freshClass) setStaticField(originalClass, k, h); return true; });
     }
 
     /** Resolves handles for parameter-level {@code @Patch.MemberHandle} and stores them in {@link Patch.HandleStore}.
      *  Returns false if any non-optional handle could not be resolved (caller should drop the patch). */
     private static boolean populateParamHandles(Map<String, IMemberHandle> infos) {
-        MethodHandles.Lookup lookup = MethodHandles.lookup();
-        boolean allOk = true;
-        for (Map.Entry<String, IMemberHandle> entry : infos.entrySet()) {
-            String storeKey = entry.getKey();
-            IMemberHandle info = entry.getValue();
-            Object handle = resolveMemberHandle(info, lookup);
-            if (handle == null) {
-                if (!info.optional()) {
-                    Logger.error("Parameter MemberHandle not resolved: " + storeKey);
-                    allOk = false;
-                }
-                continue;
-            }
-            if (handle instanceof java.lang.invoke.MethodHandle mh) {
-                Patch.HandleStore.put(storeKey, mh);
-            } else if (handle instanceof java.lang.invoke.VarHandle vh) {
-                Patch.HandleStore.putVar(storeKey, vh);
-            } else {
-                Logger.error("Parameter MemberHandle resolved to unexpected type " + handle.getClass() + " for key " + storeKey);
-                allOk = false;
-            }
-        }
-        return allOk;
+        return populateHandles(infos,
+            (k, i) -> "Parameter MemberHandle not resolved: " + k,
+            (k, h) -> {
+                if (h instanceof MethodHandle mh) { Patch.HandleStore.put(k, mh); return true; }
+                if (h instanceof VarHandle   vh) { Patch.HandleStore.putVar(k, vh); return true; }
+                Logger.error("Parameter MemberHandle resolved to unexpected type " + h.getClass() + " for key " + k);
+                return false;
+            });
     }
 
     private static void setStaticField(Class<?> cls, String fieldName, Object value) {
