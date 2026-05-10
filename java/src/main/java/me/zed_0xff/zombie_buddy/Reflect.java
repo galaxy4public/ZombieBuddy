@@ -1,8 +1,8 @@
 package me.zed_0xff.zombie_buddy;
 
+import java.lang.instrument.Instrumentation;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -42,10 +42,20 @@ public final class Reflect {
     public static final Flag INSTANCE        = Flag.INSTANCE;
 
     private static final Reflect REFLECT_NULL = new Reflect(null);
-
-    private static final Object MISS = new Object();
+    private static final Object  MISS         = new Object();
 
     private final Object value;
+
+    static void init(Instrumentation inst) {
+        // inst.addTransformer(new java.lang.instrument.ClassFileTransformer() {
+        //     @Override
+        //     public byte[] transform(Module module, ClassLoader loader, String name,
+        //             Class<?> cls, java.security.ProtectionDomain domain, byte[] bytes) {
+        //         if (name != null) System.out.println("[d] class loaded: " + name);
+        //         return null;
+        //     }
+        // });
+    }
 
     private Reflect(Object value) {
         this.value = value;
@@ -223,9 +233,7 @@ public final class Reflect {
         if (value == null) return null;
     
         Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
-
-        ClassInfo cinfo;
-        cinfo = _cache.computeIfAbsent(cls, c -> {
+        ClassInfo cinfo = _cache.computeIfAbsent(cls, c -> {
                 try {
                     return new ClassInfo(c);
                 } catch (Exception e) {
@@ -242,13 +250,13 @@ public final class Reflect {
 
             if (v == null) {
                 try {
-                    VarHandle vh = cinfo.lookup().findVarHandle(cls, fieldName, type);
-                    if (vh == null) {
-                        vh = cinfo.lookup().findStaticVarHandle(cls, fieldName, type);
-                    }
-                    v = (vh != null) ? vh : MISS;
+                    v = cinfo.lookup().findVarHandle(cls, fieldName, type);
                 } catch (NoSuchFieldException | IllegalAccessException e) {
-                    v = MISS;
+                    try {
+                        v = cinfo.lookup().findStaticVarHandle(cls, fieldName, type);
+                    } catch (NoSuchFieldException | IllegalAccessException e2) {
+                        v = MISS;
+                    }
                 }
 
                 varCache.put(fieldName, v);
