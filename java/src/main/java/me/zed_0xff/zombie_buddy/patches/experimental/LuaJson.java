@@ -23,27 +23,33 @@ import se.krka.kahlua.vm.KahluaTableIterator;
 public class LuaJson {
     private static final int DEFAULT_MAX_DEPTH = 1;
 
-    public static String toJson(Object luaValue) {
+    private final boolean m_arr_inject_null; // whether to inject a null as the first element of JSON arrays to preserve Lua's 1-based indexing
+
+    public LuaJson(boolean arr_inject_null) {
+        m_arr_inject_null = arr_inject_null;
+    }
+
+    public String toJson(Object luaValue) {
         return toJson(luaValue, DEFAULT_MAX_DEPTH);
     }
 
-    public static String toJson(Object luaValue, int maxDepth) {
+    public String toJson(Object luaValue, int maxDepth) {
         Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         return toJsonValue(luaValue, 0, maxDepth, seen).toString();
     }
 
     /** Returns the Lua value as a Gson {@link JsonElement} tree (no string round-trip). */
-    public static JsonElement toJsonTree(Object luaValue) {
+    public JsonElement toJsonTree(Object luaValue) {
         return toJsonTree(luaValue, DEFAULT_MAX_DEPTH);
     }
 
     /** Returns the Lua value as a Gson {@link JsonElement} tree (no string round-trip). */
-    public static JsonElement toJsonTree(Object luaValue, int maxDepth) {
+    public JsonElement toJsonTree(Object luaValue, int maxDepth) {
         Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         return toJsonValue(luaValue, 0, maxDepth, seen);
     }
 
-    private static JsonElement toJsonValue(Object value, int depth, int maxDepth, Set<Object> seen) {
+    private JsonElement toJsonValue(Object value, int depth, int maxDepth, Set<Object> seen) {
         if (value == null) {
             return JsonNull.INSTANCE;
         }
@@ -73,6 +79,9 @@ public class LuaJson {
             KahluaTable table = (KahluaTable) value;
             if (isArray(table)) {
                 JsonArray arr = new JsonArray();
+                if (m_arr_inject_null) {
+                    arr.add(JsonNull.INSTANCE); // Lua arrays are 1-indexed, so add a dummy element at index 0
+                }
                 int len = table.len();
                 for (int i = 1; i <= len; i++) {
                     arr.add(toJsonValue(table.rawget(i), depth + 1, maxDepth, seen));

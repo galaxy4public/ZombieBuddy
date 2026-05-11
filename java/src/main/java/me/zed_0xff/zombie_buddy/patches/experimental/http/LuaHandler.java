@@ -36,11 +36,14 @@ public class LuaHandler implements HttpHandler {
             return;
         }
 
-        String query = exchange.getRequestURI().getQuery();
-        int depth = HttpServer.parseIntParam(query, "depth", 1);
-        String chunkName = HttpServer.parseStringParam(query, "chunkname", "http_exec");
+        String query       = exchange.getRequestURI().getQuery();
+
+        int depth          = HttpServer.parseIntParam(query, "depth", 1);
+        String chunkName   = HttpServer.parseStringParam(query, "chunkname", "http_exec");
         boolean threadCall = HttpServer.parseBoolParam(query, "thread", false);
-        boolean sandbox = HttpServer.parseBoolParam(query, "sandbox", true);
+        boolean sandbox    = HttpServer.parseBoolParam(query, "sandbox", true);
+        boolean json_arr_1 = HttpServer.parseBoolParam(query, "json_arr_1", false); // inject null as 1st element of JSON arrays to preserve Lua 1-based indexing
+        LuaJson luaJson    = new LuaJson(json_arr_1);
 
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         if (body.isEmpty()) {
@@ -158,12 +161,12 @@ public class LuaHandler implements HttpHandler {
                 }
             }
             if (!errorGlobalValues.isEmpty()) {
-                root.add("errorGlobals", LuaJson.toJsonTree(errorGlobalValues));
+                root.add("errorGlobals", luaJson.toJsonTree(errorGlobalValues));
             }
             HttpServer.sendJsonResponse(exchange, 500, root.toString());
             return;
         }
 
-        HttpServer.sendJsonResponse(exchange, 200, LuaJson.toJson(resultRef.get(), depth));
+        HttpServer.sendJsonResponse(exchange, 200, luaJson.toJson(resultRef.get(), depth));
     }
 }
