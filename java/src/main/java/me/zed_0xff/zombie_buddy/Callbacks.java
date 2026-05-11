@@ -4,6 +4,10 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class Callbacks {
+    public static final Callback onGameInitComplete = new Callback("onGameInitComplete", CBType.ONCE);
+    public static final Callback onDisplayCreate    = new Callback("onDisplayCreate",    CBType.MANY);
+    public static final Callback afterExposeAll     = new Callback("afterExposeAll",     CBType.MANY);
+
     private Callbacks() {}
 
     enum CBType {
@@ -43,8 +47,5 @@ public final class Callbacks {
             }
         }
     }
-
-    public static final Callback onGameInitComplete = new Callback("onGameInitComplete", CBType.ONCE);
-    public static final Callback onDisplayCreate    = new Callback("onDisplayCreate",    CBType.MANY);
 }
 

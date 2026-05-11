@@ -9,11 +9,7 @@ public class Patch_Exposer {
         public static void exit() {
             Logger.debug("after Exposer.exposeAll");
             Exposer.afterExposeAll();
-            EventsAPI.init();
-
-            if (Agent.isExperimental()) {
-                WatchesAPI.init();
-            }
+            Callbacks.afterExposeAll.run();
         }
     }
 }

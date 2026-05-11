@@ -86,6 +86,10 @@ public class Loader {
         return g_jarPolicy;
     }
 
+    public static Instrumentation getInstrumentation() {
+        return g_instrumentation;
+    }
+
     /** ZBS verification applies for every policy except {@code allow-all}. */
     private static boolean zbsSignatureChecksEnabled() {
         return !POLICY_ALLOW_ALL.equals(g_jarPolicy);

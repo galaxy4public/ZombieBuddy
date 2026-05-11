@@ -13,8 +13,8 @@ import se.krka.kahlua.vm.LuaCallFrame;
 import se.krka.kahlua.vm.LuaClosure;
 import se.krka.kahlua.j2se.KahluaTableImpl;
 
+@Exposer.LuaClass(name = "ZombieBuddy.Events")
 public class EventsAPI {
-
     /** __index handler: when Lua does events.EventName and key is missing, call getByName(key). */
     private static final JavaFunction INDEX_GET_BY_NAME = (callFrame, nArgs) -> {
         Object key = nArgs >= 2 ? callFrame.get(1) : null;
@@ -22,26 +22,6 @@ public class EventsAPI {
         Object result = getByName(name);
         return callFrame.push(result);
     };
-
-    public static void init() {
-        var zb = LuaManager.env.rawget("ZombieBuddy");
-        if (zb instanceof KahluaTable tbl) {
-            var events = LuaManager.platform.newTable();
-            try {
-                LuaManager.exposer.exposeGlobalClassFunction(events, EventsAPI.class, EventsAPI.class.getMethod("getAll"), "getAll");
-                LuaManager.exposer.exposeGlobalClassFunction(events, EventsAPI.class, EventsAPI.class.getMethod("getByName", String.class), "getByName");
-                LuaManager.exposer.exposeGlobalClassFunction(events, EventsAPI.class, EventsAPI.class.getMethod("getByFile", String.class), "getByFile");
-            } catch (ReflectiveOperationException e) {
-                Logger.error("Error exposing static methods: " + e.getMessage());
-            }
-            var mt = LuaManager.platform.newTable();
-            mt.rawset("__index", INDEX_GET_BY_NAME);
-            events.setMetatable(mt);
-            tbl.rawset("Events", events);
-        } else {
-            Logger.error("ZombieBuddy table not found");
-        }
-    }
 
     public static Object getAll() {
         if (LuaManager.platform == null) {

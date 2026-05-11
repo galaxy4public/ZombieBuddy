@@ -1,4 +1,6 @@
-package me.zed_0xff.zombie_buddy;
+package me.zed_0xff.zombie_buddy.patches.experimental;
+
+import me.zed_0xff.zombie_buddy.*;
 
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
@@ -22,6 +24,7 @@ import se.krka.kahlua.vm.KahluaTable;
  * Experimental API for watching arbitrary Java method calls.
  * Add/Remove/Clear watches; when a watched method is called, logs class, method, and arguments.
  */
+@Exposer.LuaClass(name = "ZombieBuddy.Watches")
 public class WatchesAPI {
 
     /** Hook type: log before method runs. */
@@ -185,7 +188,7 @@ public class WatchesAPI {
     /** Install the ClassFileTransformer if not already installed. */
     private static void ensureTransformer() {
         if (transformerInstalled) return;
-        Instrumentation inst = Loader.g_instrumentation;
+        Instrumentation inst = Loader.getInstrumentation();
         if (inst == null) return;
         synchronized (WatchesAPI.class) {
             if (transformerInstalled) return;
@@ -243,30 +246,17 @@ public class WatchesAPI {
 
     public static void init() {
         ensureTransformer();
-        var zb = LuaManager.env.rawget("ZombieBuddy");
-        if (!(zb instanceof KahluaTable tbl)) {
-            Logger.error("ZombieBuddy table not found");
-            return;
-        }
-        var watches = LuaManager.platform.newTable();
-        try {
-            LuaManager.exposer.exposeGlobalClassFunction(watches, WatchesAPI.class, WatchesAPI.class.getMethod("add", String.class, String.class, int.class), "Add");
-            LuaManager.exposer.exposeGlobalClassFunction(watches, WatchesAPI.class, WatchesAPI.class.getMethod("add", String.class, String.class), "Add");
-            LuaManager.exposer.exposeGlobalClassFunction(watches, WatchesAPI.class, WatchesAPI.class.getMethod("remove", String.class, String.class), "Remove");
-            LuaManager.exposer.exposeGlobalClassFunction(watches, WatchesAPI.class, WatchesAPI.class.getMethod("clear"), "Clear");
-            LuaManager.exposer.exposeGlobalClassFunction(watches, WatchesAPI.class, WatchesAPI.class.getMethod("setStackDepth", int.class), "SetStackDepth");
-        } catch (ReflectiveOperationException e) {
-            Logger.error("Watches expose failed: " + e.getMessage());
-        }
-        syncToWatchesTable(watches);
-        tbl.rawset("Watches", watches);
+        syncWatchesTable();
+        Callbacks.afterExposeAll.register(WatchesAPI::syncWatchesTable);
     }
 
     private static final String DATA_KEY = "data";
 
     /** Updates the watches subtable with class_name -> [method1, method2, ...] from REGISTRY. */
-    private static void syncToWatchesTable(KahluaTable watches) {
+    public static void syncWatchesTable() {
+        KahluaTable watches = getWatchesTable();
         if (watches == null) return;
+
         Object dataObj = watches.rawget(DATA_KEY);
         KahluaTable data = (dataObj instanceof KahluaTable d) ? d : LuaManager.platform.newTable();
         watches.rawset(DATA_KEY, data);
@@ -335,7 +325,7 @@ public class WatchesAPI {
         REGISTRY.put(k, hookType);
         Logger.info("Watch added: " + className + "." + methodName + " (hook=" + hookType + ")");
         retransform(className);
-        syncToWatchesTable(getWatchesTable());
+        syncWatchesTable();
         return Boolean.TRUE;
     }
 
@@ -366,7 +356,7 @@ public class WatchesAPI {
         String k = key(className, methodName);
         if (REGISTRY.remove(k) != null) {
             Logger.info("Watch removed: " + className + "." + methodName);
-            syncToWatchesTable(getWatchesTable());
+            syncWatchesTable();
             return true;
         }
         return false;
@@ -378,7 +368,7 @@ public class WatchesAPI {
     public static void clear() {
         REGISTRY.clear();
         Logger.info("Watches cleared");
-        syncToWatchesTable(getWatchesTable());
+        syncWatchesTable();
     }
 
     private static KahluaTable getWatchesTable() {
@@ -388,7 +378,7 @@ public class WatchesAPI {
     }
 
     private static void retransform(String className) {
-        Instrumentation inst = Loader.g_instrumentation;
+        Instrumentation inst = Loader.getInstrumentation();
         if (inst == null) return;
         try {
             Class<?> cls = Class.forName(className);

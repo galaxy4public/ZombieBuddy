@@ -9,6 +9,7 @@ import me.zed_0xff.zombie_buddy.*;
 public class PreMain {
     public static void premain(String[] args) {
         JavaStateDumper.init();
+        WatchesAPI.init();
 
         // Configure HTTP server host, port and timeout from Agent.arguments (if provided)
         String hostValue = Agent.arguments.get("lua_server_host");
