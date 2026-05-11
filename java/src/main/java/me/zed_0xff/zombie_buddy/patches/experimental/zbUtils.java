@@ -172,6 +172,7 @@ public class zbUtils {
         return zbFields(obj, false);
     }
 
+    @SuppressWarnings({"deprecation", "removal"})
     @LuaMethod(name = "zbfields", global = true)
     public static KahluaTable zbFields(Object obj, Boolean bPrivate) {
         if (obj == null) {
@@ -188,21 +189,25 @@ public class zbUtils {
         return result;
     }
 
+    @SuppressWarnings({"deprecation", "removal"})
     @LuaMethod(name = "zbget", global = true)
     public static Object zbGet(Object obj, String name) {
         return Accessor.tryGet(obj, name, null);
     }
 
+    @SuppressWarnings({"deprecation", "removal"})
     @LuaMethod(name = "zbget", global = true)
     public static Object zbGet(Object obj, String name, Object defaultValue) {
         return Accessor.tryGet(obj, name, defaultValue);
     }
 
+    @SuppressWarnings({"deprecation", "removal"})
     @LuaMethod(name = "zbset", global = true)
     public static boolean zbSet(Object obj, String name, Object value) {
         return Accessor.trySet(obj, name, value);
     }
 
+    @SuppressWarnings({"deprecation", "removal"})
     @LuaMethod(name = "zbcall", global = true)
     public static Object zbCall(Object obj, String name, Object... args) throws ReflectiveOperationException {
         return Accessor.callByName(obj, name, args);

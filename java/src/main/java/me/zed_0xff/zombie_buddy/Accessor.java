@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+//@Deprecated(since = "2026-05-01")
 public final class Accessor {
 
     // Class-name -> Class<?> lives separately: we need the Class object before we can create a ClassInfo.
@@ -120,6 +121,7 @@ public final class Accessor {
     /**
      * Returns all public methods of {@code cls} (equivalent to {@link Class#getMethods()}, cached).
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static List<Method> publicMethods(Class<?> cls) {
         if (cls == null) return Collections.emptyList();
         ClassInfo info = getClassInfo(cls);
@@ -157,6 +159,7 @@ public final class Accessor {
      * If {@code obj} is a {@link Class}, the field is looked up on that class and
      * read as a static field (instance argument is ignored for static fields).
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static <T> T tryGet(Object obj, String fieldName, T defaultValue) {
         if (obj == null || Utils.isBlank(fieldName)) {
             return defaultValue;
@@ -172,6 +175,7 @@ public final class Accessor {
      * the field is null or it cannot be read. For static fields, {@code obj} may be null.
      */
     @SuppressWarnings("unchecked")
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static <T> T tryGet(Object obj, Field field, T defaultValue) {
         if (field == null) {
             return defaultValue;
@@ -191,6 +195,7 @@ public final class Accessor {
      * Sets the named field on {@code obj} to {@code value}.
      * If {@code obj} is a {@link Class}, the field is looked up on that class and set as a static field.
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static <T> boolean trySet(Object obj, String fieldName, T value) {
         if (obj == null || Utils.isBlank(fieldName)) {
             return false;
@@ -204,6 +209,7 @@ public final class Accessor {
     /**
      * Sets {@code field} on {@code obj} to {@code value}. For static fields, {@code obj} may be null.
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static <T> boolean trySet(Object obj, Field field, T value) {
         if (field == null) {
             return false;
@@ -251,6 +257,7 @@ public final class Accessor {
      * Finds a field by name in {@code cls} or any superclass. Accepts multiple candidate
      * names and returns the first found. Results are cached per class.
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static Field findField(Class<?> cls, String... fieldNames) {
         if (cls == null || fieldNames == null || fieldNames.length == 0) {
             return null;
@@ -272,6 +279,7 @@ public final class Accessor {
     /**
      * Finds a field by name in the class named {@code className} or any superclass.
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static Field findField(String className, String... fieldNames) {
         if (Utils.isBlank(className) || fieldNames == null || fieldNames.length == 0) {
             return null;
@@ -294,6 +302,7 @@ public final class Accessor {
      * Finds all methods with the given name in {@code cls} and its superclasses.
      * Includes overloads and overrides. Order: current class first, then superclass.
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static List<Method> findMethodsByName(Class<?> cls, String methodName) {
         if (cls == null || Utils.isBlank(methodName)) {
             return Collections.emptyList();
@@ -315,7 +324,7 @@ public final class Accessor {
     }
 
     /** Finds a no-arg method by name in {@code cls} or any superclass. Returns null if not found. */
-    public static Method findNoArgMethod(Class<?> cls, String methodName) {
+    static Method findNoArgMethod(Class<?> cls, String methodName) {
         return findExactMethod(cls, methodName, (Class<?>[]) null);
     }
 
@@ -323,7 +332,7 @@ public final class Accessor {
      * Finds a method by name and parameter types in {@code cls} or any superclass.
      * Pass empty array or null for no-arg method. Results are cached per class.
      */
-    public static Method findExactMethod(Class<?> cls, String methodName, Class<?>... parameterTypes) {
+    static Method findExactMethod(Class<?> cls, String methodName, Class<?>... parameterTypes) {
         String key = exactMethodKey(methodName, parameterTypes);
         return getClassInfo(cls).exactMethods
             .computeIfAbsent(key, k -> Optional.ofNullable(findExactMethodUncached(cls, methodName, parameterTypes)))
@@ -384,6 +393,7 @@ public final class Accessor {
      * @throws NoSuchMethodException        if the method is not found
      * @throws ReflectiveOperationException if setAccessible or invoke fails
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static Object callNoArg(Object obj, String methodName) throws ReflectiveOperationException {
         return callExact(obj, methodName, (Class<?>[]) null);
     }
@@ -395,6 +405,7 @@ public final class Accessor {
      * @throws NoSuchMethodException        if the method is not found
      * @throws ReflectiveOperationException if setAccessible or invoke fails
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static Object callExact(Object obj, String methodName, Class<?>[] parameterTypes, Object... args) throws ReflectiveOperationException {
         if (obj == null || Utils.isBlank(methodName)) {
             throw new IllegalArgumentException("obj and methodName must be non-null and non-empty");
@@ -415,6 +426,7 @@ public final class Accessor {
      * @throws NoSuchMethodException        if no compatible overload is found
      * @throws ReflectiveOperationException if setAccessible or invoke fails
      */
+    @Deprecated(since = "2026-05-01", forRemoval = true)
     public static Object callByName(Object obj, String methodName, Object... args) throws ReflectiveOperationException {
         if (obj == null || Utils.isBlank(methodName)) {
             throw new IllegalArgumentException("obj and methodName must be non-null and non-empty");

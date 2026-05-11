@@ -6,6 +6,7 @@ import me.zed_0xff.zombie_buddy.Patch;
 /**
  * Test patch using MethodDelegation to replace a constructor with parameters.
  */
+@SuppressWarnings("removal")
 @Patch(
     className = "testjar.ConstructorDelegationTargetA*",
     methodName = "<init>",

@@ -3,6 +3,7 @@ package me.zed_0xff.zombie_buddy.patches.experimental;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.invoke.VarHandle;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -12,20 +13,14 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.lang.reflect.Field;
 
 import se.krka.kahlua.vm.KahluaThread;
 import zombie.Lua.LuaManager;
 
-import me.zed_0xff.zombie_buddy.Accessor;
 import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Reflect;
 import me.zed_0xff.zombie_buddy.Utils;
-import me.zed_0xff.zombie_buddy.ZombieBuddy;
-import me.zed_0xff.zombie_buddy.patches.experimental.http.LuaHandler;
-import me.zed_0xff.zombie_buddy.patches.experimental.http.LogHandler;
-import me.zed_0xff.zombie_buddy.patches.experimental.http.RootHandler;
-import me.zed_0xff.zombie_buddy.patches.experimental.http.StatusHandler;
-import me.zed_0xff.zombie_buddy.patches.experimental.http.VersionHandler;
+import me.zed_0xff.zombie_buddy.patches.experimental.http.*;
 
 public class HttpServer {
     private com.sun.net.httpserver.HttpServer server;
@@ -41,27 +36,33 @@ public class HttpServer {
     // Queue for Lua tasks to be executed on the main thread (for dedicated servers)
     private static final ConcurrentLinkedQueue<LuaTask> luaTaskQueue = new ConcurrentLinkedQueue<>();
 
+    private enum CheckResult {
+        UNKNOWN,
+        PRESENT,
+        ABSENT
+    }
+
     /** Cached result of one-time check for debugOwnerThread field on Lua thread class. 0 = not inited, 1 = present, -1 = absent. */
-    private static volatile int hasDebugOwnerThreadField = 0;
-    /** Cached Field for debugOwnerThread, set once when present. */
-    private static volatile Field cachedDebugOwnerThreadField = null;
+    private static CheckResult hasDebugOwnerThreadField = CheckResult.UNKNOWN;
+    private static VarHandle vh_debugOwnerThread = null;
 
     /** Request header: comma-separated global variable names to capture on error; their values are added to JSON as errorGlobals. The Lua code (e.g. ZBSpec.lua) sets those globals; we only read them when an error occurs. */
     private static final String HEADER_ERROR_GLOBALS = "X-ZombieBuddy-Error-Globals";
 
     private static void ensureDebugOwnerThreadCache() {
-        if (hasDebugOwnerThreadField != 0) return;
+        if (hasDebugOwnerThreadField != CheckResult.UNKNOWN) return;
+
         Object thread = LuaManager.thread;
         if (thread == null) return;
         synchronized (HttpServer.class) {
-            if (hasDebugOwnerThreadField != 0) return;
+            if (hasDebugOwnerThreadField != CheckResult.UNKNOWN) return;
+
             // field is on KahluaThread (B42+); search hierarchy in case runtime class is a subclass
-            Field f = Accessor.findField(thread.getClass(), "debugOwnerThread");
-            if (f != null) {
-                cachedDebugOwnerThreadField = f;
-                hasDebugOwnerThreadField = 1;
+            vh_debugOwnerThread = Reflect.on(thread).getVarHandle(Thread.class, "debugOwnerThread");
+            if (vh_debugOwnerThread != null) {
+                hasDebugOwnerThreadField = CheckResult.PRESENT;
             } else {
-                hasDebugOwnerThreadField = -1;  // B41 or field absent
+                hasDebugOwnerThreadField = CheckResult.ABSENT; // B41 or field absent
             }
         }
     }
@@ -120,12 +121,12 @@ public class HttpServer {
         if (thread == null) return false;
 
         ensureDebugOwnerThreadCache();
-        if (hasDebugOwnerThreadField == -1) {
+        if (hasDebugOwnerThreadField == CheckResult.ABSENT) {
             // B41 has no debugOwnerThread field, so we don't know if we're on the correct thread
             return false;
         }
-        if (hasDebugOwnerThreadField == 1 && cachedDebugOwnerThreadField != null) {
-            Object owner = Accessor.tryGet(thread, cachedDebugOwnerThreadField, null);
+        if (hasDebugOwnerThreadField == CheckResult.PRESENT && vh_debugOwnerThread != null) {
+            Thread owner = (Thread) vh_debugOwnerThread.get(thread);
             return owner == Thread.currentThread();
         }
         return false;

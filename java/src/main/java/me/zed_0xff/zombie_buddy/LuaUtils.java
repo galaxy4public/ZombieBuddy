@@ -5,6 +5,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import se.krka.kahlua.integration.expose.caller.Caller;
+import se.krka.kahlua.integration.expose.MethodDebugInformation;
 import se.krka.kahlua.vm.KahluaTable;
 import zombie.Lua.LuaManager;
 
@@ -19,33 +21,36 @@ public final class LuaUtils {
         if (out == null || obj == null) return;
         try {
             Class<?> c = obj.getClass();
-            List<?> list;
+            List<?> invokersList;
             if ("se.krka.kahlua.integration.expose.MultiLuaJavaInvoker".equals(c.getName())) {
                 Object invokers = c.getMethod("getInvokers").invoke(obj);
-                list = (invokers instanceof List<?> l && !l.isEmpty()) ? l : null;
+                invokersList = (invokers instanceof List<?> l && !l.isEmpty()) ? l : null;
             } else if ("se.krka.kahlua.integration.expose.LuaJavaInvoker".equals(c.getName())) {
-                list = Collections.singletonList(obj);
+                invokersList = Collections.singletonList(obj);
             } else {
-                list = null;
+                invokersList = null;
             }
-            if (Utils.isBlank(list)) return;
+            if (Utils.isBlank(invokersList)) return;
 
-            Class<?> invokerClass = list.get(0).getClass();
+            Class<?> invokerClass = invokersList.get(0).getClass();
             if (!"se.krka.kahlua.integration.expose.LuaJavaInvoker".equals(invokerClass.getName())) return;
 
             var invokersTbl = LuaManager.platform.newTable();
-            for (int i = 0; i < list.size(); i++) {
-                Object inv = list.get(i);
-                Class<?> targetClass = Accessor.tryGet(inv, "clazz", null);
-                String methodName = Accessor.tryGet(inv, "name", null);
+            for (int i = 0; i < invokersList.size(); i++) {
+                Object inv = invokersList.get(i);
+                var invR = Reflect.on(inv);
+                Class<?> targetClass = invR.get("clazz", Class.class);
+                String methodName    = invR.get("name", String.class);
                 if (targetClass == null || methodName == null) continue;
-                Object caller = Accessor.tryGet(inv, "caller", null);
+
+                Caller caller = invR.get("caller", Caller.class);
                 var invTbl = LuaManager.platform.newTable();
-                invTbl.rawset("targetClass", targetClass.getName());
+                invTbl.rawset("targetClass",       targetClass.getName());
                 invTbl.rawset("targetSimpleClass", targetClass.getSimpleName());
-                invTbl.rawset("methodName", methodName);
+                invTbl.rawset("methodName",        methodName);
+                invTbl.rawset("hasSelf",           invR.get("hasSelf", boolean.class));
                 if (caller != null && "se.krka.kahlua.integration.expose.caller.MethodCaller".equals(caller.getClass().getName())) {
-                    Method m = Accessor.tryGet(caller, "method", null);
+                    Method m = Reflect.on(caller).get("method", Method.class);
                     if (m != null) invTbl.rawset("declaringClass", m.getDeclaringClass().getName());
                 }
                 Object debugData = invokerClass.getMethod("getMethodDebugData").invoke(inv);
@@ -54,6 +59,7 @@ public final class LuaUtils {
             }
             out.rawset("invokers", invokersTbl);
         } catch (Exception e) {
+            Logger.printStackTrace(e);
             out.rawset("unwrapError", e.getMessage());
         }
     }

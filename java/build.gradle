@@ -262,14 +262,13 @@ tasks.withType(JavaCompile).configureEach {
     }
 }
 
-// Enable deprecation warnings for main source set
-compileJava {
-    options.compilerArgs << '-Xlint:deprecation'
-}
-
-// Disable deprecation warnings for test source sets
-compileTestJava {
-    options.compilerArgs << '-Xlint:-deprecation' << '-Xlint:-removal'
+// Enable deprecation warnings for main source set only; suppress them in all test/auxiliary sets
+tasks.withType(JavaCompile).configureEach {
+    if (name == 'compileJava') {
+        options.compilerArgs << '-Xlint:deprecation'
+    } else {
+        options.compilerArgs << '-Xlint:-deprecation' << '-Xlint:-removal'
+    }
 }
 
 // Enable annotation processor for testpatches (validates patches at compile time).

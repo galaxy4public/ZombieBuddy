@@ -2,7 +2,7 @@ package me.zed_0xff.zombie_buddy.frontend;
 
 import me.zed_0xff.zombie_buddy.*;
 
-import java.lang.reflect.Field;
+import java.lang.invoke.VarHandle;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.HashSet;
 
@@ -38,7 +38,7 @@ public class LogOverlay {
     private static boolean enabled = true;
     private static int maxLines = 100;
     private static boolean lastOsdKeyState = false;
-    private static Field f_renderThisFrame = null;
+    private static VarHandle vh_renderThisFrame = null;
     private static long pausedAt = 0;  // When game was paused (0 = not paused)
     private static boolean wasPaused = false;
     private static final HashSet<String> filters = new HashSet<>();
@@ -170,10 +170,10 @@ public class LogOverlay {
         var textMgr = TextManager.instance;
         if (textMgr == null) return;
 
-        if (f_renderThisFrame == null) {
-            f_renderThisFrame = Accessor.findField(Core.class, "uiRenderThisFrame", "UIRenderThisFrame");
+        if (vh_renderThisFrame == null) {
+            vh_renderThisFrame = Reflect.on(Core.class).getVarHandle(boolean.class, "uiRenderThisFrame", "UIRenderThisFrame");
         }
-        if (f_renderThisFrame != null && Accessor.tryGet(Core.getInstance(), f_renderThisFrame, true) == false) {
+        if (vh_renderThisFrame != null && (boolean)vh_renderThisFrame.get(Core.getInstance()) == false) {
             return;
         }
         

@@ -1,7 +1,9 @@
 package me.zed_0xff.zombie_buddy;
 
 import java.lang.instrument.Instrumentation;
+import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -12,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 
 /**
  * Fluent reflection chain. Entry point is {@link #on(Object)}; strings are resolved as class
@@ -46,6 +49,26 @@ public final class Reflect {
 
     private final Object value;
 
+    // public final class RField<T> {
+    //     private final VarHandle handle;
+    // 
+    //     public Var(VarHandle handle) {
+    //         this.handle = handle;
+    //     }
+    // 
+    //     public Optional<T> get() {
+    //         return Optional.ofNullable(value);
+    //     }
+    //     
+    //     public T getOrDefault(T defaultValue) {
+    //         return defaultValue;
+    //     }
+    // 
+    //     public boolean set(T newValue) {
+    //         return false;
+    //     }
+    // }
+
     static void init(Instrumentation inst) {
         // inst.addTransformer(new java.lang.instrument.ClassFileTransformer() {
         //     @Override
@@ -74,10 +97,11 @@ public final class Reflect {
 
     static final record ClassInfo(
             MethodHandles.Lookup lookup,
-            ConcurrentHashMap<String, Object> varCache
+            ConcurrentHashMap<String, Object> varCache,
+            ConcurrentHashMap<String, Object> methodCache
     ) {
         ClassInfo(Class<?> cls) throws IllegalAccessException {
-            this(MethodHandles.privateLookupIn(cls, MethodHandles.lookup()), new ConcurrentHashMap<>());
+            this(MethodHandles.privateLookupIn(cls, MethodHandles.lookup()), new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
         }
     }
 
@@ -90,17 +114,17 @@ public final class Reflect {
     public Reflect field(String fieldName) {
         if (value == null || Utils.isBlank(fieldName))
             return REFLECT_NULL;
-
+    
         return new Reflect(Accessor.tryGet(value, fieldName, null));
     }
 
     public Reflect staticField(String fieldName) {
         if (value == null || Utils.isBlank(fieldName))
             return REFLECT_NULL;
-
+    
         if (value instanceof Class<?> cls)
             return new Reflect(Accessor.tryGet(cls, fieldName, null));
-
+    
         return new Reflect(Accessor.tryGet(value.getClass(), fieldName, null));
     }
 
@@ -205,9 +229,9 @@ public final class Reflect {
     }
 
     /** Shorthand for {@code field(name).as(type)}. */
-    public <T> Optional<T> field(String fieldName, Class<T> type) {
-        return field(fieldName).as(type);
-    }
+    // public <T> Optional<T> field(String fieldName, Class<T> type) {
+    //     return field(fieldName).as(type);
+    // }
 
     public <T> Optional<T> as(Class<T> type) {
         if (value == null || type == null || !type.isInstance(value))
@@ -269,5 +293,90 @@ public final class Reflect {
         }
 
         return null;
+    }
+
+    // call it once and cache the result
+    public MethodHandle getMethodHandle(Class<?> returnType, Class<?>[] parameterTypes, String... names) {
+        if (value == null) return null;
+
+        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
+        ClassInfo cinfo = _cache.computeIfAbsent(cls, c -> {
+                try {
+                    return new ClassInfo(c);
+                } catch (Exception e) {
+                    Logger.error("Failed to create ClassInfo for %s: %s", c, e);
+                    return null;
+                }
+            }
+        );
+        if (cinfo == null) return null;
+
+        MethodType mt = MethodType.methodType(returnType, parameterTypes);
+        String mtKey = mt.toString();
+        var methodCache = cinfo.methodCache();
+        for (String methodName : names) {
+            String cacheKey = methodName + mtKey;
+            Object v = methodCache.get(cacheKey);
+
+            if (v == null) {
+                try {
+                    v = cinfo.lookup().findVirtual(cls, methodName, mt);
+                } catch (NoSuchMethodException | IllegalAccessException e) {
+                    try {
+                        v = cinfo.lookup().findStatic(cls, methodName, mt);
+                    } catch (NoSuchMethodException | IllegalAccessException e2) {
+                        v = MISS;
+                    }
+                }
+
+                methodCache.put(cacheKey, v);
+            }
+
+            if (v instanceof MethodHandle mh) return mh;
+        }
+
+        return null;
+    }
+
+    private static final Map<Class<?>, Object> DEFAULTS = Map.of(
+            boolean.class, false,
+            byte.class, (byte) 0,
+            short.class, (short) 0,
+            int.class, 0,
+            long.class, 0L,
+            float.class, 0f,
+            double.class, 0d,
+            char.class, '\0'
+            );
+
+    private static Object defaultValue(Class<?> type) {
+        return DEFAULTS.get(type);
+    }
+
+    // XXX returns implicit default value for primitives
+    @SuppressWarnings("unchecked")
+    public <T> T get(String fieldName, Class<T> type) {
+        VarHandle vh = getVarHandle(type, fieldName);
+
+        if (vh == null) {
+            if (type.isPrimitive()) {
+                Logger.warn("using implicit default for " + type.getName() + " " + fieldName);
+                return (T) defaultValue(type);
+            }
+            return null;
+        }
+
+        return (T) vh.get(value);
+    }
+
+    // safe for primitives
+    @SuppressWarnings("unchecked")
+    public <T> T getOrDefault(String fieldName, Class<T> type, T defaultValue) {
+        VarHandle vh = getVarHandle(type, fieldName);
+
+        if (vh == null)
+            return defaultValue;
+
+        return (T) vh.get(value);
     }
 }
