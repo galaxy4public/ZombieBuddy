@@ -44,10 +44,8 @@ public final class Watermark {
     private Watermark() {}
 
     static {
-        Exposer.exposeClass(Watermark.class);
-        Callbacks.onGameInitComplete.register(() -> {
-            _in_init = false;
-        });
+        Callbacks.onGameInitComplete.register(() -> { _in_init = false; });
+        Callbacks.onEndFrameUI.register(Watermark::maybeDraw);
     }
 
     static void setMidLine(String text) {

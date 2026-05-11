@@ -44,6 +44,10 @@ public class Exposer {
     private static final HashMap<Class<?>, HashSet<String>> g_exposed_methods = new HashMap<>();
     private static final HashSet<Class<?>> g_classesWithGlobalLuaMethod = new HashSet<>();
 
+    static {
+        Callbacks.afterExposeAll.register(Exposer::afterExposeAll);
+    }
+
     static boolean hasGlobalLuaMethod(Class<?> cls) {
         for (Method m : Accessor.allMethods(cls)) {
             LuaMethod ann = m.getAnnotation(LuaMethod.class);
@@ -86,6 +90,13 @@ public class Exposer {
             return;
         }
         g_exposed_classes.put(cls, name != null ? name : "");
+
+        // trigger class loading, to ensure class static initializers run
+        try {
+            Class.forName(cls.getName(), true, Exposer.class.getClassLoader());
+        } catch (ClassNotFoundException e) {
+            Logger.error("exposeClass: Failed to load class " + cls.getName() + ": " + e.getMessage());
+        }
 
         // If exposer is already available, expose immediately (for mods loaded after initial exposure)
         if (LuaManager.exposer != null && LuaManager.env != null) {
@@ -304,9 +315,14 @@ public class Exposer {
 
     static void exposeAnnotatedClasses(io.github.classgraph.ScanResult scanResult, String packageName) {
         for (var classInfo : scanResult.getClassesWithAnnotation(LuaClass.class.getName())) {
+            Logger.debug("Found @LuaClass: " + classInfo.getName());
+
             if (Utils.isBlank(packageName) || !classInfo.getPackageName().equals(packageName)) {
-                if (!"me.zed_0xff.zombie_buddy.patches".equals(packageName)) {
-                    Logger.error("Class " + classInfo.getName() + " is annotated with @LuaClass but is not in the exact package " + packageName + ", skipping exposure");
+                if (
+                        !"me.zed_0xff.zombie_buddy.patches".equals(packageName) &&
+                        !"me.zed_0xff.zombie_buddy.patches.experimental".equals(packageName)
+                ) {
+                    Logger.warn("Class " + classInfo.getName() + " is annotated with @LuaClass but is not in the exact package " + packageName + ", skipping exposure");
                 }
                 continue;
             }

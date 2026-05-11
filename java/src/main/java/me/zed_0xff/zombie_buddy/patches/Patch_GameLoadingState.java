@@ -14,11 +14,8 @@ import me.zed_0xff.zombie_buddy.Patch;
 @Exposer.LuaClass(name = "ZombieBuddy.Patches.GameLoadingState")
 public class Patch_GameLoadingState {
 
-    /** Controlled from Lua via setSuppressSandboxLog(). */
-    public static volatile boolean _suppress = false;
-
-    /** True while GameLoadingState.exit() is on the call stack. */
-    public static volatile boolean _in_exit = false;
+    public static boolean _suppress = false;
+    public static boolean _in_exit = false;
 
     public static void setSuppressSandboxLog(boolean value) {
         _suppress = value;

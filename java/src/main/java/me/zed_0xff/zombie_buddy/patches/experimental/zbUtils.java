@@ -5,7 +5,9 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -14,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import me.zed_0xff.zombie_buddy.*;
 
@@ -109,62 +112,96 @@ public class zbUtils {
 
                 int idx = 1;
                 for (KahluaTable t : invList) {
-                    Object s = t.rawget("methodDebugData");
-                    if (s != null) outArr.rawset(Double.valueOf(idx++), s.toString());
+                    Object s = t.rawget("methodDebugData"); // "Core getInstance()"
+                    if (s != null) {
+                        String signature = s.toString();
+                        Object hasSelf = t.rawget("hasSelf");
+                        if (hasSelf instanceof Boolean b && b.booleanValue()) {
+                            signature = "static " + signature;
+                        }
+                        outArr.rawset(Double.valueOf(idx++), signature);
+                    }
                 }
                 return outArr;
             }
         }
 
-        Class<?> cls = obj.getClass();
-        HashMap<String, ArrayList<String>> byName = new HashMap<>();
+        ArrayList<MethodSig> methodSigs = Reflect.on(obj).methods(includePrivate ? null : Reflect.PUBLIC)
+            .stream()
+            .map(MethodSig::new) // - error: non-static variable this cannot be referenced from a static context
+            .sorted()
+            .collect(Collectors.toCollection(ArrayList::new));
 
-        for (Method m : Reflect.on(cls).methods(includePrivate ? null : Reflect.PUBLIC)) {
-            addMethodSignature(byName, m);
-        }
-
-        ArrayList<String> names = new ArrayList<>(byName.keySet());
-        Collections.sort(names);
-        int idx = 1;
-        for (String name : names) {
-            ArrayList<String> sigs = byName.get(name);
-            if (Utils.isBlank(sigs)) continue;
-
-            Collections.sort(sigs);
-            for (String sig : sigs) {
-                outArr.rawset(Double.valueOf(idx++), sig);
+        int maxPrefixLen = methodSigs.stream().mapToInt(sig -> sig.getPrefix().length()).max().orElse(0);
+        if (maxPrefixLen > 0) {
+            for (var sig : methodSigs) {
+                sig.setPrefixLen( maxPrefixLen );
             }
         }
 
+        int idx = 1;
+        for (MethodSig sig : methodSigs) {
+            outArr.rawset(Double.valueOf(idx++), sig);
+        }
         return outArr;
     }
 
-    private static void addMethodSignature(Map<String, ArrayList<String>> byName, Method m) {
-        String name = m.getName();
-        String sig = buildMethodSignature(m);
-        ArrayList<String> list = byName.get(name);
-        if (list == null) {
-            list = new ArrayList<>();
-            byName.put(name, list);
-        }
-        if (!list.contains(sig)) list.add(sig);
-    }
+    // toString:  "private java.lang.String zombie.core.Core.upgradeOptionValue(java.lang.String,java.lang.String,int)"
+    // MethodSig: {"String", "upgradeOptionValue", "String, String, int"}
+    @Exposer.LuaClass
+    public static class MethodSig implements Comparable<MethodSig> {
+        private final Method m_method;
+        private final String m_modifier, m_return, m_params;
+        private Integer m_prefixLen;
 
-    private static String buildMethodSignature(Method m) {
-        StringBuilder sb = new StringBuilder();
-        Class<?> rt = m.getReturnType();
-        sb.append(rt != null ? rt.getSimpleName() : "void");
-        sb.append(' ');
-        sb.append(m.getName());
-        sb.append('(');
-        Class<?>[] pts = m.getParameterTypes();
-        for (int i = 0; i < pts.length; i++) {
-            if (i > 0) sb.append(", ");
-            Class<?> pt = pts[i];
-            sb.append(pt != null ? pt.getSimpleName() : "Object");
+        MethodSig(Method m) {
+            this.m_method   = m;
+            this.m_modifier = Modifier.isStatic(m.getModifiers()) ? "static " : "";
+            this.m_return   = m.getReturnType() == null ? "void" : m.getReturnType().getSimpleName();
+            this.m_params   = Arrays.stream(m.getParameterTypes())
+                .map(Class::getSimpleName)
+                .collect(Collectors.joining(", "));
         }
-        sb.append(')');
-        return sb.toString();
+
+        public Method getMethod() {
+            return m_method;
+        }
+
+        public void setPrefixLen(Integer len) {
+            this.m_prefixLen = len;
+        }
+
+        @Override
+        public int compareTo(MethodSig o) {
+            return getNameAndParams().compareTo(o.getNameAndParams());
+        }
+
+        public String getMethodName() {
+            return m_method.getName();
+        }
+
+        public String getPrefix() {
+            if (m_prefixLen != null && m_prefixLen > m_modifier.length() + 1 + m_return.length()) {
+                return m_modifier + " ".repeat(m_prefixLen - m_modifier.length() - m_return.length()) + m_return;
+            }
+            if (Utils.isBlank(m_modifier)) {
+                return m_return;
+            }
+            return m_modifier + " " + m_return;
+        }
+
+        public String getParams() {
+            return m_params;
+        }
+
+        public String getNameAndParams() {
+            return getMethodName() + "(" + getParams() + ")";
+        }
+
+        @Override
+        public String toString() {
+            return getPrefix() + " " + getMethodName() + "(" + getParams() + ")";
+        }
     }
 
     @LuaMethod(name = "zbfields", global = true)

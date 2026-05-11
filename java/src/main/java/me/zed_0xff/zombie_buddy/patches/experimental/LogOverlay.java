@@ -1,4 +1,4 @@
-package me.zed_0xff.zombie_buddy.frontend;
+package me.zed_0xff.zombie_buddy.patches.experimental;
 
 import me.zed_0xff.zombie_buddy.*;
 
@@ -23,7 +23,7 @@ import zombie.ui.UIFont;
 public class LogOverlay {
     private static final int MARGIN_LEFT       = 10;
     private static final int MARGIN_BOTTOM     = 10;
-    private static final float ALPHA_MAX       = 0.4f;
+    private static final float ALPHA_MAX       = 0.6f;
     private static final long FADE_START_MS    = 4000; // Start fading after (ms)
     private static final long FADE_DURATION_MS = 700; // Fade out over (ms)
     private static final long LINE_LIFETIME_MS = FADE_START_MS + FADE_DURATION_MS;
@@ -43,12 +43,6 @@ public class LogOverlay {
     private static boolean wasPaused = false;
     private static final HashSet<String> filters = new HashSet<>();
     private static final int DEDUP_WINDOW = 20;
-
-    static {
-        if (Agent.isExperimental()) {
-            Exposer.exposeClass(LogOverlay.class);
-        }
-    }
 
     public static void enable() {
         enabled = true;

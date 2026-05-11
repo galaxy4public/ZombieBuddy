@@ -15,6 +15,7 @@ import me.zed_0xff.zombie_buddy.frontend.ModApprovalFrontends;
 public class Agent {
     public static final Map<String, String> arguments = new HashMap<>();
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
+    private static final ClassLoader _systemLoader = ClassLoader.getSystemClassLoader();
 
     public static void premain(String agentArgs, Instrumentation inst) {
         if (!initialized.compareAndSet(false, true)) {
@@ -84,9 +85,7 @@ public class Agent {
             }
         }
 
-        // fails to expose via annotation at this point (in zbspec), so expose manually
-        Exposer.exposeClass(ZombieBuddy.class);
-
+        Exposer.exposeAnnotatedClasses(ZombieBuddy.class.getPackage().getName());
         Loader.ApplyPatchesFromPackage(ZombieBuddy.class.getPackage().getName() + ".patches", null, Loader.Phase.PREMAIN);
 
         // Load experimental patches if enabled
@@ -140,8 +139,12 @@ public class Agent {
         }
 
         Loader.initConfig();
-
         Logger.info("Agent installed.");
+
+        Logger.debug("system classloader: " + _systemLoader);
+        Logger.debug("Agent  classloader: " + Agent.class.getClassLoader());
+        Logger.debug("ZB     classloader: " + ZombieBuddy.class.getClassLoader());
+
         Loader.preloadMods();
         Accessor.clearCaches();
     }

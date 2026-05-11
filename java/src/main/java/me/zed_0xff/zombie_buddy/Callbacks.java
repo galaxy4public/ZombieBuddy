@@ -3,16 +3,19 @@ package me.zed_0xff.zombie_buddy;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+// not 'Events' to not mix stuff with PZ API
 public final class Callbacks {
     public static final Callback onGameInitComplete = new Callback("onGameInitComplete", CBType.ONCE);
     public static final Callback onDisplayCreate    = new Callback("onDisplayCreate",    CBType.MANY);
     public static final Callback afterExposeAll     = new Callback("afterExposeAll",     CBType.MANY);
+    public static final Callback onEndFrameUI       = new Callback("onEndFrameUI",       CBType.FREQUENT);
 
     private Callbacks() {}
 
     enum CBType {
         ONCE,
-        MANY
+        MANY,
+        FREQUENT // for callbacks that can be fired multiple times per frame (e.g. onRender)
     }
 
     /** A single-fire Callback that can have multiple listeners. */
@@ -21,6 +24,7 @@ public final class Callbacks {
         private final CBType type;
         private final List<Runnable> callbacks = new CopyOnWriteArrayList<>();
         private boolean fired = false;
+        private int errCount = 0;
 
         private Callback(String name, CBType type) {
             this.name = name;
@@ -37,12 +41,20 @@ public final class Callbacks {
             if (fired && type == CBType.ONCE) return;
             fired = true;
 
-            Logger.info("Running callbacks for " + name);
+            if (type != CBType.FREQUENT) {
+                Logger.info("Running " + callbacks.size() + " callbacks for " + name);
+            }
+
             for (Runnable callback : callbacks) {
                 try {
                     callback.run();
                 } catch (Throwable t) {
-                    Logger.printStackTrace(t);
+                    errCount++;
+                    if (errCount < 50) {
+                        Logger.printStackTrace(t);
+                    } else if (errCount == 50) {
+                        Logger.error("Too many errors in " + name + " callbacks; suppressing further error logs.");
+                    }
                 }
             }
         }

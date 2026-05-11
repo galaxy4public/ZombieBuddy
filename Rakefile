@@ -50,7 +50,7 @@ desc "run the game"
 task :run, :verbosity, :exit_after_game_init do |t, args|
   zb_args = {}
   zb_args[:exit_after_game_init] = true if args.exit_after_game_init
-  zb_args[:verbosity] = args.verbosity if args.verbosity
+  zb_args[:verbosity] = args.verbosity || '1'
   run_game(zb_args)
 end
 

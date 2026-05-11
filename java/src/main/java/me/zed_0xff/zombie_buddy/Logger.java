@@ -1,7 +1,5 @@
 package me.zed_0xff.zombie_buddy;
 
-import me.zed_0xff.zombie_buddy.frontend.LogOverlay;
-
 import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.stream.Collectors;
@@ -26,7 +24,7 @@ public class Logger {
             System.out.println(msg);
         } catch (Exception e) { // might fail on game boot
             out.println(msg);
-            LogOverlay.addLine(msg);
+            // LogOverlay.addLine(msg);
         }
     }
 
@@ -36,7 +34,7 @@ public class Logger {
             System.err.println(msg);
         } catch (Exception e) { // see above
             err.println(msg);
-            LogOverlay.addLine(msg);
+            // LogOverlay.addLine(msg);
         }
     }
 

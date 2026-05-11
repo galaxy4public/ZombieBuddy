@@ -2,7 +2,6 @@ package me.zed_0xff.zombie_buddy.patches.experimental;
 
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Patch;
-import me.zed_0xff.zombie_buddy.frontend.LogOverlay;
 
 /**
  * Hooks into game logging and rendering to display log overlay.
