@@ -24,8 +24,8 @@ import se.krka.kahlua.vm.KahluaThread;
 import se.krka.kahlua.vm.LuaClosure;
 import zombie.Lua.LuaManager;
 
+import me.zed_0xff.zombie_buddy.LuaJSON;
 import me.zed_0xff.zombie_buddy.patches.experimental.HttpServer;
-import me.zed_0xff.zombie_buddy.patches.experimental.LuaJson;
 
 public class LuaHandler implements HttpHandler {
     @Override
@@ -43,7 +43,7 @@ public class LuaHandler implements HttpHandler {
         boolean threadCall = HttpServer.parseBoolParam(query, "thread", false);
         boolean sandbox    = HttpServer.parseBoolParam(query, "sandbox", true);
         boolean json_arr_1 = HttpServer.parseBoolParam(query, "json_arr_1", false); // inject null as 1st element of JSON arrays to preserve Lua 1-based indexing
-        LuaJson luaJson    = new LuaJson(json_arr_1);
+        final LuaJSON lj   = json_arr_1 ? new LuaJSON(depth, 0, LuaJSON.Flags.ARR_INJECT_NULL) : new LuaJSON(depth, 0);
 
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         if (body.isEmpty()) {
@@ -87,7 +87,7 @@ public class LuaHandler implements HttpHandler {
                             LuaReturn ret = LuaManager.caller.protectedCall(LuaManager.thread, closure, new Object[0]);
                             if (!ret.isSuccess()) {
                                 errCode.set(1);
-                                errorPayloadRef.set(LuaJson.serializeLuaReturn(ret, HttpServer.extractErrorsFromList(errorListSizeBefore)));
+                                errorPayloadRef.set(LuaJSON.serializeLuaReturn(ret, HttpServer.extractErrorsFromList(errorListSizeBefore)));
                                 return;
                             }
                         }
@@ -108,7 +108,7 @@ public class LuaHandler implements HttpHandler {
                             }
                         } else {
                             errCode.set(1);
-                            errorPayloadRef.set(LuaJson.serializeLuaReturn(luaReturn, HttpServer.extractErrorsFromList(errorListSizeBefore)));
+                            errorPayloadRef.set(LuaJSON.serializeLuaReturn(luaReturn, HttpServer.extractErrorsFromList(errorListSizeBefore)));
                         }
                     }
                 } catch (Exception e) {
@@ -116,14 +116,14 @@ public class LuaHandler implements HttpHandler {
                     while (cause != null) {
                         if (cause instanceof se.krka.kahlua.vm.KahluaException) {
                             errCode.set(1);
-                            errorPayloadRef.set(LuaJson.serializeKahluaException((se.krka.kahlua.vm.KahluaException) cause, HttpServer.extractErrorsFromList(errorListSizeBeforeRef.get())));
+                            errorPayloadRef.set(LuaJSON.serializeKahluaException((se.krka.kahlua.vm.KahluaException) cause, HttpServer.extractErrorsFromList(errorListSizeBeforeRef.get())));
                             break;
                         }
                         cause = cause.getCause();
                     }
                     if (errorPayloadRef.get() == null) {
                         errCode.set(2);
-                        errorPayloadRef.set(LuaJson.serializeJavaException(e));
+                        errorPayloadRef.set(LuaJSON.serializeJavaException(e));
                     }
                 } finally {
                     if (errorPayloadRef.get() != null && !errorGlobalNames.isEmpty()) {
@@ -138,7 +138,7 @@ public class LuaHandler implements HttpHandler {
             });
         } catch (Exception e) {
             errCode.set(3);
-            errorPayloadRef.set(LuaJson.serializeJavaException(e));
+            errorPayloadRef.set(LuaJSON.serializeJavaException(e));
         }
 
         if (errorPayloadRef.get() != null) {
@@ -161,12 +161,12 @@ public class LuaHandler implements HttpHandler {
                 }
             }
             if (!errorGlobalValues.isEmpty()) {
-                root.add("errorGlobals", luaJson.toJsonTree(errorGlobalValues));
+                root.add("errorGlobals", lj.toJsonTree(errorGlobalValues));
             }
             HttpServer.sendJsonResponse(exchange, 500, root.toString());
             return;
         }
 
-        HttpServer.sendJsonResponse(exchange, 200, luaJson.toJson(resultRef.get(), depth));
+        HttpServer.sendJsonResponse(exchange, 200, lj.toJson(resultRef.get()));
     }
 }

@@ -439,7 +439,7 @@ task unitTest(type: Test) {
     useJUnitPlatform()
     dependsOn testJar
     testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
+    classpath = sourceSets.test.runtimeClasspath + files(GAME_CLASSPATH)
 }
 
 // Main test task - runs unit tests, vanilla, and patched tests
