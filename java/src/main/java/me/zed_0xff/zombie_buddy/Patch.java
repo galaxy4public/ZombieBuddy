@@ -154,6 +154,7 @@ public @interface Patch {
   @Target({ElementType.PARAMETER, ElementType.METHOD})
   public @interface FieldRW {
     String[] value() default {};  // empty = infer from parameter name; multiple = try in order
+    boolean optional() default false;
   }
 
   @Retention(RetentionPolicy.RUNTIME)

@@ -11,7 +11,6 @@ import se.krka.kahlua.vm.LuaClosure;
 import se.krka.kahlua.vm.Prototype;
 import zombie.Lua.LuaManager;
 import zombie.core.Core;
-import zombie.debug.DebugLog;
 import zombie.ui.UIManager;
 
 public class Patch_KahluaThread {
@@ -161,6 +160,64 @@ public class Patch_KahluaThread {
                 return "'" + s + "'";
             }
             return String.valueOf(o);
+        }
+    }
+
+    /**
+     * When a Kahlua stdlib function (e.g. table.insert/remove) throws NullPointerException,
+     * inspects the Lua call frame to identify what the nil first argument was (global/field name)
+     * and replaces the raw NPE with a message in the same style as the nil-callee hint,
+     * e.g. {@code TableLib.insert: nil global 'myTable'}.
+     */
+    @Patch(className = "se.krka.kahlua.vm.KahluaThread", methodName = "callJava")
+    public static class Patch_callJava_npeHint {
+        private static final int OP_GETGLOBAL = 5;
+        private static final int OP_GETTABLE  = 6;
+        private static final int OP_CALL      = 28;
+        private static final int OP_TAILCALL  = 29;
+
+        @Patch.OnExit(onThrowable = NullPointerException.class)
+        public static void exit(@Patch.Thrown(readOnly = false) Throwable thrown) {
+            if (!(thrown instanceof NullPointerException npe)) return;
+            StackTraceElement[] st = npe.getStackTrace();
+            if (st == null || st.length == 0) return;
+            if (!st[0].getClassName().startsWith("se.krka.kahlua.stdlib.")) return;
+            String method = st[0].getClassName().replaceFirst(".*\\.", "") + "." + st[0].getMethodName();
+            String argDetail = nilFirstArgDetail();
+            thrown = new RuntimeException(method + ": " + (argDetail != null ? argDetail : "nil first argument"), npe);
+        }
+
+        public static String nilFirstArgDetail() {
+            try {
+                if (LuaManager.thread == null) return null;
+                LuaCallFrame cf = LuaManager.thread.getCurrentCoroutine().currentCallFrame();
+                LuaClosure cl = cf == null ? null : cf.closure;
+                Prototype p = cl == null ? null : cl.prototype;
+                int[] code = p == null ? null : p.code;
+                if (code == null || cf.pc < 2) return null;
+                int callOp = code[cf.pc - 1];
+                int callOpcode = callOp & 63;
+                if (callOpcode != OP_CALL && callOpcode != OP_TAILCALL) return null;
+                int argReg = ((callOp >>> 6) & 255) + 1;  // funReg + 1 = first argument register
+                for (int pc = cf.pc - 2; pc >= 0 && pc >= cf.pc - 8; pc--) {
+                    int instr = code[pc];
+                    if (((instr >>> 6) & 255) != argReg) continue;
+                    int opc = instr & 63;
+                    if (opc == OP_GETGLOBAL) {
+                        int bx = instr >>> 14;
+                        Object[] c = p.constants;
+                        if (c != null && bx >= 0 && bx < c.length) return "nil global " + Patch_fail_nilCalleeHint.formatConst(c[bx]);
+                    }
+                    if (opc == OP_GETTABLE) {
+                        Object key = Patch_fail_nilCalleeHint.rk(cf, p, (instr >>> 14) & 511);
+                        return "nil field " + Patch_fail_nilCalleeHint.formatConst(key);
+                    }
+                    break;
+                }
+                return null;
+            } catch (Throwable ignored) {
+                return null;
+            }
         }
     }
 }

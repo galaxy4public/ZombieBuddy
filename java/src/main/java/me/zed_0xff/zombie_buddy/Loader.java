@@ -555,10 +555,10 @@ public class Loader {
         "ZModUnbork"
     );
 
-    private static void autoFixModOrder(ArrayList<String> mods) {
-        if (Utils.isBlank(mods)) {
-            return;
-        }
+    public static void maybeReorderMods(ArrayList<String> mods) {
+        if (!g_config.auto_fix_mod_order()) return;
+        if (Utils.isBlank(mods)) return;
+
         Map<String, Integer> before = pinnedModIndices(mods);
         int targetIndex = 0;
         for (String modId : before.keySet()) {
@@ -594,9 +594,6 @@ public class Loader {
     }
 
     public static void loadMods(ArrayList<String> mods) {
-        if (g_config.auto_fix_mod_order()) {
-            autoFixModOrder(mods);
-        }
         ArrayList<JavaModInfo> jModInfos = new ArrayList<>();
         ArrayList<String> jModIds = new ArrayList<>();
         HashSet<String> processedIds = new HashSet<>();
