@@ -7,7 +7,7 @@ namespace :test do
     cp_root = File.join(PROJECT_ROOT, "versions/unstable/java")
     cp = [File.join(cp_root, "projectzomboid.jar")].join(",")
 
-    cmd = ["gradle", "unitTest", "--info", "-PgameClasspath=#{cp}"]
+    cmd = ["gradle", "unitTest", "--info", "-PgameClasspath=#{cp}", "-Pzb.verbosity=2"]
 
     if ENV['TESTS']
       cmd << "--tests" << ENV['TESTS']
@@ -27,7 +27,7 @@ task :test do
     cp_root = File.join(PROJECT_ROOT, "versions/unstable/java")
     cp = [File.join(cp_root, "projectzomboid.jar")].join(",")
 
-    cmd = ["gradle", "test", "--info", "-PgameClasspath=#{cp}"]
+    cmd = ["gradle", "test", "--info", "-PgameClasspath=#{cp}", "-Pzb.verbosity=2"]
 
     if ENV['TESTS']
       cmd << "--tests" << ENV['TESTS']

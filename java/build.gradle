@@ -256,11 +256,20 @@ tasks.withType(JavaCompile).configureEach {
     options.generatedSourceOutputDirectory.set(provider { null })
     options.headerOutputDirectory.set(provider { null })
     options.incremental = false
-    options.compilerArgs += ['-Xlint:deprecation']
 
     doLast {
         delete "${buildDir}/tmp"
     }
+}
+
+// Enable deprecation warnings for main source set
+compileJava {
+    options.compilerArgs << '-Xlint:deprecation'
+}
+
+// Disable deprecation warnings for test source sets
+compileTestJava {
+    options.compilerArgs << '-Xlint:-deprecation' << '-Xlint:-removal'
 }
 
 // Enable annotation processor for testpatches (validates patches at compile time).
@@ -362,6 +371,7 @@ tasks.withType(Test) {
 
     jvmArgs += "-XX:+EnableDynamicAgentLoading"
     jvmArgs += "-Dzb.filter_stacktrace=true"
+    systemProperty 'zb.verbosity', project.findProperty('zb.verbosity')
     
     // Don't capture stdout/stderr - show it directly in console
     testLogging {
@@ -418,7 +428,7 @@ task test_patched(type: Test) {
         def bcJar = configurations.runtimeClasspath.find { it.name.contains("bcprov") }
         if (!bcJar) throw new GradleException("bouncycastle jar not found in runtimeClasspath")
         jvmArgs "-Xbootclasspath/a:${gsonJar}${File.pathSeparator}${bcJar}"
-        jvmArgs "-javaagent:${shadowJar.archiveFile.get().asFile.absolutePath}=patches_jar=${patchesJarPath}:${patchesPackageName},verbosity=2,config_dir=.config,prop_prefix=zb"
+        jvmArgs "-javaagent:${shadowJar.archiveFile.get().asFile.absolutePath}=patches_jar=${patchesJarPath}:${patchesPackageName},config_dir=.config,prop_prefix=zb"
     }
 }
 
@@ -426,6 +436,7 @@ task test_patched(type: Test) {
 task unitTest(type: Test) {
     description = 'Runs unit tests from test/ directory'
     group = 'verification'
+
     useJUnitPlatform()
     dependsOn testJar
     testClassesDirs = sourceSets.test.output.classesDirs
