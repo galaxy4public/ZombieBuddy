@@ -172,7 +172,7 @@ public class Logger {
 
         StringBuilder sb = new StringBuilder();
         for (int i = fromIndex; i < args.length; i++) {
-            if (i > fromIndex) sb.append(", ");
+            if (i > fromIndex) sb.append(" ");
             sb.append(formatArg(args[i]));
             if (sb.length() > maxLineLen) {
                 sb.setLength(maxLineLen - 3);

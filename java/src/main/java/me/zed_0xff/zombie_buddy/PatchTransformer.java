@@ -26,6 +26,7 @@ import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.ClassWriter;
 import net.bytebuddy.jar.asm.commons.ClassRemapper;
 import net.bytebuddy.jar.asm.commons.SimpleRemapper;
+import net.bytebuddy.jar.asm.FieldVisitor;
 import net.bytebuddy.jar.asm.Label;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
@@ -126,9 +127,20 @@ final class PatchTransformer {
         try {
             return transformPatchClassInner(patchClass, td, verbosity, isMethodDelegation);
         } finally {
-            if (prevClass != null) { g_transformingClass.set(prevClass); g_transformingLoader.set(prevLoader); }
-            else { g_transformingClass.remove(); g_transformingLoader.remove(); }
+            if (prevClass != null) {
+                g_transformingClass.set(prevClass);
+                g_transformingLoader.set(prevLoader);
+            } else {
+                g_transformingClass.remove();
+                g_transformingLoader.remove();
+            }
         }
+    }
+
+    private static int forcePublic(int access) {
+        access &= ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED);
+        access |= Opcodes.ACC_PUBLIC;
+        return access;
     }
 
     private static Class<?> transformPatchClassInner(Class<?> patchClass, TypeDescription td, int verbosity, boolean isMethodDelegation) {
@@ -197,12 +209,10 @@ final class PatchTransformer {
                 needsTransformation = true;
             }
 
+            Logger.trace("class " + patchClass.getName() + ": needsTransformation=" + needsTransformation);
             if (!needsTransformation) {
-                if (verbosity > 1) Logger.info("class " + patchClass.getName() + " needs transformation: false");
                 return patchClass;
             }
-
-            if (verbosity > 1) Logger.info("class " + patchClass.getName() + " needs transformation: true");
 
             final String patchOwner = Utils.toInternalName(patchClass);
             String resourceName = patchOwner + ".class";
@@ -284,14 +294,25 @@ final class PatchTransformer {
                 final Set<String> stubNames = typeAliases.keySet();
                 sink = new ClassRemapper(cw, new SimpleRemapper(Opcodes.ASM9, typeAliases)) {
                     @Override public void visitInnerClass(String name, String outerName, String innerName, int access) {
-                        if (!stubNames.contains(name)) super.visitInnerClass(name, outerName, innerName, access);
+                        if (!stubNames.contains(name)) super.visitInnerClass(name, outerName, innerName, forcePublic(access));
                     }
                 };
                 if (verbosity > 0) Logger.debug("TypeAliases: " + typeAliases);
             }
             cr.accept(new ClassVisitor(Opcodes.ASM9, sink) {
                 @Override
+                public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+                    // make all fields public
+                    return super.visitField(forcePublic(access), name, descriptor, signature, value);
+                }
+
+                @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    // make all methods public, except static initializers which don't need to be public
+                    if (!name.equals("<clinit>")){
+                        access = forcePublic(access);
+                    }
+
                     final String mName = name;
                     final String mDesc = descriptor;
                     final int mAccess = access;
