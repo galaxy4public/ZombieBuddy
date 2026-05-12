@@ -10,6 +10,8 @@ import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.function.LongFunction;
+import java.util.function.ToLongFunction;
 
 /** Shared Gson configuration for on-disk and IPC JSON. */
 public final class ZBGson {
@@ -51,45 +53,20 @@ public final class ZBGson {
         }
     };
 
-    private static final TypeAdapter<WorkshopItemID> WORKSHOP_ID_ADAPTER = new TypeAdapter<>() {
-        @Override
-        public void write(JsonWriter out, WorkshopItemID value) throws IOException {
-            if (value == null) {
-                out.nullValue();
-            } else {
-                out.value(value.value());
+    private static <T> TypeAdapter<T> longAdapter(LongFunction<T> ctor, ToLongFunction<T> getter) {
+        return new TypeAdapter<>() {
+            @Override public void write(JsonWriter out, T v) throws IOException {
+                if (v == null) out.nullValue(); else out.value(getter.applyAsLong(v));
             }
-        }
+            @Override public T read(JsonReader in) throws IOException {
+                if (in.peek() == JsonToken.NULL) { in.nextNull(); return null; }
+                return ctor.apply(in.nextLong());
+            }
+        };
+    }
 
-        @Override
-        public WorkshopItemID read(JsonReader in) throws IOException {
-            if (in.peek() == JsonToken.NULL) {
-                in.nextNull();
-                return null;
-            }
-            return new WorkshopItemID(in.nextLong());
-        }
-    };
-
-    private static final TypeAdapter<SteamID64> STEAM_ID64_ADAPTER = new TypeAdapter<>() {
-        @Override
-        public void write(JsonWriter out, SteamID64 value) throws IOException {
-            if (value == null) {
-                out.nullValue();
-            } else {
-                out.value(value.value());
-            }
-        }
-
-        @Override
-        public SteamID64 read(JsonReader in) throws IOException {
-            if (in.peek() == JsonToken.NULL) {
-                in.nextNull();
-                return null;
-            }
-            return new SteamID64(in.nextLong());
-        }
-    };
+    private static final TypeAdapter<WorkshopItemID> WORKSHOP_ID_ADAPTER = longAdapter(WorkshopItemID::new, WorkshopItemID::value);
+    private static final TypeAdapter<SteamID64>      STEAM_ID64_ADAPTER  = longAdapter(SteamID64::new,      SteamID64::value);
 
     /** Pretty-printed output ({@link JarBatchApprovalProtocol}, {@link ModApprovalsStore}). */
     public static final Gson PRETTY = new GsonBuilder()

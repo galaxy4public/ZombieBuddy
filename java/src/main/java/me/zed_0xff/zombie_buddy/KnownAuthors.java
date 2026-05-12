@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HexFormat;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -129,29 +130,19 @@ public final class KnownAuthors {
         }
         byte[] msg = ("ZBAuthors:" + hashHex).getBytes(StandardCharsets.UTF_8);
         try {
-            byte[] pubRaw = hexToBytes(AUTHORS_PUBKEY_HEX);
+            HexFormat hex = HexFormat.of();
+            byte[] pubRaw = hex.parseHex(AUTHORS_PUBKEY_HEX);
             Ed25519PublicKeyParameters pub = new Ed25519PublicKeyParameters(pubRaw, 0);
             Ed25519Signer signer = new Ed25519Signer();
             signer.init(false, pub);
             signer.update(msg, 0, msg.length);
-            boolean ok = signer.verifySignature(hexToBytes(sigHex));
+            boolean ok = signer.verifySignature(hex.parseHex(sigHex));
             if (!ok) Logger.warn("authors.json: signature verification failed");
             return ok;
         } catch (Exception e) {
             Logger.warn("authors.json: signature verification error: " + e.getMessage());
             return false;
         }
-    }
-
-    private static byte[] hexToBytes(String hex) {
-        if ((hex.length() & 1) != 0) throw new IllegalArgumentException("odd hex length: " + hex.length());
-        int n = hex.length() / 2;
-        byte[] out = new byte[n];
-        for (int i = 0; i < n; i++) {
-            out[i] = (byte) ((Character.digit(hex.charAt(i * 2), 16) << 4)
-                           |  Character.digit(hex.charAt(i * 2 + 1), 16));
-        }
-        return out;
     }
 
     private static void writeCache(String body) {

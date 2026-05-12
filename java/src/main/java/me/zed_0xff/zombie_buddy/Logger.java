@@ -25,7 +25,7 @@ public class Logger {
             m_level  = level;
             m_maxLineLen = maxLineLen;
             m_tags   = tags;
-            m_tagStr = Arrays.stream(tags).map(t -> "[" + t + "]").collect(Collectors.joining(" ", "", " "));
+            m_tagStr = tags.length == 0 ? "" : Arrays.stream(tags).map(t -> "[" + t + "]").collect(Collectors.joining(" ", "", " "));
         }
 
         public void setLevel(int level)  { this.m_level = level; }

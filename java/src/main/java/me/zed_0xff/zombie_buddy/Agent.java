@@ -155,6 +155,13 @@ public class Agent {
         return arguments.containsKey("experimental");
     }
 
+    public static int getArgInt(String key, int defaultVal) {
+        String v = arguments.get(key);
+        if (v == null) return defaultVal;
+        try { return Integer.parseInt(v.trim()); }
+        catch (NumberFormatException e) { return defaultVal; }
+    }
+
     public static Path configDir() {
         String configured = arguments.get("config_dir");
         if (configured != null && !configured.trim().isEmpty()) {

@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -189,10 +190,11 @@ public final class ZBSVerifier {
         try {
             String canonical = "ZBS:" + sid.value() + ":" + jarSha256Hex.toLowerCase(Locale.ROOT);
             byte[] msg = canonical.getBytes(StandardCharsets.UTF_8);
+            HexFormat hexFormat = HexFormat.of();
             for (String pubHex : pubHexes) {
                 byte[] pubRaw;
                 try {
-                    pubRaw = hexToBytes(pubHex);
+                    pubRaw = hexFormat.parseHex(pubHex);
                 } catch (Exception e) {
                     return new VerificationError(sid, "Invalid JavaModZBS hex in " + keySource + ".", pubHexes);
                 }
@@ -301,30 +303,12 @@ public final class ZBSVerifier {
             SteamID64 sid = new SteamID64(Long.parseLong(m2.group(1)));
             byte[] sig;
             try {
-                sig = hexToBytes(m3.group(1));
+                sig = HexFormat.of().parseHex(m3.group(1));
             } catch (IllegalArgumentException e) {
                 throw new IOException("Invalid signature hex: " + e.getMessage());
             }
             return new ParsedZBS(sid, sig);
         }
-    }
-
-    private static byte[] hexToBytes(String hex) {
-        String h = hex.trim().toLowerCase(Locale.ROOT);
-        if ((h.length() & 1) != 0) {
-            throw new IllegalArgumentException("odd hex length");
-        }
-        int n = h.length() / 2;
-        byte[] out = new byte[n];
-        for (int i = 0; i < n; i++) {
-            int hi = Character.digit(h.charAt(i * 2), 16);
-            int lo = Character.digit(h.charAt(i * 2 + 1), 16);
-            if (hi < 0 || lo < 0) {
-                throw new IllegalArgumentException("non-hex");
-            }
-            out[i] = (byte) ((hi << 4) | lo);
-        }
-        return out;
     }
 
     public abstract static class Verification {

@@ -63,10 +63,7 @@ public final class SteamWorkshop {
     private static final ConcurrentHashMap<String, CachedResponse> HTTP_CACHE = new ConcurrentHashMap<>();
 
     private static int parseHttpCacheTTL() {
-        String v = Agent.arguments.get("http_cache_ttl");
-        if (v == null) return 3600;
-        try { return Math.max(0, Integer.parseInt(v.trim())); }
-        catch (NumberFormatException e) { return 3600; }
+        return Math.max(0, Agent.getArgInt("http_cache_ttl", 3600));
     }
 
     static String getCachedBody(String url, String requestBody) {
@@ -90,10 +87,7 @@ public final class SteamWorkshop {
         .build();
 
     private static Duration parseHttpTimeout() {
-        String v = Agent.arguments.get("http.client.timeout");
-        if (v == null) return Duration.ofSeconds(DEFAULT_TIMEOUT);
-        try { return Duration.ofSeconds(Integer.parseInt(v.trim())); }
-        catch (NumberFormatException e) { return Duration.ofSeconds(DEFAULT_TIMEOUT); }
+        return Duration.ofSeconds(Agent.getArgInt("http.client.timeout", DEFAULT_TIMEOUT));
     }
 
     private SteamWorkshop() {}
