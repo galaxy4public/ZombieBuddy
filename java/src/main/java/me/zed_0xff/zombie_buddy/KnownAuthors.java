@@ -176,6 +176,8 @@ public final class KnownAuthors {
     }
 
     private static String fetchRemoteBody() {
+        String cached = SteamWorkshop.getCachedBody(REMOTE_URL, "");
+        if (cached != null) return cached;
         try {
             HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(REMOTE_URL))
@@ -185,7 +187,9 @@ public final class KnownAuthors {
                 .build();
             HttpResponse<String> resp = SteamWorkshop.HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (resp.statusCode() == 200) {
-                return resp.body();
+                String body = resp.body();
+                SteamWorkshop.putCachedBody(REMOTE_URL, "", body);
+                return body;
             }
             Logger.warn("Authors list HTTP " + resp.statusCode());
         } catch (InterruptedException e) {

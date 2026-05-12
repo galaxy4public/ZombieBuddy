@@ -121,6 +121,23 @@ Timeout in seconds for HTTP connections and requests. Applies to all outbound HT
 
 ---
 
+### http_cache_ttl
+
+Time-to-live in seconds for the in-memory HTTP response cache. Applies to all outbound HTTP calls: Steam Workshop API, Steam profile pages, and the GitHub authors list.
+
+| Value | Description |
+|-------|-------------|
+| `3600` | (default) Cache responses for 1 hour |
+| `0` | Disable caching entirely |
+
+**Example:**
+
+```
+-javaagent:ZombieBuddy.jar=http_cache_ttl=0 --
+```
+
+---
+
 ### config_dir
 
 Directory used for ZombieBuddy configuration and cache files. Defaults to `~/.zombie_buddy`.

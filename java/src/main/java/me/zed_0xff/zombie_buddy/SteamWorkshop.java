@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -55,6 +56,30 @@ public final class SteamWorkshop {
     private static final int BATCH_SIZE = 100;
     public  static final int DEFAULT_TIMEOUT = 5;
 
+    private record CachedResponse(String body, long expireAt) {
+        boolean isExpired() { return System.currentTimeMillis() > expireAt; }
+    }
+    static final int HTTP_CACHE_TTL_S = parseHttpCacheTTL();
+    private static final ConcurrentHashMap<String, CachedResponse> HTTP_CACHE = new ConcurrentHashMap<>();
+
+    private static int parseHttpCacheTTL() {
+        String v = Agent.arguments.get("http_cache_ttl");
+        if (v == null) return 3600;
+        try { return Math.max(0, Integer.parseInt(v.trim())); }
+        catch (NumberFormatException e) { return 3600; }
+    }
+
+    static String getCachedBody(String url, String requestBody) {
+        if (HTTP_CACHE_TTL_S <= 0) return null;
+        CachedResponse r = HTTP_CACHE.get(url + "\0" + requestBody);
+        return (r != null && !r.isExpired()) ? r.body() : null;
+    }
+
+    static void putCachedBody(String url, String requestBody, String body) {
+        if (HTTP_CACHE_TTL_S <= 0) return;
+        HTTP_CACHE.put(url + "\0" + requestBody, new CachedResponse(body, System.currentTimeMillis() + HTTP_CACHE_TTL_S * 1000L));
+    }
+
     static final Duration HTTP_TIMEOUT = parseHttpTimeout();
     static final HttpClient HTTP = HttpClient.newBuilder()
         .connectTimeout(HTTP_TIMEOUT)
@@ -65,7 +90,7 @@ public final class SteamWorkshop {
         .build();
 
     private static Duration parseHttpTimeout() {
-        String v = Agent.arguments.get("http_client_timeout");
+        String v = Agent.arguments.get("http.client.timeout");
         if (v == null) return Duration.ofSeconds(DEFAULT_TIMEOUT);
         try { return Duration.ofSeconds(Integer.parseInt(v.trim())); }
         catch (NumberFormatException e) { return Duration.ofSeconds(DEFAULT_TIMEOUT); }
@@ -94,16 +119,14 @@ public final class SteamWorkshop {
         Set<WorkshopItemID> workshopIds
     ) {
         Map<WorkshopItemID, ItemDetails> out = new HashMap<>();
-        if (Utils.isBlank(workshopIds)) {
-            return out;
-        }
+        if (Utils.isBlank(workshopIds)) return out;
+
         Logger.info("checking mods ban status");
         try {
             List<WorkshopItemID> ids = new ArrayList<>(workshopIds);
             for (int from = 0; from < ids.size(); from += BATCH_SIZE) {
                 int to = Math.min(ids.size(), from + BATCH_SIZE);
-                List<WorkshopItemID> chunk = ids.subList(from, to);
-                fetchChunk(chunk, out);
+                fetchChunk(ids.subList(from, to), out);
             }
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
@@ -118,25 +141,31 @@ public final class SteamWorkshop {
         List<WorkshopItemID> chunk,
         Map<WorkshopItemID, ItemDetails> out
     ) throws Exception {
-        StringBuilder body = new StringBuilder();
-        body.append("itemcount=").append(chunk.size());
+        StringBuilder bodySb = new StringBuilder();
+        bodySb.append("itemcount=").append(chunk.size());
         for (int i = 0; i < chunk.size(); i++) {
-            body.append("&publishedfileids[").append(i).append("]=")
+            bodySb.append("&publishedfileids[").append(i).append("]=")
                 .append(URLEncoder.encode(Long.toString(chunk.get(i).value()), java.nio.charset.StandardCharsets.UTF_8));
         }
-        HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create(STEAM_GET_PUBLISHED_FILE_DETAILS_URL))
-            .timeout(HTTP_TIMEOUT)
-            .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-            .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-            .build();
-        HttpResponse<String> resp = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
-        if (resp.statusCode() != 200) {
-            setUnknownDetails(out, new HashSet<>(chunk),
-                "Steam API request failed (HTTP " + resp.statusCode() + ")");
-            return;
+        String requestBody = bodySb.toString();
+        String responseBody = getCachedBody(STEAM_GET_PUBLISHED_FILE_DETAILS_URL, requestBody);
+        if (responseBody == null) {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(STEAM_GET_PUBLISHED_FILE_DETAILS_URL))
+                .timeout(HTTP_TIMEOUT)
+                .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+            HttpResponse<String> resp = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                setUnknownDetails(out, new HashSet<>(chunk),
+                    "Steam API request failed (HTTP " + resp.statusCode() + ")");
+                return;
+            }
+            responseBody = resp.body();
+            putCachedBody(STEAM_GET_PUBLISHED_FILE_DETAILS_URL, requestBody, responseBody);
         }
-        JsonElement root = JsonParser.parseString(resp.body());
+        JsonElement root = JsonParser.parseString(responseBody);
         JsonElement response = root != null && root.isJsonObject() ? root.getAsJsonObject().get("response") : null;
         JsonElement details = (response != null && response.isJsonObject())
             ? response.getAsJsonObject().get("publishedfiledetails")

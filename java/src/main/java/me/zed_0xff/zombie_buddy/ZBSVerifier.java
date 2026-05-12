@@ -236,24 +236,28 @@ public final class ZBSVerifier {
 
     private static List<String> fetchJavaModZBSHexesFromSteam(SteamID64 sid) throws IOException {
         String url = SteamWorkshop.authorProfileUrl(sid);
-        HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .timeout(SteamWorkshop.HTTP_TIMEOUT)
-            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .GET()
-            .build();
-        HttpResponse<String> resp;
-        try {
-            resp = SteamWorkshop.HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while fetching Steam profile.", e);
+        String body = SteamWorkshop.getCachedBody(url, "");
+        if (body == null) {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(SteamWorkshop.HTTP_TIMEOUT)
+                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .GET()
+                .build();
+            HttpResponse<String> resp;
+            try {
+                resp = SteamWorkshop.HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted while fetching Steam profile.", e);
+            }
+            int code = resp.statusCode();
+            if (code != 200) {
+                throw new IOException("Could not load Steam profile (HTTP " + code + ").");
+            }
+            body = resp.body();
+            SteamWorkshop.putCachedBody(url, "", body);
         }
-        int code = resp.statusCode();
-        if (code != 200) {
-            throw new IOException("Could not load Steam profile (HTTP " + code + ").");
-        }
-        String body = resp.body();
         LinkedHashSet<String> keys = new LinkedHashSet<>();
         Matcher m = JAVA_MOD_ZBS_IN_HTML.matcher(body);
         while (m.find()) {
