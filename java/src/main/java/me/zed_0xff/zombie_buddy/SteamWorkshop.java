@@ -51,12 +51,25 @@ public final class SteamWorkshop {
             : "";
     }
 
-    private static final String STEAM_GET_PUBLISHED_FILE_DETAILS_URL =
-        "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/";
-    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(10))
-        .build();
+    private static final String STEAM_GET_PUBLISHED_FILE_DETAILS_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/";
     private static final int BATCH_SIZE = 100;
+    public  static final int DEFAULT_TIMEOUT = 5;
+
+    static final Duration HTTP_TIMEOUT = parseHttpTimeout();
+    static final HttpClient HTTP = HttpClient.newBuilder()
+        .connectTimeout(HTTP_TIMEOUT)
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .build();
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+        .connectTimeout(HTTP_TIMEOUT)
+        .build();
+
+    private static Duration parseHttpTimeout() {
+        String v = Agent.arguments.get("http_client_timeout");
+        if (v == null) return Duration.ofSeconds(DEFAULT_TIMEOUT);
+        try { return Duration.ofSeconds(Integer.parseInt(v.trim())); }
+        catch (NumberFormatException e) { return Duration.ofSeconds(DEFAULT_TIMEOUT); }
+    }
 
     private SteamWorkshop() {}
 
@@ -113,7 +126,7 @@ public final class SteamWorkshop {
         }
         HttpRequest req = HttpRequest.newBuilder()
             .uri(URI.create(STEAM_GET_PUBLISHED_FILE_DETAILS_URL))
-            .timeout(Duration.ofSeconds(25))
+            .timeout(HTTP_TIMEOUT)
             .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
             .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
             .build();

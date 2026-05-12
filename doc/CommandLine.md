@@ -30,9 +30,11 @@ Controls the amount of logging output.
 
 | Value | Description |
 |-------|-------------|
-| `0` | (default) Errors only |
-| `1` | Shows patch transformations |
-| `2` | Shows all debug output |
+| `-2` | ERROR - log errors only |
+| `-1` | WARN  - log warnings + ERROR |
+| `0`  | (default) INFO - log informational messages + WARN |
+| `1`  | DEBUG - log more debugging information, including the patches transformation progress info |
+| `2`  | TRACE - log a vast amount of details |
 
 **Example:**
 
@@ -102,19 +104,19 @@ Selects the UI for Java mod approval dialogs.
 
 ---
 
-### batch_approval_timeout
+### http_client_timeout
 
-Maximum time (in seconds) to wait for the batch Swing approval subprocess.
+Timeout in seconds for HTTP connections and requests. Applies to all outbound HTTP calls: Steam Workshop API, Steam profile pages, and the GitHub authors list.
 
 | Value | Description |
 |-------|-------------|
-| `0` | (default) No timeout - wait until the user responds |
-| `N` | Wait up to N seconds before timing out |
+| `5` | (default) |
+| `30` | Use 30 seconds as both the connect and request timeout |
 
 **Example:**
 
 ```
--javaagent:ZombieBuddy.jar=batch_approval_timeout=60 --
+-javaagent:ZombieBuddy.jar=http_client_timeout=30 --
 ```
 
 ---

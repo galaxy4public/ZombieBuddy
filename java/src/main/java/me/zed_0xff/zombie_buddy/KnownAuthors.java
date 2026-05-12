@@ -10,13 +10,11 @@ import org.bouncycastle.crypto.signers.Ed25519Signer;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -43,11 +41,6 @@ public final class KnownAuthors {
     // Matches the signature field value; groups: (prefix-with-quote) (hex) (closing-quote)
     private static final Pattern SIG_PATTERN =
         Pattern.compile("(\"signature\"\\s*:\\s*\")([0-9a-fA-F]*)(\")");
-
-    private static final HttpClient HTTP = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(10))
-        .followRedirects(HttpClient.Redirect.NORMAL)
-        .build();
 
     private static final Type FILE_DATA_TYPE = new TypeToken<FileData>() {}.getType();
 
@@ -186,14 +179,11 @@ public final class KnownAuthors {
         try {
             HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(REMOTE_URL))
-                .timeout(Duration.ofSeconds(25))
-                .header(
-                    "User-Agent",
-                    "ZombieBuddy/KnownAuthors (Java; +https://github.com/zed-0xff/ZombieBuddy)"
-                )
+                .timeout(SteamWorkshop.HTTP_TIMEOUT)
+                .header("User-Agent", "ZombieBuddy/KnownAuthors (Java; +https://github.com/zed-0xff/ZombieBuddy)")
                 .GET()
                 .build();
-            HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> resp = SteamWorkshop.HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (resp.statusCode() == 200) {
                 return resp.body();
             }

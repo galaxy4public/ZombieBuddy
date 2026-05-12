@@ -114,8 +114,11 @@ public class Logger {
     public static void warn( String message, Object... args) { DEFAULT.log(WARN,  message, args); }
     public static void error(String message, Object... args) { DEFAULT.log(ERROR, message, args); }
 
+    // intentionally package-private; mods shouldl use Instance's public setLevel
+    static void setLevel(int level) { DEFAULT.setLevel(level); }
+
     public static void printStackTrace(Throwable t) {
-        if (!Agent.arguments.containsKey("filter_stacktrace")) {
+        if (!Agent.arguments.containsKey("filter_stacktrace")) { // undocumented; intentionally omitted from CommandLine.md
             t.printStackTrace();
             return;
         }
