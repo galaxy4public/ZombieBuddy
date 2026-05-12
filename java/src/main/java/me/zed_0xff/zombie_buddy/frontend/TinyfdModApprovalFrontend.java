@@ -100,15 +100,7 @@ public final class TinyfdModApprovalFrontend implements ModApprovalFrontend {
             return Boolean.TRUE;
         }
         try {
-            Object result = Accessor.callByName(
-                dialogClass,
-                "tinyfd_messageBox",
-                DIALOG_TITLE,
-                msg,
-                "yesno",
-                "warning",
-                false
-            );
+            Object result = Reflect.on(dialogClass).call("tinyfd_messageBox", DIALOG_TITLE, msg, "yesno", "warning", false).orElse(null);
             return Boolean.TRUE.equals(result);
         } catch (Throwable t) {
             Logger.error("Could not show dialog: " + t);

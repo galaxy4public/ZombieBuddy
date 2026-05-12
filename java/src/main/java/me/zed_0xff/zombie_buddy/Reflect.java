@@ -119,20 +119,17 @@ public final class Reflect {
     }
 
     public Reflect staticField(String fieldName) {
-        if (value == null || Utils.isBlank(fieldName))
-            return REFLECT_NULL;
+        Class<?> cls = resolveClass();
+        if (cls == null || Utils.isBlank(fieldName)) return REFLECT_NULL;
     
-        if (value instanceof Class<?> cls)
-            return new Reflect(Accessor.tryGet(cls, fieldName, null));
-    
-        return new Reflect(Accessor.tryGet(value.getClass(), fieldName, null));
+        return new Reflect(Accessor.tryGet(cls, fieldName, null));
     }
 
     /** Tries {@code getInstance()} static method, then falls back to a static {@code instance} field. */
     public Reflect getInstance() {
-        if (value == null) return REFLECT_NULL;
+        Class<?> cls = resolveClass();
+        if (cls == null) return REFLECT_NULL;
 
-        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
         Method m = Accessor.findExactMethod(cls, "getInstance");
         if (m != null && Modifier.isStatic(m.getModifiers())) {
             try {
@@ -162,9 +159,9 @@ public final class Reflect {
      * Both groups must match when both are present.
      */
     public List<Method> methods(Flag... flags) {
-        if (value == null) return Collections.emptyList();
+        Class<?> cls = resolveClass();
+        if (cls == null) return Collections.emptyList();
 
-        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
         EnumSet<Flag> flagSet = toFlagSet(flags);
         List<Method> out = new ArrayList<>();
         for (Method m : Accessor.allMethods(cls)) {
@@ -182,9 +179,9 @@ public final class Reflect {
      * wins) matching {@code flags}. Same flag semantics as {@link #methods(Flag...)}.
      */
     public List<Field> fields(Flag... flags) {
-        if (value == null) return Collections.emptyList();
+        Class<?> cls = resolveClass();
+        if (cls == null) return Collections.emptyList();
 
-        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
         EnumSet<Flag> flagSet = toFlagSet(flags);
         List<Field> out = new ArrayList<>();
         for (Field f : Accessor.allFields(cls)) {
@@ -228,6 +225,23 @@ public final class Reflect {
         return true;
     }
 
+    private Class<?> resolveClass() {
+        if (value == null) return null;
+        return value instanceof Class<?> c ? c : value.getClass();
+    }
+
+    private ClassInfo getClassInfo(Class<?> cls) {
+        return _cache.computeIfAbsent(cls, c -> {
+                try {
+                    return new ClassInfo(c);
+                } catch (Exception e) {
+                    Logger.error("Failed to create ClassInfo for %s: %s", c, e);
+                    return null;
+                }
+            }
+        );
+    }
+
     /** Shorthand for {@code field(name).as(type)}. */
     // public <T> Optional<T> field(String fieldName, Class<T> type) {
     //     return field(fieldName).as(type);
@@ -254,18 +268,10 @@ public final class Reflect {
 
     // call it once and cache the result
     public VarHandle getVarHandle(Class<?> type, String... names) {
-        if (value == null) return null;
+        Class<?> cls = resolveClass();
+        if (cls == null) return null;
     
-        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
-        ClassInfo cinfo = _cache.computeIfAbsent(cls, c -> {
-                try {
-                    return new ClassInfo(c);
-                } catch (Exception e) {
-                    Logger.error("Failed to create ClassInfo for %s: %s", c, e);
-                    return null;
-                }
-            }
-        );
+        ClassInfo cinfo = getClassInfo(cls);
         if (cinfo == null) return null;
 
         var varCache = cinfo.varCache();
@@ -297,18 +303,10 @@ public final class Reflect {
 
     // call it once and cache the result
     public MethodHandle getMethodHandle(Class<?> returnType, Class<?>[] parameterTypes, String... names) {
-        if (value == null) return null;
+        Class<?> cls = resolveClass();
+        if (cls == null) return null;
 
-        Class<?> cls = value instanceof Class<?> c ? c : value.getClass();
-        ClassInfo cinfo = _cache.computeIfAbsent(cls, c -> {
-                try {
-                    return new ClassInfo(c);
-                } catch (Exception e) {
-                    Logger.error("Failed to create ClassInfo for %s: %s", c, e);
-                    return null;
-                }
-            }
-        );
+        ClassInfo cinfo = getClassInfo(cls);
         if (cinfo == null) return null;
 
         MethodType mt = MethodType.methodType(returnType, parameterTypes);

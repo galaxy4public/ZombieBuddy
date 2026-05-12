@@ -4,6 +4,7 @@ import java.util.Locale;
 
 import me.zed_0xff.zombie_buddy.Accessor;
 import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Reflect;
 
 /**
  * Resolves {@link ModApprovalFrontend} from the {@code frontend} agent argument.
@@ -93,7 +94,7 @@ public final class ModApprovalFrontends {
             if (displayClass == null) {
                 return false;
             }
-            Object r = Accessor.callByName(displayClass, "isCreated");
+            Object r = Reflect.on(displayClass).call("isCreated").orElse(null);
             return Boolean.TRUE.equals(r);
         } catch (Throwable t) {
             return false;
@@ -116,11 +117,11 @@ public final class ModApprovalFrontends {
             if (displayClass == null) {
                 return false;
             }
-            Object created = Accessor.callByName(displayClass, "isCreated");
+            Object created = Reflect.on(displayClass).call("isCreated").orElse(null);
             if (!Boolean.TRUE.equals(created)) {
                 return false;
             }
-            Object window = Accessor.callByName(displayClass, "getWindow");
+            Object window = Reflect.on(displayClass).call("getWindow").orElse(null);
             return window instanceof Long && ((Long) window).longValue() != 0;
         } catch (Throwable t) {
             return false;
@@ -133,7 +134,7 @@ public final class ModApprovalFrontends {
         if (gs == null) {
             return false;
         }
-        Object v = Accessor.tryGet(gs, "server", Boolean.FALSE);
+        Object v = Reflect.on(gs).staticField("server").orElse(Boolean.FALSE);
         return Boolean.TRUE.equals(v);
     }
 }

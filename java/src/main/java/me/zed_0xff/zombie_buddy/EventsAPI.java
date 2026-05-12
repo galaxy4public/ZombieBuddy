@@ -35,7 +35,7 @@ public class EventsAPI {
 
         var tbl = LuaManager.platform.newTable();
         for (var event : eventList) {
-            tbl.rawset(event.name, Accessor.tryGet(event, "callbacks", null));
+            tbl.rawset(event.name, Reflect.on(event).field("callbacks").orElse(null));
         }
         return tbl;
     }
@@ -71,7 +71,7 @@ public class EventsAPI {
         var tbl2 = LuaManager.platform.newTable();
 
         for (var event : eventList) {
-            ArrayList<LuaClosure> callbacks = Accessor.tryGet(event, "callbacks", null);
+            ArrayList<LuaClosure> callbacks = Reflect.on(event).field("callbacks").as(ArrayList.class).orElse(null);
             if (callbacks != null) {
                 int idx = 1;
                 for (var callback : callbacks) {
