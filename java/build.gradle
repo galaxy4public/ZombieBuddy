@@ -5,6 +5,9 @@ plugins {
     id 'io.github.zed-0xff.zb-gradle-plugin' version '1.0.3'
 }
 
+def DEFAULT_JVM = 25
+layout.buildDirectory = layout.projectDirectory.dir("build/jdk${project.findProperty('javaVersion') ?: DEFAULT_JVM}")
+
 // Game classpath: comma-separated JARs or dirs. Set via -PgameClasspath=... and/or env PZ_CLASSPATH.
 // Optional: only needed for compilation, not for running tests
 def rawGameClasspath = project.findProperty('gameClasspath')?.toString()?.trim()
@@ -20,8 +23,7 @@ if (rawGameClasspath) {
 }
 
 // Read version from VERSION file
-def versionFile = file('VERSION')
-def version = versionFile.exists() ? versionFile.text.trim() : '1.0.0'
+def version = file('VERSION').text.trim()
 
 repositories {
     mavenCentral()
@@ -44,8 +46,9 @@ dependencies {
     testImplementation 'org.mockito:mockito-junit-jupiter:5.5.0'
 }
 
+def MOD_ID = project.projectDir.parentFile.name
 jar {
-    archiveBaseName.set("ZombieBuddy")
+    archiveBaseName.set(MOD_ID)
     archiveClassifier.set("plain")
     manifest {
         attributes(
@@ -58,7 +61,7 @@ jar {
 }
 
 shadowJar {
-    archiveBaseName.set("ZombieBuddy")
+    archiveBaseName.set(MOD_ID)
     archiveClassifier.set("")
     manifest {
         attributes(
@@ -149,6 +152,13 @@ if (useKeychain) {
         
         sign shadowJar
     }
+}
+
+java {
+  toolchain {
+    // makes java version a part of cache key for all compile tasks
+    languageVersion = JavaLanguageVersion.of((project.findProperty('javaVersion') ?: DEFAULT_JVM).toInteger())
+  }
 }
 
 sourceSets {
@@ -252,14 +262,13 @@ copyNativeDll.mustRunAfter shadowJar
 
 // disable annotation processing, JNI headers, and incremental compilation
 tasks.withType(JavaCompile).configureEach {
-    options.annotationProcessorPath = files()
     options.generatedSourceOutputDirectory.set(provider { null })
     options.headerOutputDirectory.set(provider { null })
     options.incremental = false
 
-    doLast {
-        delete "${buildDir}/tmp"
-    }
+    // doLast {
+        // delete "${buildDir}/tmp"
+    // }
 }
 
 // Enable deprecation warnings for main source set only; suppress them in all test/auxiliary sets
@@ -374,15 +383,20 @@ tasks.withType(Test) {
     
     // Don't capture stdout/stderr - show it directly in console
     testLogging {
-        showStandardStreams = true
+        showStandardStreams = project.hasProperty('showStreams')
     }
     
     // Output test results summary
-    afterSuite { desc, result ->
-        if (!desc.parent) {
-            println "\n[=] ${name.padRight(12)}: ${result.testCount} tests, ${result.successfulTestCount} successful, ${result.failedTestCount} failed"
+    addTestListener(new TestListener() {
+        void beforeSuite(TestDescriptor d) {}
+        void afterSuite(TestDescriptor desc, TestResult result) {
+            if (!desc.parent) {
+                println "\n[=] ${name.padRight(12)}: ${result.testCount} tests, ${result.successfulTestCount} successful, ${result.failedTestCount} failed"
+            }
         }
-    }
+        void beforeTest(TestDescriptor d) {}
+        void afterTest(TestDescriptor d, TestResult r) {}
+    })
 }
 
 // Vanilla tests - run without javaagent
