@@ -111,7 +111,7 @@ public class JarDumpMain {
         StringBuilder sb = new StringBuilder();
         td.getDeclaredFields().forEach(f -> {
             sb.append(formatModifiers(f));
-            sb.append(f.getType()).append(' ');
+            sb.append(f.getType().asErasure().getSimpleName()).append(" ");
             sb.append(f.getName());
             sb.append(formatAnnotations(f));
             sb.append('\n');
@@ -172,20 +172,14 @@ public class JarDumpMain {
 
             cr.accept(new ClassVisitor(Opcodes.ASM9, cw) {
                 @Override
+                public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+                    FieldVisitor fv = super.visitField(forcePublic(access), name, descriptor, signature, value);
+                    return fv;
+                }
+
+                @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                     MethodVisitor mv = super.visitMethod(forcePublic(access), name, descriptor, signature, exceptions);
-                    if (name.equals("exit")) {
-                        return new MethodVisitor(Opcodes.ASM9, mv) {
-                            @Override
-                            public void visitCode() {
-                                // append annotation before the method body is emitted
-                                AnnotationVisitor av = mv.visitAnnotation(
-                                        "Lme/zed_0xff/zombie_buddy/Patch$OnExit;", true);
-                                av.visitEnd();
-                                super.visitCode();
-                            }
-                        };
-                    }
                     return mv;
                 }
             }, 0);
