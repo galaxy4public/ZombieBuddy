@@ -154,12 +154,12 @@ public final class PatchEngine {
             if (ann == null) continue;
             if (ann.className().startsWith("me.zed_0xff.")) continue; // refuse to patch our own classes
 
-            if (ann.className().equals("zombie.Lua.LuaManager$Exposer") && ann.methodName().equals("exposeAll") && !ann.IKnowWhatIAmDoing()) {
-                Logger.error("XXX");
-                Logger.error("XXX don't patch Exposer.exposeAll, use @Exposer.LuaClass annotation!");
-                Logger.error("XXX");
-                continue;
-            }
+            // if (ann.className().equals("zombie.Lua.LuaManager$Exposer") && ann.methodName().equals("exposeAll") && !ann.IKnowWhatIAmDoing()) {
+                // Logger.error("XXX");
+                // Logger.error("XXX don't patch Exposer.exposeAll, use @Exposer.LuaClass annotation!");
+                // Logger.error("XXX");
+                // continue;
+            // }
 
             PatchTarget target = new PatchTarget(ann.className(), ann.methodName());
             
