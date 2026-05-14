@@ -25,7 +25,7 @@ public @interface Patch {
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.METHOD)
   public @interface OnEnter {
-    boolean skipOn() default false;
+    boolean skipOn() default false;    // converted by AnnotationConverter.java
   }
   
   /** Alias for net.bytebuddy.asm.Advice.OnMethodExit - mods should use Patch.OnExit instead */

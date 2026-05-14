@@ -3,6 +3,7 @@ package me.zed_0xff.zombie_buddy.transformers;
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Patch;
 
+import java.util.EnumSet;
 import java.util.function.BiFunction;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,29 +32,35 @@ public class AnnotationConverter implements Transformer {
         ANN_MAP.put(Type.getDescriptor(Patch.Thrown.class),       Type.getDescriptor(Advice.Thrown.class));
     }
 
-    boolean bKeepOriginalAnnotations = true;
-    boolean bChanged = false;
-
-    @FunctionalInterface
-    public interface TriFunction<A, B, C, R> {
-        R apply(A a, B b, C c);
+    private enum ParamRule {
+        NAME2VALUE,
+        SKIPON
     }
+
+    private static final Map<String, EnumSet<ParamRule>> PARAM_RULES = Map.of(
+        Type.getDescriptor(Advice.FieldValue.class),    EnumSet.of(ParamRule.NAME2VALUE),
+        Type.getDescriptor(Advice.OnMethodEnter.class), EnumSet.of(ParamRule.SKIPON)
+    );
+
+    private static final EnumSet<ParamRule> DEFAULT_RULES = EnumSet.noneOf(ParamRule.class);
+
+    private static final Type NO_EXCEPTION_HANDLER = Type.getType("Lnet/bytebuddy/asm/Advice$NoExceptionHandler;"); // private
 
     /** Forwards every callback to two delegates so ASM element parsing fills both annotations (keep-original + dst). */
     private static class DualAnnotationVisitor extends AnnotationVisitor {
         private final AnnotationVisitor src;
         private final AnnotationVisitor dst;
         private final HashMap<String, Object> params = new HashMap<>();
-        private final String newDescriptor;
         private final String paramName;
+        private final EnumSet<ParamRule> rules;
 
         DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst) { this(src, dst, null, null); }
         DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst, String newDescriptor, String paramName) {
             super(ASM_API);
             this.src = src;
             this.dst = dst;
-            this.newDescriptor = newDescriptor;
             this.paramName = paramName;
+            rules = (newDescriptor == null) ? DEFAULT_RULES : PARAM_RULES.getOrDefault(newDescriptor, DEFAULT_RULES);
         }
 
         @Override
@@ -62,7 +69,12 @@ public class AnnotationConverter implements Transformer {
                 params.put(name, value);
                 src.visit(name, value);
             }
-            if (dst != null) dst.visit(name, value);
+            if (dst != null) {
+                if (rules.contains(ParamRule.SKIPON) && "skipOn".equals(name) && value instanceof Boolean skip) {
+                    value = skip ? Type.getType(Advice.OnNonDefaultValue.class) : NO_EXCEPTION_HANDLER;
+                }
+                dst.visit(name, value);
+            }
         }
 
         @Override
@@ -97,7 +109,7 @@ public class AnnotationConverter implements Transformer {
         public void visitEnd() {
             if (src != null) src.visitEnd();
             if (dst != null) {
-                if (Type.getDescriptor(Advice.FieldValue.class).equals(newDescriptor) && paramName != null && !params.containsKey("value")) {
+                if (rules.contains(ParamRule.NAME2VALUE) && paramName != null && !params.containsKey("value")) {
                     // for FieldValue annotations on parameters, we need to set the "value" parameter to the parameter name
                     dst.visit("value", paramName);
                 }
@@ -125,11 +137,19 @@ public class AnnotationConverter implements Transformer {
         // visit original annotation first
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(descriptor, visible) : null;
         AnnotationVisitor dst = visitor.apply(newDescriptor, visible);
-        return new DualAnnotationVisitor(src, dst);
+        return new DualAnnotationVisitor(src, dst, newDescriptor, null);
     }
 
     public static String mapDescriptor(String descriptor) {
         return ANN_MAP.get(descriptor);
+    }
+
+    boolean bKeepOriginalAnnotations = true;
+    boolean bChanged = false;
+
+    @FunctionalInterface
+    public interface TriFunction<A, B, C, R> {
+        R apply(A a, B b, C c);
     }
 
     /** Reads the LocalVariableTable of each method to extract parameter names. Key = methodName + descriptor. */
