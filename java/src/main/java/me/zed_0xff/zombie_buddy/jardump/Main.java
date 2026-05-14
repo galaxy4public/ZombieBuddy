@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import net.bytebuddy.dynamic.ClassFileLocator;
+import net.bytebuddy.pool.TypePool;
 
 public class Main extends CLIUtil {
     static boolean _showHelp    = false;
@@ -112,7 +113,8 @@ public class Main extends CLIUtil {
                 .map(TRANS_MAP::get)
                 .map(t -> t.factory().get())
                 .toList();
-            // TypePool pool = TypePool.Default.of(locator);
+            TypePool pool = TypePool.Default.of(locator);
+            var dumper = new AsmDump(pool);
             // TypePool pool = TypePool.Default.of(locator, TypePool.ClassLoading.ofBootPath());
             jar.stream()
                 .map(JarEntry::getName)
@@ -140,7 +142,7 @@ public class Main extends CLIUtil {
                         }
 
                         if (changed || !_changedOnly) {
-                            System.out.println(AsmDump.dump(rewritten));
+                            System.out.println(dumper.dump(rewritten));
                         }
                     } catch (IOException e) {
                         System.err.println("Failed to read class: " + className);

@@ -14,9 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public @interface Patch {
   String className();
   String methodName();
-  boolean isAdvice() default true; // false => MethodDelegation
-                                   // warning! advices can be chained, delegations can't, so only one delegation per method EVER
-  boolean warmUp() default false;  // mandatory for some internal classes like LuaManager$Exposer or the patch will not be applied
+  boolean isAdvice() default true;     // false => MethodDelegation
+                                       // warning! advices can be chained, delegations can't, so only one delegation per method EVER
+  boolean warmUp() default false;      // mandatory for some internal classes like LuaManager$Exposer or the patch will not be applied
   // boolean IKnowWhatIAmDoing() default false; // if true, the patch will be applied even if it is risky
   boolean strictMatch() default false; // if true, advice methods without arguments match only methods with no arguments
                                        // if false (default), advice methods without arguments match any method

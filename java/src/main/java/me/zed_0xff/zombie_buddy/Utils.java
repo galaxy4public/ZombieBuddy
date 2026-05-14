@@ -97,6 +97,15 @@ public final class Utils {
             .orElse(false);
     }
 
+    public static boolean isBlank(Object obj) {
+        if (obj == null) return true;
+        if (obj instanceof String s)        return isBlank(s);
+        if (obj instanceof Path p)          return isBlank(p);
+        if (obj instanceof Collection<?> c) return isBlank(c);
+        if (obj instanceof Map<?, ?> m)     return isBlank(m);
+        return false;
+    }
+
     public static boolean isBlank(String str) {
         return str == null || str.isEmpty();
     }

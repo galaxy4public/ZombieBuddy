@@ -35,6 +35,7 @@ public final class Reflect {
     public enum Flag {
         PUBLIC, PROTECTED, PACKAGE_PRIVATE, PRIVATE,
         STATIC, INSTANCE
+        // NO_PARENT // do not ascend in class hierarchy; only declared members of the subject's class
     }
 
     public static final Flag PUBLIC          = Flag.PUBLIC;
@@ -95,13 +96,16 @@ public final class Reflect {
         return new Reflect(obj);
     }
 
-    static final record ClassInfo(
-            MethodHandles.Lookup lookup,
-            ConcurrentHashMap<String, Object> varCache,
-            ConcurrentHashMap<String, Object> methodCache
-    ) {
+    private static final class ClassInfo {
+        final MethodHandles.Lookup              lookup;
+        final ConcurrentHashMap<String, Object> varCache;
+        final ConcurrentHashMap<String, Object> methodCache;
+              List<Method>                      methods = null;
+
         ClassInfo(Class<?> cls) throws IllegalAccessException {
-            this(MethodHandles.privateLookupIn(cls, MethodHandles.lookup()), new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
+            lookup = MethodHandles.privateLookupIn(cls, MethodHandles.lookup());
+            varCache = new ConcurrentHashMap<>();
+            methodCache = new ConcurrentHashMap<>();
         }
     }
 
@@ -151,6 +155,19 @@ public final class Reflect {
         }
     }
 
+    // expensive operation, should run once per class and cache the result
+    // should not return null
+    private static final List<Method> fetchMethods(Class<?> cls) {
+        List<Method> out = new ArrayList<>();
+        for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Method m : c.getDeclaredMethods()) {
+                if (/*m.isSynthetic() ||*/ m.isBridge() || m.getDeclaringClass() == Object.class) continue;
+                out.add(m);
+            }
+        }
+        return out;
+    }
+
     /**
      * Returns declared methods of the subject's class hierarchy, excluding synthetic, bridge, and
      * Object-declared methods. Flags further filter by access/static; empty flags = no extra filtering.
@@ -162,13 +179,17 @@ public final class Reflect {
         Class<?> cls = resolveClass();
         if (cls == null) return Collections.emptyList();
 
+        ClassInfo cinfo = getClassInfo(cls);
+        if (cinfo == null) return Collections.emptyList();
+
+        if (cinfo.methods == null) {
+            cinfo.methods = fetchMethods(cls);
+        }
+
         EnumSet<Flag> flagSet = toFlagSet(flags);
         List<Method> out = new ArrayList<>();
-        for (Method m : Accessor.allMethods(cls)) {
-            if (m.isSynthetic() || m.isBridge() || m.getDeclaringClass() == Object.class) continue;
-
+        for (Method m : cinfo.methods) {
             if (flagSet != null && !matchesMod(m.getModifiers(), flagSet)) continue;
-
             out.add(m);
         }
         return out;
@@ -274,16 +295,16 @@ public final class Reflect {
         ClassInfo cinfo = getClassInfo(cls);
         if (cinfo == null) return null;
 
-        var varCache = cinfo.varCache();
+        var varCache = cinfo.varCache;
         for (String fieldName : names) {
             Object v = varCache.get(fieldName);
 
             if (v == null) {
                 try {
-                    v = cinfo.lookup().findVarHandle(cls, fieldName, type);
+                    v = cinfo.lookup.findVarHandle(cls, fieldName, type);
                 } catch (NoSuchFieldException | IllegalAccessException e) {
                     try {
-                        v = cinfo.lookup().findStaticVarHandle(cls, fieldName, type);
+                        v = cinfo.lookup.findStaticVarHandle(cls, fieldName, type);
                     } catch (NoSuchFieldException | IllegalAccessException e2) {
                         v = MISS;
                     }
@@ -311,17 +332,17 @@ public final class Reflect {
 
         MethodType mt = MethodType.methodType(returnType, parameterTypes);
         String mtKey = mt.toString();
-        var methodCache = cinfo.methodCache();
+        var methodCache = cinfo.methodCache;
         for (String methodName : names) {
             String cacheKey = methodName + mtKey;
             Object v = methodCache.get(cacheKey);
 
             if (v == null) {
                 try {
-                    v = cinfo.lookup().findVirtual(cls, methodName, mt);
+                    v = cinfo.lookup.findVirtual(cls, methodName, mt);
                 } catch (NoSuchMethodException | IllegalAccessException e) {
                     try {
-                        v = cinfo.lookup().findStatic(cls, methodName, mt);
+                        v = cinfo.lookup.findStatic(cls, methodName, mt);
                     } catch (NoSuchMethodException | IllegalAccessException e2) {
                         v = MISS;
                     }

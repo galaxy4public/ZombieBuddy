@@ -1,21 +1,30 @@
 package me.zed_0xff.zombie_buddy.jardump;
 
-import net.bytebuddy.jar.asm.AnnotationVisitor;
-import net.bytebuddy.jar.asm.ClassReader;
-import net.bytebuddy.jar.asm.ClassVisitor;
-import net.bytebuddy.jar.asm.FieldVisitor;
-import net.bytebuddy.jar.asm.MethodVisitor;
-import net.bytebuddy.jar.asm.Opcodes;
-import net.bytebuddy.jar.asm.Type;
+import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Utils;
+
+import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.jar.asm.*; // shaded org.objectweb.asm
+import net.bytebuddy.pool.TypePool;
 
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
 public class AsmDump extends CLIUtil {
+    private static final int ASM_API = Opcodes.ASM9;
+    TypePool m_pool;
+
+    public AsmDump(TypePool pool) {
+        m_pool = pool;
+    }
+
     // "Ljava/util/regex/Pattern;" -> "java.util.regex.Pattern"
     static String typeName(String desc) {
         return Type.getType(desc).getClassName();
@@ -92,25 +101,134 @@ public class AsmDump extends CLIUtil {
         return colored;
     }
 
-    static String formatAnnotation(String desc, Map<String, Object> values) {
+    static final HashMap<String, Map<String, MethodDescription>> _annMemberCache = new HashMap<>();
+
+    Map<String, MethodDescription> getAnnotationMembers(TypeDescription td) {
+        Map<String, MethodDescription> members = new LinkedHashMap<>();
+        for (var m : td.getDeclaredMethods()) {
+            members.put(m.getName(), m);
+        }
+        return members;
+    }
+
+    static TypeDescription box(TypeDescription t) {
+        if (!t.isPrimitive()) return t;
+
+        if (t.represents(boolean.class)) return TypeDescription.ForLoadedType.of(Boolean.class);
+        if (t.represents(int.class))     return TypeDescription.ForLoadedType.of(Integer.class);
+        if (t.represents(long.class))    return TypeDescription.ForLoadedType.of(Long.class);
+        if (t.represents(double.class))  return TypeDescription.ForLoadedType.of(Double.class);
+        if (t.represents(float.class))   return TypeDescription.ForLoadedType.of(Float.class);
+        if (t.represents(short.class))   return TypeDescription.ForLoadedType.of(Short.class);
+        if (t.represents(byte.class))    return TypeDescription.ForLoadedType.of(Byte.class);
+        if (t.represents(char.class))    return TypeDescription.ForLoadedType.of(Character.class);
+
+        return t;
+    }
+
+    private boolean isAssignable(TypeDescription target, TypeDescription value) {
+        if (target.isPrimitive()) {
+            // allow unboxing conversions for primitives (e.g. int can be assigned from Integer)
+            return box(target).isAssignableFrom(value);
+        } else {
+            if (target.isAssignableFrom(value)) return true;
+            if (target.represents(Class.class) && value.represents(Type.class)) {
+                // allow Type to be assigned to Class for annotation members of type Class<?>
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private record Rule(boolean allowBlank, boolean allowDefault) {}
+
+    private static final Map<String, Map<String, Rule>> _annotationRules = Map.of(
+        Type.getDescriptor(Advice.FieldValue.class), Map.of(
+            "value", new Rule(false, false) // value member of @FieldValue cannot be empty string
+        )
+    );
+
+    boolean validateAnnotation(TypeDescription td, Map<String, MethodDescription> methods, Map<String, Object> values, Map<String, Rule> rules) {
+        boolean valid = true;
+        for (MethodDescription m : methods.values()) {
+            String name = m.getName();
+            Rule rule = rules.get(name);
+            Object value = values.get(name);
+            if (value == null) {
+                if (rule != null && !rule.allowDefault()) {
+                    Logger.debug("missing required annotation member -", name);
+                    valid = false;
+                    continue;
+                }
+                value = m.getDefaultValue();
+            } else {
+                TypeDescription returnType = m.getReturnType().asErasure();
+                TypeDescription valueType  = TypeDescription.ForLoadedType.of(value.getClass());
+                if (!isAssignable(returnType, valueType)) {
+                    Logger.debug(m.getReturnType() + " " + name + " is not assignable from " + valueType, value);
+                    valid = false;
+                }
+            }
+            if (value == null) {
+                Logger.debug("missing required annotation member", name);
+                valid = false;
+                continue;
+            }
+            if (rule != null && !rule.allowBlank() && Utils.isBlank(value)) {
+                Logger.debug("annotation " + name + " value cannot be blank", name);
+                valid = false;
+            }
+        }
+        for (var name : values.keySet()) {
+            if (!methods.containsKey(name)) {
+                Logger.debug("unknown annotation member", name);
+                valid = false;
+            }
+        }
+        return valid;
+    }
+
+    boolean validateAnnotation(String desc, Map<String, Object> values) {
+        try {
+            TypeDescription td =
+                m_pool.describe(Type.getType(desc).getClassName())
+                .resolve();
+
+            Map<String, MethodDescription> methods = _annMemberCache.computeIfAbsent(td.getName(), k -> getAnnotationMembers(td));
+            Map<String, Rule> rules = _annotationRules.getOrDefault(desc, Map.of());
+            return validateAnnotation(td, methods, values, rules);
+        } catch (Exception e) {
+            Logger.error("Failed to resolve annotation type: " + desc + ": " + e);
+            return false;
+        }
+    }
+
+    String formatAnnotation(String desc, Map<String, Object> values) {
         StringBuilder sb = new StringBuilder();
         sb.append(annotationName(desc));
 
         if (!values.isEmpty()) {
             sb.append("(");
 
-            boolean first = true;
-            for (var e : values.entrySet()) {
-                if (!first) {
-                    sb.append(", ");
-                }
-                first = false;
+            if (values.size() == 1 && values.containsKey("value")) {
+                // special case for single "value" member to allow @Anno("foo") instead of @Anno(value="foo")
+                sb.append(formatValue(values.get("value")));
+            } else {
+                boolean first = true;
+                for (var e : values.entrySet()) {
+                    if (!first) {
+                        sb.append(", ");
+                    }
+                    first = false;
 
-                sb.append(e.getKey()).append("=").append(formatValue(e.getValue()));
+                    sb.append(e.getKey()).append("=").append(formatValue(e.getValue()));
+                }
             }
             sb.append(")");
         }
-        return colorize(sb.toString(), desc.contains("bytebuddy") ? BB_ANN_COLOR : ANN_COLOR);
+
+        boolean valid = validateAnnotation(desc, values);
+        return colorize(sb.toString(), valid ? (desc.contains("bytebuddy") ? BB_ANN_COLOR : ANN_COLOR) : RED);
     }
 
     static String formatValue(Object v) {
@@ -145,13 +263,13 @@ public class AsmDump extends CLIUtil {
     /**
      * Collects annotation member values (non-default elements visited by ASM) and passes the formatted line to {@code emitLine} on {@link AnnotationVisitor#visitEnd()}.
      */
-    static AnnotationVisitor annotationPrinter(String desc, Consumer<String> emitLine) {
+    AnnotationVisitor annotationPrinter(String desc, Consumer<String> emitLine) {
         Map<String, Object> values = new LinkedHashMap<>();
         return annotationPrinterBody(desc, values, () -> emitLine.accept(formatAnnotation(desc, values)));
     }
 
-    private static AnnotationVisitor annotationPrinterBody(String desc, Map<String, Object> values, Runnable onEnd) {
-        return new AnnotationVisitor(Opcodes.ASM9) {
+    private AnnotationVisitor annotationPrinterBody(String desc, Map<String, Object> values, Runnable onEnd) {
+        return new AnnotationVisitor(ASM_API) {
             @Override
             public void visit(String name, Object value) {
                 values.put(annMemberName(name), value);
@@ -183,8 +301,8 @@ public class AsmDump extends CLIUtil {
         };
     }
 
-    private static AnnotationVisitor annotationArrayElements(List<Object> arr) {
-        return new AnnotationVisitor(Opcodes.ASM9) {
+    private AnnotationVisitor annotationArrayElements(List<Object> arr) {
+        return new AnnotationVisitor(ASM_API) {
             @Override
             public void visit(String name, Object value) {
                 arr.add(value);
@@ -210,10 +328,10 @@ public class AsmDump extends CLIUtil {
         };
     }
 
-    public static String dump(byte[] classBytes) {
+    public String dump(byte[] classBytes) {
         StringBuilder sb = new StringBuilder();
-        ClassReader cr = new ClassReader(classBytes);
-        cr.accept(new ClassVisitor(Opcodes.ASM9) {
+        ClassReader   cr = new ClassReader(classBytes);
+        ClassVisitor  cv = new ClassVisitor(ASM_API) {
             @Override
             public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
                 return annotationPrinter(desc, line -> sb.insert(0, line + "\n"));
@@ -240,7 +358,7 @@ public class AsmDump extends CLIUtil {
             public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
                 StringBuilder fsb = new StringBuilder();
 
-                return new FieldVisitor(Opcodes.ASM9) {
+                return new FieldVisitor(ASM_API) {
                     @Override
                     public AnnotationVisitor visitAnnotation(String adesc, boolean visible) {
                         return annotationPrinter(adesc, line -> fsb.append(line).append("\n"));
@@ -258,16 +376,30 @@ public class AsmDump extends CLIUtil {
 
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
                 StringBuilder msb = new StringBuilder();
                 Type mt = Type.getMethodType(descriptor);
                 Type[] args = mt.getArgumentTypes();
                 List<List<String>> paramAnnotations = new ArrayList<>();
+                Map<Integer, String> paramNames = new HashMap<>();
 
                 for (int i = 0; i < args.length; i++) {
                     paramAnnotations.add(new ArrayList<>());
                 }
 
-                return new MethodVisitor(Opcodes.ASM9) {
+                //MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                return new MethodVisitor(ASM_API /*, mv*/) {
+                    // available only if compiled with -parameters
+                    // @Override
+                    // public void visitParameter(String name, int access) {
+                    //     Logger.debug("parameter", name, access);
+                    // }
+
+                    @Override
+                    public void visitLocalVariable(String name, String descriptor, String signature, Label start, Label end, int index) {
+                        paramNames.put(index, name);
+                    }
+
                     @Override
                     public AnnotationVisitor visitAnnotation(String adesc, boolean visible) {
                         return annotationPrinter(adesc, line -> msb.append(line).append("\n"));
@@ -282,16 +414,35 @@ public class AsmDump extends CLIUtil {
                     public void visitEnd() {
                         msb.append(methodModifiers(access)).append(" ").append(name).append("(");
 
+                        int nAnns = 0;
+                        int nAnnotatedParams = 0;
+                        ArrayList<String> paramStrs = new ArrayList<>();
                         for (int i = 0; i < args.length; i++) {
-                            if (i != 0) {
-                                msb.append(", ");
-                            }
-
+                            StringBuilder lsb = new StringBuilder();
                             List<String> anns = paramAnnotations.get(i);
                             if (!anns.isEmpty()) {
-                                msb.append(String.join(" ", anns)).append(" ");
+                                nAnns += anns.size();
+                                nAnnotatedParams++;
+                                lsb.append(String.join(" ", anns)).append(" ");
                             }
-                            msb.append(simpleName(args[i].getDescriptor()));
+                            lsb.append(simpleName(args[i].getDescriptor()));
+                            lsb.append(" ").append(paramNames.getOrDefault(i + (isStatic ? 0 : 1), "arg" + i));
+                            paramStrs.add(lsb.toString());
+                        }
+
+                        if (nAnns > 4 && nAnnotatedParams < nAnns){
+                            // multi-line if there are many annotations but not all params are annotated (to avoid too much clutter)
+                            msb.append("\n");
+                            for (int i = 0; i < paramStrs.size(); i++) {
+                                msb.append(indent(paramStrs.get(i)));
+                                if (i != paramStrs.size() - 1) {
+                                    msb.append(",\n");
+                                }
+                            }
+                            msb.append("\n");
+                        } else {
+                            // one-line
+                            msb.append(String.join(", ", paramStrs));
                         }
 
                         msb.append(")\n");
@@ -299,8 +450,9 @@ public class AsmDump extends CLIUtil {
                     }
                 };
             }
-
-        }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        };
+        // SKIP_CODE or SKIP_DEBUG hides method parameter names
+        cr.accept(cv, ClassReader.SKIP_FRAMES);
         return sb.toString();
     }
 }
