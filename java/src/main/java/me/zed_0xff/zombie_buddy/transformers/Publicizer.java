@@ -12,22 +12,33 @@ public class Publicizer implements Transformer {
         return access;
     }
 
-    public byte[] transform(byte[] classBytes) {
+    public Result transform(byte[] classBytes) {
         ClassReader cr = new ClassReader(classBytes);
-        ClassWriter cw = new ClassWriter(0);  // no COMPUTE_FRAMES, no COMPUTE_MAXS
+        ClassWriter cw = new ClassWriter(0);          // no COMPUTE_FRAMES, no COMPUTE_MAXS
+        boolean[] modified = {false};                 // use array to modify inside lambda
 
-        cr.accept(new ClassVisitor(Opcodes.ASM9, cw) {
+        cr.accept(new ClassVisitor(ASM_API, cw) {
             @Override
             public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
-                return super.visitField(forcePublic(access), name, descriptor, signature, value);
+                int newAccess = forcePublic(access);
+                if (newAccess != access) modified[0] = true;
+                return super.visitField(newAccess, name, descriptor, signature, value);
             }
 
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                return super.visitMethod(forcePublic(access), name, descriptor, signature, exceptions);
+                // static class initializer should not be public
+                if (!name.equals("<clinit>")){
+                    int newAccess = forcePublic(access);
+                    if (newAccess != access) {
+                        modified[0] = true;
+                        access = newAccess;
+                    }
+                }
+                return super.visitMethod(access, name, descriptor, signature, exceptions);
             }
         }, 0);
 
-        return cw.toByteArray();
+        return new Result(cw.toByteArray(), modified[0]);
     }
 }
