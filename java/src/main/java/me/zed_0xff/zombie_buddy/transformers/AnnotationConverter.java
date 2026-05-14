@@ -152,40 +152,10 @@ public class AnnotationConverter implements Transformer {
         R apply(A a, B b, C c);
     }
 
-    /** Reads the LocalVariableTable of each method to extract parameter names. Key = methodName + descriptor. */
-    private static Map<String, String[]> collectParamNames(byte[] classBytes) {
-        Map<String, String[]> result = new HashMap<>();
-        new ClassReader(classBytes).accept(new ClassVisitor(Opcodes.ASM9) {
-            @Override
-            public MethodVisitor visitMethod(int access, String mName, String mDesc, String sig, String[] ex) {
-                boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
-                Type[] argTypes  = Type.getArgumentTypes(mDesc);
-                int paramCount   = argTypes.length;
-                String[] names   = new String[paramCount];
-                result.put(mName + mDesc, names);
-                // Build slot→paramIdx map; long/double occupy 2 slots, so slot ≠ paramIdx for wide types.
-                Map<Integer, Integer> slotToParam = new HashMap<>();
-                int slot = isStatic ? 0 : 1;
-                for (int i = 0; i < paramCount; i++) {
-                    slotToParam.put(slot, i);
-                    slot += argTypes[i].getSize();
-                }
-                return new MethodVisitor(Opcodes.ASM9) {
-                    @Override
-                    public void visitLocalVariable(String varName, String varDesc, String varSig, Label start, Label end, int index) {
-                        Integer paramIdx = slotToParam.get(index);
-                        if (paramIdx != null) names[paramIdx] = varName;
-                    }
-                };
-            }
-        }, ClassReader.SKIP_FRAMES);
-        return result;
-    }
-
     public Result transform(byte[] classBytes) {
         bChanged = false;
 
-        var allParams = collectParamNames(classBytes);
+        var allParams = Transformer.collectParamNames(classBytes);
 
         ClassReader cr = new ClassReader(classBytes);
         ClassWriter cw = new ClassWriter(0); // no COMPUTE_FRAMES, no COMPUTE_MAXS
@@ -205,8 +175,8 @@ public class AnnotationConverter implements Transformer {
 
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
-                String[] paramNames = allParams.getOrDefault(name + descriptor, null);
+                //boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
+                String[] paramNames = allParams.getOrDefault(name + descriptor, new String[0]);
 
                 MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
                 return new MethodVisitor(ASM_API, mv) {
@@ -217,7 +187,7 @@ public class AnnotationConverter implements Transformer {
 
                     @Override
                     public AnnotationVisitor visitParameterAnnotation(int i, String descriptor, boolean visible) {
-                        String paramName = (paramNames == null || i >= paramNames.length) ? ("arg" + i ) : paramNames[i];
+                        String paramName = (i >= paramNames.length) ? ("arg" + i ) : paramNames[i];
                         return visitMappedParamAnnotation(i, descriptor, visible, super::visitParameterAnnotation, paramName);
                     }
                 };

@@ -1,5 +1,7 @@
 package me.zed_0xff.zombie_buddy.jardump;
 
+import me.zed_0xff.zombie_buddy.transformers.Transformer;
+
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Utils;
 
@@ -329,6 +331,8 @@ public class AsmDump extends CLIUtil {
     }
 
     public String dump(byte[] classBytes) {
+        var allParams = Transformer.collectParamNames(classBytes);
+
         StringBuilder sb = new StringBuilder();
         ClassReader   cr = new ClassReader(classBytes);
         ClassVisitor  cv = new ClassVisitor(ASM_API) {
@@ -376,12 +380,11 @@ public class AsmDump extends CLIUtil {
 
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
+                String[] paramNames = allParams.getOrDefault(name + descriptor, new String[0]);
                 StringBuilder msb = new StringBuilder();
                 Type mt = Type.getMethodType(descriptor);
                 Type[] args = mt.getArgumentTypes();
                 List<List<String>> paramAnnotations = new ArrayList<>();
-                Map<Integer, String> paramNames = new HashMap<>();
 
                 for (int i = 0; i < args.length; i++) {
                     paramAnnotations.add(new ArrayList<>());
@@ -394,11 +397,6 @@ public class AsmDump extends CLIUtil {
                     // public void visitParameter(String name, int access) {
                     //     Logger.debug("parameter", name, access);
                     // }
-
-                    @Override
-                    public void visitLocalVariable(String name, String descriptor, String signature, Label start, Label end, int index) {
-                        paramNames.put(index, name);
-                    }
 
                     @Override
                     public AnnotationVisitor visitAnnotation(String adesc, boolean visible) {
@@ -426,7 +424,8 @@ public class AsmDump extends CLIUtil {
                                 lsb.append(String.join(" ", anns)).append(" ");
                             }
                             lsb.append(simpleName(args[i].getDescriptor()));
-                            lsb.append(" ").append(paramNames.getOrDefault(i + (isStatic ? 0 : 1), "arg" + i));
+                            String paramName = (i >= paramNames.length) ? ("arg" + i ) : paramNames[i];
+                            lsb.append(" ").append(paramName);
                             paramStrs.add(lsb.toString());
                         }
 
