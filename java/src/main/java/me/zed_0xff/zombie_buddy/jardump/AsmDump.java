@@ -400,7 +400,6 @@ public class AsmDump extends CLIUtil {
                             // multi-line if there are many annotations but not all params are annotated (to avoid too much clutter)
                             msb.append("\n");
                             msb.append(indent(tbl.toString()));
-                            msb.append("\n");
                         } else {
                             // one-line
                             msb.append(String.join(" ", tbl.rows().stream().map(r -> r.toString()).toArray(String[]::new)) );

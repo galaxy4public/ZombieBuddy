@@ -219,7 +219,7 @@ public @interface Patch {
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.Handle.html            - returns only MethodHandle, no VarHandle support
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldGetterHandle.html - respects field visibility
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldSetterHandle.html - --//--
-    @Deprecated(forRemoval = true) // use @Patch.MethodHandle and @Patch.VarHandle instead, which support both methods and fields in a single annotation
+    // @Deprecated(forRemoval = true) // use @Patch.MethodHandle and @Patch.VarHandle instead, which support both methods and fields in a single annotation
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.PARAMETER})
     public @interface MemberHandle {

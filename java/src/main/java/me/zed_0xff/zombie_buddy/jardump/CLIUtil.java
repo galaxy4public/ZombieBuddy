@@ -108,7 +108,8 @@ class CLIUtil {
         }
 
         public void addRow(String col1, String col2) {
-            rows().add(new Row(col1, uncolorize(col1.split("\n")[0]).length(), col2));
+            int maxlen = uncolorize(col1).lines().mapToInt(String::length).max().orElse(0);
+            rows().add(new Row(col1, maxlen, col2));
         }
 
         public String toString() {
