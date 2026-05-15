@@ -1,9 +1,15 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
-public class NoopTransformer implements Transformer {
-    static final Result NOOP_RESULT = new Result(null, false);
+import net.bytebuddy.jar.asm.ClassVisitor;
+import net.bytebuddy.jar.asm.ClassWriter;
 
+public class NoopTransformer extends Transformer {
     public Result transform(byte[] classBytes) {
         return NOOP_RESULT;
+    }
+
+    @Override
+    protected ClassVisitor createVisitor(ClassWriter cw, byte[] classBytes) {
+        throw new UnsupportedOperationException("NoopTransformer should never create a visitor");
     }
 }

@@ -23,8 +23,6 @@ public class Main extends CLIUtil {
     static boolean _showHelp    = false;
     static boolean _changedOnly = false;
 
-    private static class CondPublicizer extends Publicizer {}
-
     private record TransInfo(
             String id,
             Supplier<Transformer> factory,
@@ -32,11 +30,11 @@ public class Main extends CLIUtil {
             String description) {}
 
     private static final List<TransInfo> TRANS_LIST = List.of(
-        new TransInfo("ann",      AnnotationConverter::new, true,  "Convert ZombieBuddy annotations to ByteBuddy annotations"),
-        new TransInfo("pub-all",  Publicizer::new,          false, "Publicize all members unconditionally"),
-        new TransInfo("pub-cond", CondPublicizer::new,      true,  "Publicize if any annotations were converted by the previous steps"),
-        new TransInfo("resolve",  AlternativeResolver::new, true,  "Resolve alternative names in annotations"),
-        new TransInfo("nop",      NoopTransformer::new,     false, "Do nothing (for testing/debugging purposes)")
+        new TransInfo("ann",      AnnotationConverter::new,   true,  "Convert ZombieBuddy annotations to ByteBuddy annotations"),
+        new TransInfo("pub-all",  Publicizer::new,            false, "Publicize all members unconditionally"),
+        new TransInfo("pub-cond", ConditionalPublicizer::new, true,  "Publicize if any annotations were converted by the previous steps"),
+        new TransInfo("resolve",  AlternativeResolver::new,   true,  "Resolve alternative names in annotations"),
+        new TransInfo("nop",      NoopTransformer::new,       false, "Do nothing (for testing/debugging purposes)")
     );
 
     private static final Map<String, TransInfo> TRANS_MAP =
@@ -110,39 +108,36 @@ public class Main extends CLIUtil {
 //                 ClassFileLocator.ForModuleFile.ofBootPath() // JDK
                  );
         ) {
-            List<Transformer> transformers = _transformers.stream()
-                .map(TRANS_MAP::get)
-                .map(t -> t.factory().get())
-                .toList();
             TypePool pool = TypePool.Default.of(locator);
-            var dumper = new AsmDump(pool);
             // TypePool pool = TypePool.Default.of(locator, TypePool.ClassLoading.ofBootPath());
             jar.stream()
                 .map(JarEntry::getName)
                 .filter(n -> n.endsWith(".class") && !n.startsWith("META-INF/") && !n.equals("module-info.class"))
                 .map(n -> n.substring(0, n.length() - 6).replace('/', '.'))  // → binary class name
+                .sorted() // ensures that all parent classes are processed before their nested classes, which is important for the transformers to work correctly
                 .forEach(className -> {
                     try {
-                        byte[] classBytes   = locator.locate(className).resolve();
-                        byte[] rewritten    = classBytes.clone();
-                        boolean changed     = false;
-                        boolean ann_changed = false;
+                        var res = locator.locate(className);
+                        if (!res.isResolved()) {
+                            System.err.println("Failed to locate class: " + className);
+                            return; // returns from lambda, not method
+                        }
+                        byte[] classBytes     = res.resolve();
+                        byte[] rewritten      = classBytes.clone();
+                        ClassContext classCtx = new ClassContext(className, classBytes, pool);
 
-                        for (Transformer t : transformers) {
-                            if (t instanceof CondPublicizer && !ann_changed) {
-                                continue; // skip if no changes from previous transformers
-                            }
-                            var result = t.transform(rewritten);
+                        // instantiate transformers for each class bc they might have internal state
+                        for (String trans_id : _transformers) {
+                            Transformer t = TRANS_MAP.get(trans_id).factory().get();
+
+                            var result = t.transform(rewritten, classCtx);
                             if (result.modified() && result.bytes() != null) {
                                 rewritten = result.bytes();
-                                changed = true;
-                                if (t instanceof AnnotationConverter) {
-                                    ann_changed = true;
-                                }
                             }
                         }
 
-                        if (changed || !_changedOnly) {
+                        if (classCtx.isChanged() || !_changedOnly) {
+                            var dumper = new AsmDump(classCtx);
                             System.out.println(dumper.dump(rewritten));
                         }
                     } catch (IOException e) {

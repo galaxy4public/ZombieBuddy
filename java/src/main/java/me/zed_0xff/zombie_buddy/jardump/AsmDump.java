@@ -1,6 +1,6 @@
 package me.zed_0xff.zombie_buddy.jardump;
 
-import me.zed_0xff.zombie_buddy.transformers.Transformer;
+import me.zed_0xff.zombie_buddy.transformers.*;
 
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Utils;
@@ -21,10 +21,10 @@ import java.util.function.Consumer;
 
 public class AsmDump extends CLIUtil {
     private static final int ASM_API = Opcodes.ASM9;
-    TypePool m_pool;
+    private final ClassContext m_ctx;
 
-    public AsmDump(TypePool pool) {
-        m_pool = pool;
+    public AsmDump(ClassContext ctx) {
+        m_ctx = ctx;
     }
 
     // "Ljava/util/regex/Pattern;" -> "java.util.regex.Pattern"
@@ -44,53 +44,21 @@ public class AsmDump extends CLIUtil {
         return idx >= 0 ? name.substring(idx + 1) : name;
     }
 
-    private static void addModifier(List<String> mods, int access, int flag, String label) {
-        if ((access & flag) != 0) {
-            mods.add(label);
-        }
+    private record Mod(int flag, String label) {}
+
+    private static final Mod[] CLASS_MODS  = { new Mod(Opcodes.ACC_PUBLIC, "public"), new Mod(Opcodes.ACC_FINAL, "final"), new Mod(Opcodes.ACC_ABSTRACT, "abstract"), new Mod(Opcodes.ACC_INTERFACE, "interface"), new Mod(Opcodes.ACC_ENUM, "enum") };
+    private static final Mod[] METHOD_MODS = { new Mod(Opcodes.ACC_PUBLIC, "public"), new Mod(Opcodes.ACC_PRIVATE, "private"), new Mod(Opcodes.ACC_PROTECTED, "protected"), new Mod(Opcodes.ACC_STATIC, "static"), new Mod(Opcodes.ACC_FINAL, "final"), new Mod(Opcodes.ACC_SYNCHRONIZED, "synchronized"), new Mod(Opcodes.ACC_ABSTRACT, "abstract") };
+    private static final Mod[] FIELD_MODS  = { new Mod(Opcodes.ACC_PUBLIC, "public"), new Mod(Opcodes.ACC_PRIVATE, "private"), new Mod(Opcodes.ACC_PROTECTED, "protected"), new Mod(Opcodes.ACC_STATIC, "static"), new Mod(Opcodes.ACC_FINAL, "final"), new Mod(Opcodes.ACC_VOLATILE, "volatile"), new Mod(Opcodes.ACC_TRANSIENT, "transient"), new Mod(Opcodes.ACC_SYNTHETIC, "synthetic"), new Mod(Opcodes.ACC_ENUM, "enum") };
+
+    private static String formatMods(int access, Mod[] mods) {
+        List<String> found = new ArrayList<>();
+        for (Mod m : mods) if ((access & m.flag()) != 0) found.add(m.label());
+        return String.join(" ", colorizeModifiers(found));
     }
 
-    static String classModifiers(int access) {
-        List<String> mods = new ArrayList<>();
-        addModifier(mods, access, Opcodes.ACC_PUBLIC, "public");
-        addModifier(mods, access, Opcodes.ACC_FINAL, "final");
-        addModifier(mods, access, Opcodes.ACC_ABSTRACT, "abstract");
-        addModifier(mods, access, Opcodes.ACC_INTERFACE, "interface");
-        addModifier(mods, access, Opcodes.ACC_ENUM, "enum");
-
-        return String.join(" ", colorizeModifiers(mods));
-    }
-
-    static String methodModifiers(int access) {
-        List<String> mods = new ArrayList<>();
-        addModifier(mods, access, Opcodes.ACC_PUBLIC, "public");
-        addModifier(mods, access, Opcodes.ACC_PRIVATE, "private");
-        addModifier(mods, access, Opcodes.ACC_PROTECTED, "protected");
-        addModifier(mods, access, Opcodes.ACC_STATIC, "static");
-        addModifier(mods, access, Opcodes.ACC_FINAL, "final");
-        addModifier(mods, access, Opcodes.ACC_SYNCHRONIZED, "synchronized");
-        addModifier(mods, access, Opcodes.ACC_ABSTRACT, "abstract");
-
-        return String.join(" ", colorizeModifiers(mods));
-    }
-
-    static String fieldModifiers(int access) {
-        List<String> mods = new ArrayList<>();
-        addModifier(mods, access, Opcodes.ACC_PUBLIC, "public");
-        addModifier(mods, access, Opcodes.ACC_PRIVATE, "private");
-        addModifier(mods, access, Opcodes.ACC_PROTECTED, "protected");
-
-        addModifier(mods, access, Opcodes.ACC_STATIC, "static");
-        addModifier(mods, access, Opcodes.ACC_FINAL, "final");
-
-        addModifier(mods, access, Opcodes.ACC_VOLATILE, "volatile");
-        addModifier(mods, access, Opcodes.ACC_TRANSIENT, "transient");
-
-        addModifier(mods, access, Opcodes.ACC_SYNTHETIC, "synthetic");
-        addModifier(mods, access, Opcodes.ACC_ENUM, "enum");
-
-        return String.join(" ", colorizeModifiers(mods));
-    }
+    static String classModifiers(int access)  { return formatMods(access, CLASS_MODS); }
+    static String methodModifiers(int access) { return formatMods(access, METHOD_MODS); }
+    static String fieldModifiers(int access)  { return formatMods(access, FIELD_MODS); }
 
     static ArrayList<String> colorizeModifiers(List<String> mods) {
         ArrayList<String> colored = new ArrayList<>(mods);
@@ -193,7 +161,7 @@ public class AsmDump extends CLIUtil {
     boolean validateAnnotation(String desc, Map<String, Object> values) {
         try {
             TypeDescription td =
-                m_pool.describe(Type.getType(desc).getClassName())
+                m_ctx.getTypePool().describe(Type.getType(desc).getClassName())
                 .resolve();
 
             Map<String, MethodDescription> methods = _annMemberCache.computeIfAbsent(td.getName(), k -> getAnnotationMembers(td));
@@ -344,7 +312,7 @@ public class AsmDump extends CLIUtil {
             @Override
             public void visit(int version, int access, String className, String signature, String superName, String[] interfaces) {
                 StringBuilder csb = new StringBuilder();
-                csb.append(classModifiers(access)).append(" class ").append(className);
+                csb.append(classModifiers(access)).append(" class ").append(className.replace('/', '.'));
                 if (!Type.getInternalName(Object.class).equals(superName)) {
                     csb.append(" extends ").append(superName);
                 }

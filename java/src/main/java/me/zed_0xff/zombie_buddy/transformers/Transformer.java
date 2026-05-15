@@ -5,12 +5,35 @@ import java.util.Map;
 
 import net.bytebuddy.jar.asm.*;
 
-public interface Transformer {
+public abstract class Transformer {
     public static final int ASM_API = Opcodes.ASM9;
+    protected static final Result NOOP_RESULT = new Result(null, false);
 
     public record Result(byte[] bytes, boolean modified) {}
 
-    Result transform(byte[] classBytes);
+    protected boolean      m_changed;
+    protected ClassContext m_ctx;
+
+    public Result transform(byte[] classBytes, ClassContext ctx) {
+        try {
+            m_ctx = ctx;
+            m_changed = false;
+            ClassWriter cw = new ClassWriter(0);
+            new ClassReader(classBytes).accept(createVisitor(cw, classBytes), 0);
+            if (m_changed) {
+                byte[] newBytes = cw.toByteArray();
+                ctx.setChanged();
+                ctx.updateTypeDesc(newBytes);
+                return new Result(newBytes, m_changed);
+            } else {
+                return NOOP_RESULT;
+            }
+        } finally {
+            m_ctx = null;
+        }
+    }
+
+    protected abstract ClassVisitor createVisitor(ClassWriter cw, byte[] classBytes);
 
     /** Reads the LocalVariableTable of each method to extract parameter names. Key = methodName + descriptor. */
     public static Map<String, String[]> collectParamNames(byte[] classBytes) {

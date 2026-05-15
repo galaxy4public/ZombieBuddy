@@ -14,7 +14,7 @@ import net.bytebuddy.jar.asm.*;
 /*
  * converts ZombieBuddy annotations to ByteBuddy's
  */
-public class AnnotationConverter implements Transformer {
+public class AnnotationConverter extends AbstractParamAwareTransformer {
     public static final Map<String, String> ANN_MAP;
     static {
         ANN_MAP = new HashMap<>();
@@ -124,7 +124,8 @@ public class AnnotationConverter implements Transformer {
         String newDescriptor = mapDescriptor(descriptor);
         if (newDescriptor == null) return visitor.apply(pidx, descriptor, visible);
 
-        bChanged = true;
+        m_changed = true;
+        m_ctx.setAnnChanged();
         // visit original annotation first
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(pidx, descriptor, visible) : null;
         AnnotationVisitor dst = visitor.apply(pidx, newDescriptor, visible);
@@ -135,7 +136,8 @@ public class AnnotationConverter implements Transformer {
         String newDescriptor = mapDescriptor(descriptor);
         if (newDescriptor == null) return visitor.apply(descriptor, visible);
 
-        bChanged = true;
+        m_changed = true;
+        m_ctx.setAnnChanged();
         // visit original annotation first
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(descriptor, visible) : null;
         AnnotationVisitor dst = visitor.apply(newDescriptor, visible);
@@ -147,54 +149,19 @@ public class AnnotationConverter implements Transformer {
     }
 
     boolean bKeepOriginalAnnotations = true;
-    boolean bChanged = false;
 
-    @FunctionalInterface
-    public interface TriFunction<A, B, C, R> {
-        R apply(A a, B b, C c);
+    @Override
+    protected AnnotationVisitor processClassAnnotation(String desc, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
+        return visitMappedAnnotation(desc, visible, visitor);
     }
 
-    public Result transform(byte[] classBytes) {
-        bChanged = false;
+    @Override
+    protected AnnotationVisitor processMethodAnnotation(String desc, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
+        return visitMappedAnnotation(desc, visible, visitor);
+    }
 
-        var allParams = Transformer.collectParamNames(classBytes);
-
-        ClassReader cr = new ClassReader(classBytes);
-        ClassWriter cw = new ClassWriter(0); // no COMPUTE_FRAMES, no COMPUTE_MAXS
-
-        cr.accept(new ClassVisitor(ASM_API, cw) {
-            @Override
-            public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
-                return visitMappedAnnotation(descriptor, visible, super::visitAnnotation);
-            }
-
-            // TODO: field annotations
-            // @Override
-            // public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
-                // FieldVisitor fv = super.visitField(forcePublic(access), name, descriptor, signature, value);
-                // return fv;
-            // }
-
-            @Override
-            public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                String[] paramNames = allParams.getOrDefault(name + descriptor, new String[0]);
-
-                MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
-                return new MethodVisitor(ASM_API, mv) {
-                    @Override
-                    public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
-                        return visitMappedAnnotation(descriptor, visible, super::visitAnnotation);
-                    }
-
-                    @Override
-                    public AnnotationVisitor visitParameterAnnotation(int i, String descriptor, boolean visible) {
-                        String paramName = (i >= paramNames.length) ? ("arg" + i ) : paramNames[i];
-                        return visitMappedParamAnnotation(i, descriptor, visible, super::visitParameterAnnotation, paramName);
-                    }
-                };
-            }
-        }, 0);
-
-        return new Result(cw.toByteArray(), bChanged);
+    @Override
+    protected AnnotationVisitor processParameterAnnotation(int index, String desc, boolean visible, TriFunction<Integer, String, Boolean, AnnotationVisitor> visitor, String paramName) {
+        return visitMappedParamAnnotation(index, desc, visible, visitor, paramName);
     }
 }
