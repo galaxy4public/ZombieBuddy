@@ -382,34 +382,28 @@ public class AsmDump extends CLIUtil {
 
                         int nAnns = 0;
                         int nAnnotatedParams = 0;
-                        ArrayList<String> paramStrs = new ArrayList<>();
+                        Table2 tbl = new Table2(4);
                         for (int i = 0; i < args.length; i++) {
-                            StringBuilder lsb = new StringBuilder();
                             List<String> anns = paramAnnotations.get(i);
                             if (!anns.isEmpty()) {
                                 nAnns += anns.size();
                                 nAnnotatedParams++;
-                                lsb.append(String.join(" ", anns)).append(" ");
-                            }
-                            lsb.append(simpleName(args[i].getDescriptor()));
+                            } 
                             String paramName = (i >= paramNames.length) ? ("arg" + i ) : paramNames[i];
-                            lsb.append(" ").append(paramName);
-                            paramStrs.add(lsb.toString());
+                            tbl.addRow(
+                                    String.join(" ", anns),
+                                    simpleName(args[i].getDescriptor()) + " " + paramName + ((i < args.length - 1) ? "," : "")
+                                    );
                         }
 
                         if (nAnns > 4 && nAnnotatedParams < nAnns){
                             // multi-line if there are many annotations but not all params are annotated (to avoid too much clutter)
                             msb.append("\n");
-                            for (int i = 0; i < paramStrs.size(); i++) {
-                                msb.append(indent(paramStrs.get(i)));
-                                if (i != paramStrs.size() - 1) {
-                                    msb.append(",\n");
-                                }
-                            }
+                            msb.append(indent(tbl.toString()));
                             msb.append("\n");
                         } else {
                             // one-line
-                            msb.append(String.join(", ", paramStrs));
+                            msb.append(String.join(" ", tbl.rows().stream().map(r -> r.toString()).toArray(String[]::new)) );
                         }
 
                         msb.append(")\n");
