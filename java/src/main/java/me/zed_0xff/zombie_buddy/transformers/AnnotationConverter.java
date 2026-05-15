@@ -1,67 +1,53 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
-import static me.zed_0xff.zombie_buddy.transformers.AnnotationConverter.ParamRule.*;
-
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Patch;
 
-import java.util.Arrays;
-import java.util.EnumSet;
+import java.lang.reflect.Method;
 import java.util.function.BiFunction;
 import java.util.HashMap;
 import java.util.Map;
 
-import net.bytebuddy.asm.Advice;
 import net.bytebuddy.jar.asm.*;
 
 /*
- * converts ZombieBuddy annotations to ByteBuddy's
+ * converts ZombieBuddy annotations to ByteBuddy's, driven by @Patch.Internal.Meta metadata
  */
 public class AnnotationConverter extends AbstractParamAwareTransformer {
-    public static final Map<String, String> ANN_MAP;
+
+    private record MapBoolInfo(Type onTrue, Type onFalse) {}
+    private record AnnInfo(String targetDesc, Map<String, MapBoolInfo> mapBools, boolean nameToValue) {}
+
+    private static final Type NO_EXCEPTION_HANDLER = Type.getType("Lnet/bytebuddy/asm/Advice$NoExceptionHandler;");
+
+    static final Map<String, AnnInfo> MAPPINGS;
     static {
-        ANN_MAP = new HashMap<>();
-        ANN_MAP.put(Type.getDescriptor(Patch.This.class),         Type.getDescriptor(Advice.This.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.Adapter.class),      Type.getDescriptor(Advice.Local.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.Argument.class),     Type.getDescriptor(Advice.Argument.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.AllArguments.class), Type.getDescriptor(Advice.AllArguments.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.Field.class),        Type.getDescriptor(Advice.FieldValue.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.FieldRW.class),      Type.getDescriptor(Advice.FieldValue.class));
+        MAPPINGS = new HashMap<>();
+        for (Class<?> inner : Patch.class.getDeclaredClasses()) {
+            if (!inner.isAnnotation()) continue;
+            Patch.Internal.Meta[] metas = inner.getAnnotationsByType(Patch.Internal.Meta.class);
+            if (metas.length == 0 || metas[0].requireType().length > 0) continue;
 
-        ANN_MAP.put(Type.getDescriptor(Patch.Local.class),        Type.getDescriptor(Advice.Local.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.OnEnter.class),      Type.getDescriptor(Advice.OnMethodEnter.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.OnExit.class),       Type.getDescriptor(Advice.OnMethodExit.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.Return.class),       Type.getDescriptor(Advice.Return.class));
-        ANN_MAP.put(Type.getDescriptor(Patch.Thrown.class),       Type.getDescriptor(Advice.Thrown.class));
-    }
+            Map<String, MapBoolInfo> mapBools = new HashMap<>();
+            boolean nameToValue = false;
+            for (Method m : inner.getDeclaredMethods()) {
+                Patch.Internal.MapBool mb = m.getAnnotation(Patch.Internal.MapBool.class);
+                if (mb != null) {
+                    Type onFalse = mb.onFalse() == Patch.Internal.Null.class ? NO_EXCEPTION_HANDLER : Type.getType(mb.onFalse());
+                    mapBools.put(m.getName(), new MapBoolInfo(Type.getType(mb.onTrue()), onFalse));
+                }
+                Patch.Internal.Flags flags = m.getAnnotation(Patch.Internal.Flags.class);
+                if (flags != null && flags.inferFromTargetName()) nameToValue = true;
+            }
 
-    public enum ParamRule {
-        ARR2STR,
-        NAME2VALUE,
-        SKIPON
-    }
-
-    private record ParamRules (EnumSet<ParamRule> rules) {
-        public ParamRules(ParamRule... rules) {
-            this( rules.length == 0
-                ? EnumSet.noneOf(ParamRule.class)
-                : EnumSet.copyOf(Arrays.asList(rules))
-                );
-        }
-
-        public boolean contains(ParamRule rule) {
-            return rules.contains(rule);
+            MAPPINGS.put(Type.getDescriptor(inner), new AnnInfo(Type.getDescriptor(metas[0].targetClass()), mapBools, nameToValue));
         }
     }
 
-    private static final Map<String, ParamRules> PARAM_RULES = Map.of(
-        Type.getDescriptor(Advice.FieldValue.class),    new ParamRules(ARR2STR, NAME2VALUE),
-        Type.getDescriptor(Advice.OnMethodEnter.class), new ParamRules(SKIPON)
-    );
-
-    private static final ParamRules DEFAULT_RULES = new ParamRules();
-
-    private static final Type NO_EXCEPTION_HANDLER = Type.getType("Lnet/bytebuddy/asm/Advice$NoExceptionHandler;"); // private
+    public static String mapDescriptor(String descriptor) {
+        AnnInfo info = MAPPINGS.get(descriptor);
+        return info != null ? info.targetDesc() : null;
+    }
 
     /** Forwards every callback to two delegates so ASM element parsing fills both annotations (keep-original + dst). */
     private static class DualAnnotationVisitor extends AnnotationVisitor {
@@ -69,30 +55,27 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         private final AnnotationVisitor dst;
         private final HashMap<String, Object> params = new HashMap<>();
         private final String paramName;
-        private final ParamRules rules;
+        private final AnnInfo annInfo;
 
-        private static final Object ARRAY_SENTINEL = new Object(); // used to mark array parameters in params map
+        private static final Object ARRAY_SENTINEL = new Object();
 
         DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst) { this(src, dst, null, null); }
-        DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst, String newDescriptor, String paramName) {
+        DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst, AnnInfo annInfo, String paramName) {
             super(ASM_API);
-            this.src = src;
-            this.dst = dst;
+            this.src     = src;
+            this.dst     = dst;
+            this.annInfo  = annInfo;
             this.paramName = paramName;
-            if (newDescriptor == null || !PARAM_RULES.containsKey(newDescriptor)) {
-                rules = DEFAULT_RULES;
-            } else {
-                rules = PARAM_RULES.get(newDescriptor);
-            }
         }
 
         @Override
-        public void visit(String name, Object value) { // name can be null for array elements
+        public void visit(String name, Object value) {
             if (name != null) params.put(name, value);
-            if (src != null)  src.visit(name, value);
+            if (src != null) src.visit(name, value);
             if (dst != null) {
-                if (rules.contains(ParamRule.SKIPON) && "skipOn".equals(name) && value instanceof Boolean skip) {
-                    value = skip ? Type.getType(Advice.OnNonDefaultValue.class) : NO_EXCEPTION_HANDLER;
+                if (annInfo != null && name != null) {
+                    MapBoolInfo mb = annInfo.mapBools().get(name);
+                    if (mb != null && value instanceof Boolean b) value = b ? mb.onTrue() : mb.onFalse();
                 }
                 dst.visit(name, value);
             }
@@ -107,33 +90,24 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
 
         @Override
         public AnnotationVisitor visitAnnotation(String name, String descriptor) {
-            if (src != null && dst != null) {
-                return new DualAnnotationVisitor(src.visitAnnotation(name, descriptor), dst.visitAnnotation(name, descriptor));
-            } else if (src != null) {
-                return src.visitAnnotation(name, descriptor);
-            } else { // dst != null
-                return dst.visitAnnotation(name, descriptor);
-            }
+            if (src != null && dst != null) return new DualAnnotationVisitor(src.visitAnnotation(name, descriptor), dst.visitAnnotation(name, descriptor));
+            if (src != null) return src.visitAnnotation(name, descriptor);
+            return dst.visitAnnotation(name, descriptor);
         }
 
         @Override
         public AnnotationVisitor visitArray(String name) {
             params.put(name, ARRAY_SENTINEL);
-            if (src != null && dst != null) {
-                return new DualAnnotationVisitor(src.visitArray(name), dst.visitArray(name));
-            } else if (src != null) {
-                return src.visitArray(name);
-            } else { // dst != null
-                return dst.visitArray(name);
-            }
+            if (src != null && dst != null) return new DualAnnotationVisitor(src.visitArray(name), dst.visitArray(name));
+            if (src != null) return src.visitArray(name);
+            return dst.visitArray(name);
         }
 
         @Override
         public void visitEnd() {
             if (src != null) src.visitEnd();
             if (dst != null) {
-                if (rules.contains(ParamRule.NAME2VALUE) && paramName != null && !params.containsKey("value")) {
-                    // for FieldValue annotations on parameters, we need to set the "value" parameter to the parameter name
+                if (annInfo != null && annInfo.nameToValue() && paramName != null && !params.containsKey("value")) {
                     dst.visit("value", paramName);
                 }
                 dst.visitEnd();
@@ -142,31 +116,25 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
     }
 
     private AnnotationVisitor visitMappedParamAnnotation(int pidx, String descriptor, boolean visible, TriFunction<Integer, String, Boolean, AnnotationVisitor> visitor, String paramName) {
-        String newDescriptor = mapDescriptor(descriptor);
-        if (newDescriptor == null) return visitor.apply(pidx, descriptor, visible);
+        AnnInfo info = MAPPINGS.get(descriptor);
+        if (info == null) return visitor.apply(pidx, descriptor, visible);
 
         m_changed = true;
         m_ctx.setAnnChanged();
-        // visit original annotation first
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(pidx, descriptor, visible) : null;
-        AnnotationVisitor dst = visitor.apply(pidx, newDescriptor, visible);
-        return new DualAnnotationVisitor(src, dst, newDescriptor, paramName);
+        AnnotationVisitor dst = visitor.apply(pidx, info.targetDesc(), visible);
+        return new DualAnnotationVisitor(src, dst, info, paramName);
     }
 
     private AnnotationVisitor visitMappedAnnotation(String descriptor, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
-        String newDescriptor = mapDescriptor(descriptor);
-        if (newDescriptor == null) return visitor.apply(descriptor, visible);
+        AnnInfo info = MAPPINGS.get(descriptor);
+        if (info == null) return visitor.apply(descriptor, visible);
 
         m_changed = true;
         m_ctx.setAnnChanged();
-        // visit original annotation first
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(descriptor, visible) : null;
-        AnnotationVisitor dst = visitor.apply(newDescriptor, visible);
-        return new DualAnnotationVisitor(src, dst, newDescriptor, null);
-    }
-
-    public static String mapDescriptor(String descriptor) {
-        return ANN_MAP.get(descriptor);
+        AnnotationVisitor dst = visitor.apply(info.targetDesc(), visible);
+        return new DualAnnotationVisitor(src, dst, info, null);
     }
 
     boolean bKeepOriginalAnnotations = true;

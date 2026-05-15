@@ -308,42 +308,41 @@ public @interface Patch {
         Class<?> value() default void.class;    // void.class = infer from enclosing @Patch.className()
     }
 
-    // intentionally package-private
-    static final class Internal {
-        private Internal() {} // prevent instantiation
+    public static final class Internal {
+        private Internal() {}
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.TYPE)
-        @interface Metadata {
+        public @interface Metadata {
             Meta[] value();
         }
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.TYPE)
         @Repeatable(Metadata.class)
-        @interface Meta {
+        public @interface Meta {
             Class<?> targetClass();
             Class<?>[] requireType() default {};
         }
 
-        static final class Null {}
+        public static final class Null {}
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.METHOD)
-        @interface MapBool {
+        public @interface MapBool {
             Class<?> onTrue();
             Class<?> onFalse() default Null.class;
         }
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.METHOD)
-        @interface Alias {
+        public @interface Alias {
             String value();
         }
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.METHOD)
-        @interface Flags {
+        public @interface Flags {
             boolean inferFromTargetName() default false;
             boolean probeField() default false;
             boolean probeMethod() default false;
