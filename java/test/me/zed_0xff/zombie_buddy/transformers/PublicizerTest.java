@@ -6,15 +6,7 @@ import java.io.IOException;
 
 import net.bytebuddy.description.type.TypeDescription;
 
-class PublicizerTest {
-    static byte[] getClassBytes(Class<?> cls) throws IOException {
-        String path = "/" + cls.getName().replace('.', '/') + ".class";
-
-        try (var in = cls.getResourceAsStream(path)) {
-            return in.readAllBytes();
-        }
-    }
-
+class PublicizerTest extends AbstractTest {
     static class Target {
         private int f1;
         static Object f2;
