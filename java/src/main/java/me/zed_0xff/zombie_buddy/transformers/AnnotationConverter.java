@@ -16,7 +16,11 @@ import net.bytebuddy.jar.asm.*;
 public class AnnotationConverter extends AbstractParamAwareTransformer {
 
     private record MapBoolInfo(Type onTrue, Type onFalse) {} // onFalse==null means drop on false
-    private record AnnInfo(String targetDesc, Map<String, MapBoolInfo> mapBools, boolean nameToValue) {}
+    private record AnnInfo(
+            String targetDesc,
+            Map<String, MapBoolInfo> mapBools,
+            Map<String, Patch.Internal.Flags> mapFlags
+    ) {}
 
     static final Map<String, AnnInfo> MAPPINGS;
     static {
@@ -26,18 +30,18 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
             Patch.Internal.Meta[] metas = inner.getAnnotationsByType(Patch.Internal.Meta.class);
             if (metas.length == 0 || metas[0].requireType().length > 0) continue;
 
-            Map<String, MapBoolInfo> mapBools = new HashMap<>();
-            boolean nameToValue = false;
+            Map<String, MapBoolInfo> mapBools          = new HashMap<>();
+            Map<String, Patch.Internal.Flags> mapFlags = new HashMap<>();
+
             for (Method m : inner.getDeclaredMethods()) {
                 Patch.Internal.MapBool mb = m.getAnnotation(Patch.Internal.MapBool.class);
-                if (mb != null) {
-                    mapBools.put(m.getName(), new MapBoolInfo(resolveType(mb.onTrue()), resolveType(mb.onFalse())));
-                }
+                if (mb != null) mapBools.put(m.getName(), new MapBoolInfo(resolveType(mb.onTrue()), resolveType(mb.onFalse())));
+
                 Patch.Internal.Flags flags = m.getAnnotation(Patch.Internal.Flags.class);
-                if (flags != null && flags.inferFromTargetName()) nameToValue = true;
+                if (flags != null) mapFlags.put(m.getName(), flags);
             }
 
-            MAPPINGS.put(Type.getDescriptor(inner), new AnnInfo(Type.getDescriptor(metas[0].targetClass()), mapBools, nameToValue));
+            MAPPINGS.put(Type.getDescriptor(inner), new AnnInfo(Type.getDescriptor(metas[0].targetClass()), mapBools, mapFlags));
         }
     }
 
@@ -52,7 +56,7 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
     }
 
     /** Forwards every callback to two delegates so ASM element parsing fills both annotations (keep-original + dst). */
-    private static class DualAnnotationVisitor extends AnnotationVisitor {
+    private static class TranslateAnnotationVisitor extends AnnotationVisitor {
         private final AnnotationVisitor src;
         private final AnnotationVisitor dst;
         private final HashMap<String, Object> params = new HashMap<>();
@@ -61,8 +65,8 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
 
         private static final Object ARRAY_SENTINEL = new Object();
 
-        DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst) { this(src, dst, null, null); }
-        DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst, AnnInfo annInfo, String paramName) {
+        TranslateAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst) { this(src, dst, null, null); }
+        TranslateAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst, AnnInfo annInfo, String paramName) {
             super(ASM_API);
             this.src       = src;
             this.dst       = dst;
@@ -72,6 +76,7 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
 
         @Override
         public void visit(String name, Object value) {
+            System.out.println("visit param: " + name + " = " + value);
             if (name != null) params.put(name, value);
             if (src != null) src.visit(name, value);
             if (dst != null) {
@@ -100,7 +105,8 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
 
         @Override
         public AnnotationVisitor visitAnnotation(String name, String descriptor) {
-            if (src != null && dst != null) return new DualAnnotationVisitor(src.visitAnnotation(name, descriptor), dst.visitAnnotation(name, descriptor));
+            System.out.println("visit annotation param: " + name + " with descriptor " + descriptor);
+            if (src != null && dst != null) return new TranslateAnnotationVisitor(src.visitAnnotation(name, descriptor), dst.visitAnnotation(name, descriptor));
             if (src != null) return src.visitAnnotation(name, descriptor);
             return dst.visitAnnotation(name, descriptor);
         }
@@ -108,17 +114,24 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         @Override
         public AnnotationVisitor visitArray(String name) {
             params.put(name, ARRAY_SENTINEL);
-            if (src != null && dst != null) return new DualAnnotationVisitor(src.visitArray(name), dst.visitArray(name));
+            if (src != null && dst != null) return new TranslateAnnotationVisitor(src.visitArray(name), dst.visitArray(name));
             if (src != null) return src.visitArray(name);
             return dst.visitArray(name);
         }
 
         @Override
         public void visitEnd() {
+            System.out.println("visitEnd with params: " + params + ", paramName = " + paramName + ", mapFlags = " + (annInfo == null ? null : annInfo.mapFlags()));
             if (src != null) src.visitEnd();
             if (dst != null) {
-                if (annInfo != null && annInfo.nameToValue() && paramName != null && !params.containsKey("value")) {
-                    dst.visit("value", paramName);
+                if (annInfo != null && paramName != null) {
+                    for (var entry : annInfo.mapFlags().entrySet()) {
+                        String pname = entry.getKey();
+                        var flags = entry.getValue();
+                        if (flags.inferFromTargetName() && !params.containsKey(pname) && paramName != null) {
+                            dst.visit(pname, paramName);
+                        }
+                    }
                 }
                 dst.visitEnd();
             }
@@ -133,7 +146,7 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         m_ctx.setAnnChanged();
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(pidx, descriptor, visible) : null;
         AnnotationVisitor dst = visitor.apply(pidx, info.targetDesc(), visible);
-        return new DualAnnotationVisitor(src, dst, info, paramName);
+        return new TranslateAnnotationVisitor(src, dst, info, paramName);
     }
 
     private AnnotationVisitor visitMappedAnnotation(String descriptor, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
@@ -144,7 +157,7 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         m_ctx.setAnnChanged();
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(descriptor, visible) : null;
         AnnotationVisitor dst = visitor.apply(info.targetDesc(), visible);
-        return new DualAnnotationVisitor(src, dst, info, null);
+        return new TranslateAnnotationVisitor(src, dst, info, null);
     }
 
     boolean bKeepOriginalAnnotations = true;

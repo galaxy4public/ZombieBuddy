@@ -10,9 +10,9 @@ import java.util.stream.Stream;
 
 public class CompactTable {
     private final int            m_numCols;
-    private final ArrayList<Row> m_rows     = new ArrayList<>();
-    private int                  m_minDelta            = 8;
-    private int                  m_minAdjacentSpacing  = 2; // min spaces between (LEFT, RIGHT) adjacent pair; <=0 disables
+    private final ArrayList<Row> m_rows               = new ArrayList<>();
+    private int                  m_minDelta           = 8;
+    private int                  m_minAdjacentSpacing = 2; // min spaces between (LEFT, RIGHT) adjacent pair; <=0 disables
     private Align[]              m_aligns;
 
     public enum Align { DEFAULT, LEFT, RIGHT }
