@@ -10,9 +10,10 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 import net.bytebuddy.description.type.TypeDescription;
 
-class AnnotationResolverTest_Advice_FieldValue extends AbstractTest {
+class AlternativeResolverTest_Patch_Field extends AbstractTest {
     static class Target1 {
         static void m1(@Patch.Field("renamed") int bar) {}
+        static void m2(@Patch.Field({"first", "second"}) int bar) {} // TODO
     }
 
     @Test
