@@ -15,10 +15,8 @@ import net.bytebuddy.jar.asm.*;
  */
 public class AnnotationConverter extends AbstractParamAwareTransformer {
 
-    private record MapBoolInfo(Type onTrue, Type onFalse) {}
+    private record MapBoolInfo(Type onTrue, Type onFalse) {} // onFalse==null means drop on false
     private record AnnInfo(String targetDesc, Map<String, MapBoolInfo> mapBools, boolean nameToValue) {}
-
-    private static final Type NO_EXCEPTION_HANDLER = Type.getType("Lnet/bytebuddy/asm/Advice$NoExceptionHandler;");
 
     static final Map<String, AnnInfo> MAPPINGS;
     static {
@@ -33,8 +31,7 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
             for (Method m : inner.getDeclaredMethods()) {
                 Patch.Internal.MapBool mb = m.getAnnotation(Patch.Internal.MapBool.class);
                 if (mb != null) {
-                    Type onFalse = mb.onFalse() == Patch.Internal.Null.class ? NO_EXCEPTION_HANDLER : Type.getType(mb.onFalse());
-                    mapBools.put(m.getName(), new MapBoolInfo(Type.getType(mb.onTrue()), onFalse));
+                    mapBools.put(m.getName(), new MapBoolInfo(resolveType(mb.onTrue()), resolveType(mb.onFalse())));
                 }
                 Patch.Internal.Flags flags = m.getAnnotation(Patch.Internal.Flags.class);
                 if (flags != null && flags.inferFromTargetName()) nameToValue = true;
@@ -42,6 +39,11 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
 
             MAPPINGS.put(Type.getDescriptor(inner), new AnnInfo(Type.getDescriptor(metas[0].targetClass()), mapBools, nameToValue));
         }
+    }
+
+    private static Type resolveType(Class<?> cls) {
+        if (cls == Patch.Internal.DropAnnParam.class) return null;
+        return Type.getType(cls);
     }
 
     public static String mapDescriptor(String descriptor) {
@@ -62,9 +64,9 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst) { this(src, dst, null, null); }
         DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst, AnnInfo annInfo, String paramName) {
             super(ASM_API);
-            this.src     = src;
-            this.dst     = dst;
-            this.annInfo  = annInfo;
+            this.src       = src;
+            this.dst       = dst;
+            this.annInfo   = annInfo;
             this.paramName = paramName;
         }
 
@@ -75,7 +77,15 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
             if (dst != null) {
                 if (annInfo != null && name != null) {
                     MapBoolInfo mb = annInfo.mapBools().get(name);
-                    if (mb != null && value instanceof Boolean b) value = b ? mb.onTrue() : mb.onFalse();
+                    if (mb != null && value instanceof Boolean b) {
+                        if (b) {
+                            value = mb.onTrue();
+                        } else if (mb.onFalse() == null) {
+                            return; // drop annotation parameter (DropAnnParam)
+                        } else {
+                            value = mb.onFalse();
+                        }
+                    }
                 }
                 dst.visit(name, value);
             }

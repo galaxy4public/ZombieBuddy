@@ -28,7 +28,7 @@ public @interface Patch {
     @Internal.Meta(targetClass = Advice.OnMethodEnter.class)
     public @interface OnEnter {
         @Internal.MapBool(onTrue = Advice.OnNonDefaultValue.class)
-        boolean skipOn() default false;    // converted by AnnotationConverter.java
+        boolean skipOn() default false;  // converted by AnnotationConverter.java
     }
 
     /** Alias for net.bytebuddy.asm.Advice.OnMethodExit - mods should use Patch.OnExit instead */
@@ -325,13 +325,13 @@ public @interface Patch {
             Class<?>[] requireType() default {};
         }
 
-        public static final class Null {}
+        public static final class DropAnnParam {} // drop annotation parameter
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.METHOD)
         public @interface MapBool {
             Class<?> onTrue();
-            Class<?> onFalse() default Null.class;
+            Class<?> onFalse() default DropAnnParam.class;
         }
 
         @Retention(RetentionPolicy.RUNTIME)

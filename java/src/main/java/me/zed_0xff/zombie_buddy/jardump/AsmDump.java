@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class AsmDump extends CLIUtil {
     private static final int ASM_API = Opcodes.ASM9;
@@ -382,17 +383,20 @@ public class AsmDump extends CLIUtil {
 
                         int nAnns = 0;
                         int nAnnotatedParams = 0;
-                        Table2 tbl = new Table2(4);
+                        CompactTable tbl = new CompactTable(4).setAlign(2, CompactTable.Align.RIGHT);
                         for (int i = 0; i < args.length; i++) {
-                            List<String> anns = paramAnnotations.get(i);
+                            List<String> anns = paramAnnotations.get(i).stream().map(s -> s.replace("$", ".")).toList();
                             if (!anns.isEmpty()) {
                                 nAnns += anns.size();
                                 nAnnotatedParams++;
                             } 
+                            Map<Boolean, List<String>> parts = anns.stream().collect(Collectors.partitioningBy(s -> s.contains("@Patch")));
                             String paramName = (i >= paramNames.length) ? ("arg" + i ) : paramNames[i];
                             tbl.addRow(
-                                    String.join(" ", anns),
-                                    simpleName(args[i].getDescriptor()) + " " + paramName + ((i < args.length - 1) ? "," : "")
+                                    String.join(" ", parts.get(true)),
+                                    String.join(" ", parts.get(false)),
+                                    simpleName(args[i].getDescriptor()),
+                                    paramName + ((i < args.length - 1) ? "," : "")
                                     );
                         }
 

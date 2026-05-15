@@ -6,6 +6,8 @@ import me.zed_0xff.zombie_buddy.transformers.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -97,19 +99,37 @@ public class Main extends CLIUtil {
         return positionalArgs;
     }
 
-    public static void processFile(String fname) throws IOException {
-        System.out.println(fname);
+    public static void processClass(String className, byte[] classBytes, TypePool pool) throws IOException {
+        byte[] rewritten      = classBytes.clone();
+        ClassContext classCtx = new ClassContext(className, classBytes, pool);
+
+        // instantiate transformers for each class bc they might have internal state
+        for (String trans_id : _transformers) {
+            Transformer t = TRANS_MAP.get(trans_id).factory().get();
+
+            var result = t.transform(rewritten, classCtx);
+            if (result.modified() && result.bytes() != null) {
+                rewritten = result.bytes();
+            }
+        }
+
+        if (classCtx.isChanged() || !_changedOnly) {
+            var dumper = new AsmDump(classCtx);
+            System.out.println(dumper.dump(rewritten));
+        }
+    }
+
+    public static void processJar(String fname) throws IOException {
         try (
              JarFile jar   = new JarFile(new File(fname), false);
-             JarFile zbJar = new JarFile(Utils.getCurrentJarPath().toFile(), false);
+             // JarFile zbJar = new JarFile(Utils.getCurrentJarPath().toFile(), false);
              ClassFileLocator locator = new ClassFileLocator.Compound(
                  new ClassFileLocator.ForJarFile(jar),       // target
                  ClassFileLocator.ForClassLoader.of(Main.class.getClassLoader()) // ZB + JDK
-//                 ClassFileLocator.ForModuleFile.ofBootPath() // JDK
+                 // ClassFileLocator.ForModuleFile.ofBootPath() // JDK
                  );
         ) {
             TypePool pool = TypePool.Default.of(locator);
-            // TypePool pool = TypePool.Default.of(locator, TypePool.ClassLoading.ofBootPath());
             jar.stream()
                 .map(JarEntry::getName)
                 .filter(n -> n.endsWith(".class") && !n.startsWith("META-INF/") && !n.equals("module-info.class"))
@@ -122,30 +142,27 @@ public class Main extends CLIUtil {
                             System.err.println("Failed to locate class: " + className);
                             return; // returns from lambda, not method
                         }
-                        byte[] classBytes     = res.resolve();
-                        byte[] rewritten      = classBytes.clone();
-                        ClassContext classCtx = new ClassContext(className, classBytes, pool);
-
-                        // instantiate transformers for each class bc they might have internal state
-                        for (String trans_id : _transformers) {
-                            Transformer t = TRANS_MAP.get(trans_id).factory().get();
-
-                            var result = t.transform(rewritten, classCtx);
-                            if (result.modified() && result.bytes() != null) {
-                                rewritten = result.bytes();
-                            }
-                        }
-
-                        if (classCtx.isChanged() || !_changedOnly) {
-                            var dumper = new AsmDump(classCtx);
-                            System.out.println(dumper.dump(rewritten));
-                        }
+                        byte[] classBytes = res.resolve();
+                        processClass(className, classBytes, pool);
                     } catch (IOException e) {
                         System.err.println("Failed to read class: " + className);
                         e.printStackTrace();
                     }
                 });
         }
+    }
+
+    public static void processClassFile(String fname) throws IOException {
+        String className = fname.endsWith(".class") ? fname.substring(0, fname.length() - 6).replace('/', '.') : fname;
+        byte[] bytes = Files.readAllBytes(Path.of(fname));
+
+        ClassFileLocator locator = new ClassFileLocator.Compound(
+                new ClassFileLocator.Simple(Map.of(className, bytes)),
+                ClassFileLocator.ForClassLoader.ofSystemLoader()
+        );
+
+        TypePool pool = TypePool.Default.of(locator);
+        processClass(className, bytes, pool);
     }
 
     public static void main(String[] args) throws IOException {
@@ -158,7 +175,12 @@ public class Main extends CLIUtil {
         }
 
         for (String fname : positionalArgs) {
-            processFile(fname);
+            System.out.println(fname);
+            if (fname.endsWith(".jar")) processJar(fname);
+            else if (fname.endsWith(".class")) processClassFile(fname);
+            else {
+                Logger.error("Unsupported file type: ", fname);
+            }
         }
     }
 }

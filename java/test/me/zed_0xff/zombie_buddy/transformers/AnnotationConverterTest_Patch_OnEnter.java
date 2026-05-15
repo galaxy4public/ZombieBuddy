@@ -66,4 +66,32 @@ class AnnotationConverterTest_Patch_OnEnter extends AbstractTest {
         assertThat(a.getValue("skipOn").resolve())
             .isEqualTo(TypeDescription.ForLoadedType.of(Advice.OnNonDefaultValue.class));
     }
+
+    static class Target3 {
+        @Patch.OnEnter(skipOn = false)
+        static boolean m1() { return true; }
+    }
+
+    @Test
+    void test_OnEnter_skipOn_false() throws IOException {
+        Class<?> cls = Target3.class;
+        byte[] bytes = getClassBytes(cls);
+        ClassContext ctx = new ClassContext(cls.getName(), bytes, null);
+
+        var m = ctx.getMethod("m1");
+        assertThat(m.getDeclaredAnnotations())
+            .hasSize(1);
+
+        var result = new AnnotationConverter().transform(bytes, ctx);
+        assertThat(result.modified()).isTrue();
+        assertThat(result.bytes()).isNotNull();
+
+        m = ctx.getMethod("m1");
+        assertThat(m.getDeclaredAnnotations())
+            .hasSize(2);
+
+        var a = m.getDeclaredAnnotations().filter(x -> x.getAnnotationType().isAssignableTo(Advice.OnMethodEnter.class)).getOnly();
+        assertThat(a.getValue("skipOn").resolve())
+            .isEqualTo(TypeDescription.ForLoadedType.of(void.class));
+    }
 }
