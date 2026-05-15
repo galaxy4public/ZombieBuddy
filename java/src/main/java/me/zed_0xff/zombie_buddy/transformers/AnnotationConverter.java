@@ -1,8 +1,11 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
+import static me.zed_0xff.zombie_buddy.transformers.AnnotationConverter.ParamRule.*;
+
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Patch;
 
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.function.BiFunction;
 import java.util.HashMap;
@@ -32,17 +35,31 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         ANN_MAP.put(Type.getDescriptor(Patch.Thrown.class),       Type.getDescriptor(Advice.Thrown.class));
     }
 
-    private enum ParamRule {
+    public enum ParamRule {
+        ARR2STR,
         NAME2VALUE,
         SKIPON
     }
 
-    private static final Map<String, EnumSet<ParamRule>> PARAM_RULES = Map.of(
-        Type.getDescriptor(Advice.FieldValue.class),    EnumSet.of(ParamRule.NAME2VALUE),
-        Type.getDescriptor(Advice.OnMethodEnter.class), EnumSet.of(ParamRule.SKIPON)
+    private record ParamRules (EnumSet<ParamRule> rules) {
+        public ParamRules(ParamRule... rules) {
+            this( rules.length == 0
+                ? EnumSet.noneOf(ParamRule.class)
+                : EnumSet.copyOf(Arrays.asList(rules))
+                );
+        }
+
+        public boolean contains(ParamRule rule) {
+            return rules.contains(rule);
+        }
+    }
+
+    private static final Map<String, ParamRules> PARAM_RULES = Map.of(
+        Type.getDescriptor(Advice.FieldValue.class),    new ParamRules(ARR2STR, NAME2VALUE),
+        Type.getDescriptor(Advice.OnMethodEnter.class), new ParamRules(SKIPON)
     );
 
-    private static final EnumSet<ParamRule> DEFAULT_RULES = EnumSet.noneOf(ParamRule.class);
+    private static final ParamRules DEFAULT_RULES = new ParamRules();
 
     private static final Type NO_EXCEPTION_HANDLER = Type.getType("Lnet/bytebuddy/asm/Advice$NoExceptionHandler;"); // private
 
@@ -52,7 +69,7 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         private final AnnotationVisitor dst;
         private final HashMap<String, Object> params = new HashMap<>();
         private final String paramName;
-        private final EnumSet<ParamRule> rules;
+        private final ParamRules rules;
 
         private static final Object ARRAY_SENTINEL = new Object(); // used to mark array parameters in params map
 
@@ -62,7 +79,11 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
             this.src = src;
             this.dst = dst;
             this.paramName = paramName;
-            rules = (newDescriptor == null) ? DEFAULT_RULES : PARAM_RULES.getOrDefault(newDescriptor, DEFAULT_RULES);
+            if (newDescriptor == null || !PARAM_RULES.containsKey(newDescriptor)) {
+                rules = DEFAULT_RULES;
+            } else {
+                rules = PARAM_RULES.get(newDescriptor);
+            }
         }
 
         @Override
