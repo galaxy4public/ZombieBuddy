@@ -229,7 +229,7 @@ public class AsmDump extends CLIUtil {
             sb.append(")");
         }
 
-        boolean valid = validateAnnotation(desc, values);
+        boolean valid = desc.startsWith("Lme/zed_0xff/zombie_buddy/Patch") || validateAnnotation(desc, values);
         return colorize(sb.toString(), valid ? (desc.contains("bytebuddy") ? BB_ANN_COLOR : ANN_COLOR) : RED);
     }
 

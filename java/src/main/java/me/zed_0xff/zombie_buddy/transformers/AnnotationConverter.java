@@ -54,6 +54,8 @@ public class AnnotationConverter implements Transformer {
         private final String paramName;
         private final EnumSet<ParamRule> rules;
 
+        private static final Object ARRAY_SENTINEL = new Object(); // used to mark array parameters in params map
+
         DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst) { this(src, dst, null, null); }
         DualAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst, String newDescriptor, String paramName) {
             super(ASM_API);
@@ -64,11 +66,9 @@ public class AnnotationConverter implements Transformer {
         }
 
         @Override
-        public void visit(String name, Object value) {
-            if (src != null) {
-                params.put(name, value);
-                src.visit(name, value);
-            }
+        public void visit(String name, Object value) { // name can be null for array elements
+            if (name != null) params.put(name, value);
+            if (src != null)  src.visit(name, value);
             if (dst != null) {
                 if (rules.contains(ParamRule.SKIPON) && "skipOn".equals(name) && value instanceof Boolean skip) {
                     value = skip ? Type.getType(Advice.OnNonDefaultValue.class) : NO_EXCEPTION_HANDLER;
@@ -79,6 +79,7 @@ public class AnnotationConverter implements Transformer {
 
         @Override
         public void visitEnum(String name, String descriptor, String value) {
+            Logger.debug("Visiting enum", name, descriptor, value);
             if (src != null) src.visitEnum(name, descriptor, value);
             if (dst != null) dst.visitEnum(name, descriptor, value);
         }
@@ -96,6 +97,7 @@ public class AnnotationConverter implements Transformer {
 
         @Override
         public AnnotationVisitor visitArray(String name) {
+            params.put(name, ARRAY_SENTINEL);
             if (src != null && dst != null) {
                 return new DualAnnotationVisitor(src.visitArray(name), dst.visitArray(name));
             } else if (src != null) {
@@ -175,7 +177,6 @@ public class AnnotationConverter implements Transformer {
 
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                //boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
                 String[] paramNames = allParams.getOrDefault(name + descriptor, new String[0]);
 
                 MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
