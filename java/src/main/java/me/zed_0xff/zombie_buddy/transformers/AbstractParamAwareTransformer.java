@@ -1,12 +1,18 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
+import me.zed_0xff.zombie_buddy.Patch;
+
+import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
 
 import net.bytebuddy.jar.asm.*;
 
+/*
+ * base class for transformers that need access to parameter _names_ when processing annotations (e.g. AnnotationConverter)
+ */
 public abstract class AbstractParamAwareTransformer extends Transformer {
-
     @FunctionalInterface
     public interface TriFunction<A, B, C, R> {
         R apply(A a, B b, C c);

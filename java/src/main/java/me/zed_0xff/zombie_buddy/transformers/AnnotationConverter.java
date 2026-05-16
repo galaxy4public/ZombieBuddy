@@ -1,63 +1,18 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
 import me.zed_0xff.zombie_buddy.Logger;
-import me.zed_0xff.zombie_buddy.Patch;
 import me.zed_0xff.zombie_buddy.Utils;
 
-import java.lang.reflect.Method;
 import java.util.function.BiFunction;
 import java.util.HashMap;
-import java.util.Map;
 
 import net.bytebuddy.jar.asm.*;
 
 /*
  * converts ZombieBuddy annotations to ByteBuddy's, driven by @Patch.Internal.Meta metadata
  */
-public class AnnotationConverter extends AbstractParamAwareTransformer {
-
-    private record MapBoolInfo(Type onTrue, Type onFalse) {} // onFalse==null means drop on false
-    private record AnnInfo(
-            Patch.Internal.Meta[]             metas,
-            Map<String, MapBoolInfo>          mapBools,
-            Map<String, Patch.Internal.Flags> mapFlags
-    ) {}
-
-    static final Map<String, AnnInfo> MAPPINGS;
-    static {
-        MAPPINGS = new HashMap<>();
-        for (Class<?> inner : Patch.class.getDeclaredClasses()) {
-            if (!inner.isAnnotation()) continue;
-            Patch.Internal.Meta[] metas = inner.getAnnotationsByType(Patch.Internal.Meta.class);
-            if (metas.length == 0) continue;
-
-            Map<String, MapBoolInfo> mapBools          = new HashMap<>();
-            Map<String, Patch.Internal.Flags> mapFlags = new HashMap<>();
-
-            for (Method m : inner.getDeclaredMethods()) {
-                Patch.Internal.MapBool mb = m.getAnnotation(Patch.Internal.MapBool.class);
-                if (mb != null) mapBools.put(m.getName(), new MapBoolInfo(resolveType(mb.onTrue()), resolveType(mb.onFalse())));
-
-                Patch.Internal.Flags flags = m.getAnnotation(Patch.Internal.Flags.class);
-                if (flags != null) mapFlags.put(m.getName(), flags);
-            }
-
-            MAPPINGS.put(Type.getDescriptor(inner), new AnnInfo(metas, mapBools, mapFlags));
-        }
-    }
-
-    private static Type resolveType(Class<?> cls) {
-        if (cls == Patch.Internal.DropAnnParam.class) return null;
-        return Type.getType(cls);
-    }
-
-    public static String mapDescriptor(String descriptor) {
-        AnnInfo info = MAPPINGS.get(descriptor);
-        if (info == null) return null;
-
-        var meta = info.metas()[0]; // FIXME: handle isAdvice flag and multiple metas
-        return meta.targetClass() == void.class ? null : Type.getDescriptor(meta.targetClass());
-    }
+public class AnnotationConverter extends AbstractPatchAnnotationTransformer {
+    boolean bKeepOriginalAnnotations = true;
 
     /** Forwards every callback to two delegates so ASM element parsing fills both annotations (keep-original + dst). */
     private static class TranslateAnnotationVisitor extends AnnotationVisitor {
@@ -66,8 +21,6 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         private final HashMap<String, Object> m_params = new HashMap<>();
         private final String                  m_paramName;
         private final AnnInfo                 m_annInfo;
-
-        private static final Object ARRAY_SENTINEL = new Object();
 
         TranslateAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst) { this(src, dst, null, null); }
         TranslateAnnotationVisitor(AnnotationVisitor src, AnnotationVisitor dst, AnnInfo annInfo, String paramName) {
@@ -80,7 +33,14 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
 
         @Override
         public void visit(String name, Object value) {
-            if (name != null) m_params.put(name, value);
+            // Logger.debug("visit", m_paramName, name, value);
+            if (name == null) {
+                // array value
+            } else {
+                // param
+                m_params.put(name, value);
+            }
+
             if (m_src != null) m_src.visit(name, value);
             if (m_dst != null) {
                 if (m_annInfo != null && name != null) {
@@ -101,28 +61,30 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
 
         @Override
         public void visitEnum(String name, String descriptor, String value) {
-            Logger.debug("Visiting enum", name, descriptor, value);
+            // Logger.debug("visitEnum", m_paramName, name, descriptor, value);
             if (m_src != null) m_src.visitEnum(name, descriptor, value);
             if (m_dst != null) m_dst.visitEnum(name, descriptor, value);
         }
 
         @Override
         public AnnotationVisitor visitAnnotation(String name, String descriptor) {
-            if (m_src != null && m_dst != null) return new TranslateAnnotationVisitor(m_src.visitAnnotation(name, descriptor), m_dst.visitAnnotation(name, descriptor));
-            if (m_src != null) return m_src.visitAnnotation(name, descriptor);
-            return m_dst.visitAnnotation(name, descriptor);
+            // Logger.debug("visitAnnotation", m_paramName, name, descriptor);
+            if (m_src != null && m_dst != null)
+                return new TranslateAnnotationVisitor(m_src.visitAnnotation(name, descriptor), m_dst.visitAnnotation(name, descriptor));
+            return (m_src != null) ? m_src.visitAnnotation(name, descriptor) : m_dst.visitAnnotation(name, descriptor);
         }
 
         @Override
         public AnnotationVisitor visitArray(String name) {
-            m_params.put(name, ARRAY_SENTINEL);
-            if (m_src != null && m_dst != null) return new TranslateAnnotationVisitor(m_src.visitArray(name), m_dst.visitArray(name));
-            if (m_src != null) return m_src.visitArray(name);
-            return m_dst.visitArray(name);
+            // Logger.debug("visitArray", m_paramName, name);
+            if (m_src != null && m_dst != null)
+                return new TranslateAnnotationVisitor(m_src.visitArray(name), m_dst.visitArray(name));
+            return (m_src != null) ? m_src.visitArray(name) : m_dst.visitArray(name);
         }
 
         @Override
         public void visitEnd() {
+            // Logger.debug("visitEnd", m_paramName);
             if (m_src != null) m_src.visitEnd();
             if (m_dst != null) {
                 if (m_annInfo != null && m_paramName != null) {
@@ -140,11 +102,14 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
                         }
                     }
 
+                    // FIXME: handle isAdvice flag and multiple metas
                     for (var entry : m_annInfo.mapFlags().entrySet()) {
                         String pname = entry.getKey();
                         var flags = entry.getValue();
                         if (flags.inferFromTargetName() && !m_params.containsKey(pname) && m_paramName != null) {
+                            // Logger.debug("Inferring annotation parameter", pname, m_paramName, m_params);
                             m_dst.visit(pname, m_paramName);
+                            m_params.put(pname, m_paramName);
                         }
                     }
                 }
@@ -153,48 +118,27 @@ public class AnnotationConverter extends AbstractParamAwareTransformer {
         }
     }
 
-    private AnnotationVisitor visitMappedParamAnnotation(int pidx, String descriptor, boolean visible, TriFunction<Integer, String, Boolean, AnnotationVisitor> visitor, String paramName) {
-        AnnInfo info = MAPPINGS.get(descriptor);
-        if (info == null) return visitor.apply(pidx, descriptor, visible);
-
+    @Override
+    protected AnnotationVisitor visitMappedParamAnnotation(AnnInfo ai, boolean visible, TriFunction<Integer, String, Boolean, AnnotationVisitor> visitor, int pidx, String paramName) {
         m_changed = true;
         m_ctx.setAnnChanged();
-        AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(pidx, descriptor, visible) : null;
+        AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(pidx, ai.descriptor(), visible) : null;
 
-        var meta = info.metas()[0]; // FIXME: handle isAdvice flag and multiple metas
-        String targetDesc = Type.getDescriptor(meta.targetClass());
+        var meta = ai.metas()[0]; // FIXME: handle isAdvice flag and multiple metas
+        String targetDesc = Type.getDescriptor(meta.targetAnnotation());
         AnnotationVisitor dst = visitor.apply(pidx, targetDesc, visible);
-        return new TranslateAnnotationVisitor(src, dst, info, paramName);
+        return new TranslateAnnotationVisitor(src, dst, ai, paramName);
     }
 
-    private AnnotationVisitor visitMappedAnnotation(String descriptor, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
-        AnnInfo info = MAPPINGS.get(descriptor);
-        if (info == null) return visitor.apply(descriptor, visible);
-
+    @Override
+    protected AnnotationVisitor visitMappedAnnotation(AnnInfo ai, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
         m_changed = true;
         m_ctx.setAnnChanged();
-        AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(descriptor, visible) : null;
+        AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(ai.descriptor(), visible) : null;
 
-        var meta = info.metas()[0]; // FIXME: handle isAdvice flag and multiple metas
-        String targetDesc = Type.getDescriptor(meta.targetClass());
+        var meta = ai.metas()[0]; // FIXME: handle isAdvice flag and multiple metas
+        String targetDesc = Type.getDescriptor(meta.targetAnnotation());
         AnnotationVisitor dst = visitor.apply(targetDesc, visible);
-        return new TranslateAnnotationVisitor(src, dst, info, null);
-    }
-
-    boolean bKeepOriginalAnnotations = true;
-
-    @Override
-    protected AnnotationVisitor processClassAnnotation(String desc, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
-        return visitMappedAnnotation(desc, visible, visitor);
-    }
-
-    @Override
-    protected AnnotationVisitor processMethodAnnotation(String desc, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
-        return visitMappedAnnotation(desc, visible, visitor);
-    }
-
-    @Override
-    protected AnnotationVisitor processParameterAnnotation(int index, String desc, boolean visible, TriFunction<Integer, String, Boolean, AnnotationVisitor> visitor, String paramName) {
-        return visitMappedParamAnnotation(index, desc, visible, visitor, paramName);
+        return new TranslateAnnotationVisitor(src, dst, ai, null);
     }
 }

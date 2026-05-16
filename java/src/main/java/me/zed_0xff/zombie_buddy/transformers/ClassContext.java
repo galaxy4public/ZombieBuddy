@@ -1,6 +1,7 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
 import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Patch;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -9,6 +10,7 @@ import java.util.Map;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
+import net.bytebuddy.jar.asm.Type;
 import net.bytebuddy.pool.TypePool;
 
 public class ClassContext {
@@ -20,12 +22,23 @@ public class ClassContext {
     private boolean         m_annChanged;
     private boolean         m_changed;
     private TypeDescription m_typeDesc;
+    private TypeDescription m_targetDesc;
+
+    // only for internal use by this class; do not expose, do not return.
+    private static final class NOT_FOUND {};
+    private static final TypeDescription TD_NOT_FOUND = new TypeDescription.ForLoadedType(NOT_FOUND.class);
 
     public ClassContext(String className, byte[] classBytes, TypePool pool) {
-        this.m_className = className;
-        this.m_pool      = pool;
-        m_origDesc       = buildTypeDesc(classBytes);
-        m_typeDesc       = m_origDesc;
+        m_className = className;
+        m_pool      = pool;
+        m_origDesc  = buildTypeDesc(classBytes);
+        m_typeDesc  = m_origDesc;
+    }
+
+    @Override
+    public String toString() {
+        String simpleName = m_className.replaceAll(".*[.$]", ".");
+        return "ClassContext(" + simpleName + ")";
     }
 
     private record ByteKey(byte[] bytes) {
@@ -63,9 +76,8 @@ public class ClassContext {
 
     // before any transformations; used for comparison and to access original annotations
     public TypeDescription getOriginalTypeDesc() { return this.m_origDesc; }
-
-    public TypeDescription getTypeDesc() { return this.m_typeDesc; }
-    public TypePool        getTypePool() { return this.m_pool; }
+    public TypeDescription getCurrentTypeDesc()  { return this.m_typeDesc; }
+    public TypePool        getTypePool()         { return this.m_pool; }
 
     public void setAnnChanged() { this.m_annChanged = true; } // no way to un-change
     public boolean isAnnChanged() { return this.m_annChanged; }
@@ -80,5 +92,51 @@ public class ClassContext {
 
         Logger.warn("Multiple methods found. Returning first match for", name, m_className);
         return match.get(0);
+    }
+
+    /*
+     * accepts various forms of type names:
+     *  - descriptor: Ljava/lang/String;
+     *  - binary name: java.lang.String
+     *  - internal name: java/lang/String
+     *  - primitive or array descriptor: [I, [Ljava/lang/String;
+     */
+    public TypeDescription getTypeDesc(String s) {
+        try {
+            if (s == null || s.isEmpty()) {
+                throw new IllegalArgumentException("empty type");
+            }
+
+            // descriptor: Ljava/lang/String;
+            if (s.charAt(0) == 'L' && s.endsWith(";")) {
+                return m_pool.describe(s).resolve();
+            }
+
+            // primitive or array descriptor: [I, [Ljava/lang/String;
+            if (s.charAt(0) == '[' || s.length() == 1) {
+                return m_pool.describe(s).resolve();
+            }
+
+            // internal name: java/lang/String
+            if (s.indexOf('/') >= 0) {
+                return m_pool.describe(s.replace('/', '.')).resolve();
+            }
+
+            // binary name: java.lang.String
+            return m_pool.describe(s).resolve();
+        } catch (Exception e) {
+            Logger.once.warn("Failed to resolve type", s, e.getMessage());
+            return null;
+        }
+    }
+
+    public TypeDescription getPatchTargetTypeDesc() {
+        if (m_targetDesc == null) {
+            m_origDesc.getDeclaredAnnotations().filter(a -> a.getAnnotationType().represents(Patch.class)).forEach(a -> {
+                String className = a.getValue("className").resolve(String.class);
+                m_targetDesc = getTypeDesc(className);
+            });
+        }
+        return (m_targetDesc == TD_NOT_FOUND) ? null : m_targetDesc;
     }
 }

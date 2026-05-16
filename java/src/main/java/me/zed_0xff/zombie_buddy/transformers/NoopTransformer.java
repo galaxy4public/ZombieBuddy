@@ -4,7 +4,8 @@ import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.ClassWriter;
 
 public class NoopTransformer extends Transformer {
-    public Result transform(byte[] classBytes) {
+    @Override
+    public Result transform(byte[] classBytes, ClassContext ctx) {
         return NOOP_RESULT;
     }
 

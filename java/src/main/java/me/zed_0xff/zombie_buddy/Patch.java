@@ -25,7 +25,7 @@ public @interface Patch {
     /** Alias for net.bytebuddy.asm.Advice.OnMethodEnter - mods should use Patch.OnEnter instead */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.METHOD)
-    @Internal.Meta(targetClass = Advice.OnMethodEnter.class)
+    @Internal.Meta(targetAnnotation = Advice.OnMethodEnter.class)
     public @interface OnEnter {
         @Internal.MapBool(onTrue = Advice.OnNonDefaultValue.class)
         boolean skipOn() default false;  // converted by AnnotationConverter.java
@@ -34,7 +34,7 @@ public @interface Patch {
     /** Alias for net.bytebuddy.asm.Advice.OnMethodExit - mods should use Patch.OnExit instead */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.METHOD)
-    @Internal.Meta(targetClass = Advice.OnMethodExit.class)
+    @Internal.Meta(targetAnnotation = Advice.OnMethodExit.class)
     public @interface OnExit {
         Class<? extends Throwable> onThrowable() default NoException.class;
         Class<? extends Throwable> suppress() default NoException.class;
@@ -47,7 +47,7 @@ public @interface Patch {
     /** Binds the return value of the target method. {@code @Patch.OnExit} only. Use {@code readOnly = false} to overwrite it. */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = Advice.Return.class)
+    @Internal.Meta(targetAnnotation = Advice.Return.class)
     public @interface Return {
         boolean readOnly() default true;
     }
@@ -55,7 +55,7 @@ public @interface Patch {
     /** Binds the exception thrown by the target method, or {@code null} if none. {@code @Patch.OnExit} only. */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = Advice.Thrown.class)
+    @Internal.Meta(targetAnnotation = Advice.Thrown.class)
     public @interface Thrown {
         boolean readOnly() default true;
     }
@@ -63,8 +63,8 @@ public @interface Patch {
     /** Binds the target object ({@code this}). Not available for static target methods. */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = Advice.This.class)
-    @Internal.Meta(targetClass = net.bytebuddy.implementation.bind.annotation.This.class)
+    @Internal.Meta(targetAnnotation = Advice.This.class)
+    @Internal.Meta(targetAnnotation = net.bytebuddy.implementation.bind.annotation.This.class)
     public @interface This {
         boolean readOnly() default true;
     }
@@ -73,8 +73,8 @@ public @interface Patch {
      *  Set {@code optional = true} to bind null / the default primitive value when the index is out of range. */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = Advice.Argument.class)
-    @Internal.Meta(targetClass = net.bytebuddy.implementation.bind.annotation.Argument.class)
+    @Internal.Meta(targetAnnotation = Advice.Argument.class)
+    @Internal.Meta(targetAnnotation = net.bytebuddy.implementation.bind.annotation.Argument.class)
     public @interface Argument {
         int value() default 0;
         boolean readOnly() default true;
@@ -84,8 +84,8 @@ public @interface Patch {
     /** Binds all target method arguments as {@code Object[]}. Use {@code readOnly = false} to overwrite them. */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = Advice.AllArguments.class)
-    @Internal.Meta(targetClass = net.bytebuddy.implementation.bind.annotation.AllArguments.class)
+    @Internal.Meta(targetAnnotation = Advice.AllArguments.class)
+    @Internal.Meta(targetAnnotation = net.bytebuddy.implementation.bind.annotation.AllArguments.class)
     public @interface AllArguments {
         boolean readOnly() default true;
     }
@@ -93,28 +93,28 @@ public @interface Patch {
     /** Marks a {@code @Patch.OnEnter} / {@code @Patch.OnExit} method return type as dynamically typed (delegation only). */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.METHOD)
-    @Internal.Meta(targetClass = net.bytebuddy.implementation.bind.annotation.RuntimeType.class)
+    @Internal.Meta(targetAnnotation = net.bytebuddy.implementation.bind.annotation.RuntimeType.class)
     public @interface RuntimeType {
     }
 
     /** Binds a {@code Method} handle to the overridden super-method (delegation only). */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = net.bytebuddy.implementation.bind.annotation.SuperMethod.class)
+    @Internal.Meta(targetAnnotation = net.bytebuddy.implementation.bind.annotation.SuperMethod.class)
     public @interface SuperMethod {
     }
 
     /** Binds a {@code Callable} that invokes the overridden super-method (delegation only). */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = net.bytebuddy.implementation.bind.annotation.SuperCall.class)
+    @Internal.Meta(targetAnnotation = net.bytebuddy.implementation.bind.annotation.SuperCall.class)
     public @interface SuperCall {
     }
 
     /** Binds a named local variable of the target method. The variable must exist in the target's debug info. */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = Advice.Local.class)
+    @Internal.Meta(targetAnnotation = Advice.Local.class)
     public @interface Local {
         String value();
     }
@@ -143,7 +143,7 @@ public @interface Patch {
      */
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.PARAMETER, ElementType.FIELD, ElementType.METHOD})
-    @Internal.Meta(targetClass = Advice.FieldValue.class)
+    @Internal.Meta(targetAnnotation = Advice.FieldValue.class)
     public @interface Field {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
         String[] value() default {};    // field name(s): empty = infer from parameter name; multiple = try in order
@@ -171,7 +171,7 @@ public @interface Patch {
      */
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.PARAMETER, ElementType.METHOD})
-    @Internal.Meta(targetClass = Advice.FieldValue.class)
+    @Internal.Meta(targetAnnotation = Advice.FieldValue.class)
     public @interface FieldRW {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
         String[] value() default {};  // empty = infer from parameter name; multiple = try in order
@@ -239,7 +239,7 @@ public @interface Patch {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.PARAMETER})
-    @Internal.Meta(targetClass = Advice.Handle.class, requireType = java.lang.invoke.MethodHandle.class)
+    @Internal.Meta(targetAnnotation = Advice.Handle.class, requireType = java.lang.invoke.MethodHandle.class)
     public @interface MethodHandle {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
         String[] value() default {};              // empty = infer from stub field name; multiple = try in order
@@ -255,7 +255,7 @@ public @interface Patch {
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.PARAMETER})
-    @Internal.Meta(targetClass = Advice.Local.class, requireType = java.lang.invoke.VarHandle.class)
+    @Internal.Meta(targetAnnotation = Advice.Local.class, requireType = java.lang.invoke.VarHandle.class)
     public @interface VarHandle {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
         String[] value() default {};              // empty = infer from stub field name; multiple = try in order
@@ -288,7 +288,7 @@ public @interface Patch {
      */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = Advice.Local.class, targetParamNames={"value"}, targetParamValues={Internal.NAMEMAP_LOCAL_NAME}, requireType = Map.class)
+    @Internal.Meta(targetAnnotation = Advice.Local.class, targetParamNames={"value"}, targetParamValues={Internal.NAMEMAP_LOCAL_NAME}, requireType = Map.class)
     public @interface NameMap {}
 
     /** Runtime registry for field-name resolution maps bound via {@code @Patch.NameMap} parameters.
@@ -323,7 +323,7 @@ public @interface Patch {
         @Target(ElementType.TYPE)
         @Repeatable(Metas.class)
         public @interface Meta {
-            Class<?> targetClass();
+            Class<?> targetAnnotation();
             String[] targetParamNames() default {};
             String[] targetParamValues() default {};
             boolean isAdvice() default true;      // false => MethodDelegation

@@ -1,2 +1,5 @@
 #!/bin/sh
-java -cp libs/ZombieBuddy.jar me.zed_0xff.zombie_buddy.jardump.Main "$@"
+ZB_JAR=`realpath ~/"projects/zomboid/versions/unstable/osx/Project Zomboid.app/Contents/Java/projectzomboid.jar"`
+CP="java/build/jdk25/libs/ZombieBuddy.jar:${ZB_JAR}"
+
+java -cp "$CP" me.zed_0xff.zombie_buddy.jardump.Main "$@"

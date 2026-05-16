@@ -27,7 +27,7 @@ class PublicizerTest extends AbstractTest {
         assertThat(ctx.getOriginalTypeDesc().getDeclaredFields() ).allMatch(f -> !f.isPublic());
         assertThat(ctx.getOriginalTypeDesc().getDeclaredMethods()).allMatch(f -> !f.isPublic());
 
-        assertThat(ctx.getTypeDesc().getDeclaredFields() ).allMatch(f -> f.isPublic());
-        assertThat(ctx.getTypeDesc().getDeclaredMethods()).allMatch(f -> f.isPublic());
+        assertThat(ctx.getCurrentTypeDesc().getDeclaredFields() ).allMatch(f -> f.isPublic());
+        assertThat(ctx.getCurrentTypeDesc().getDeclaredMethods()).allMatch(f -> f.isPublic());
     }
 }

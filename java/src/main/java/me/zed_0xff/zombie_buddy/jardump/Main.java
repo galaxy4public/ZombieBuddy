@@ -36,7 +36,7 @@ public class Main extends CLIUtil {
         new TransInfo("pub-all",  Publicizer::new,            false, "Publicize all members unconditionally"),
         new TransInfo("pub-cond", ConditionalPublicizer::new, true,  "Publicize if any annotations were converted by the previous steps"),
         new TransInfo("resolve",  AlternativeResolver::new,   true,  "Resolve alternative names in annotations"),
-        new TransInfo("nop",      NoopTransformer::new,       false, "Do nothing (for testing/debugging purposes)")
+        new TransInfo("none",     NoopTransformer::new,       false, "Do nothing (for testing/debugging purposes)")
     );
 
     private static final Map<String, TransInfo> TRANS_MAP =

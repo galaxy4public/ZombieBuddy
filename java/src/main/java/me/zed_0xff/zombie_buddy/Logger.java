@@ -3,6 +3,7 @@ package me.zed_0xff.zombie_buddy;
 import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -45,6 +46,9 @@ public class Logger {
     public static class Instance {
         private final String[] m_tags;
         private final String m_tagStr; // preformatted tag string for efficiency
+        private final HashSet<String> m_dedup = new HashSet<>(); // for once logging
+
+        // mutable
         private int m_level;
         private int m_maxLineLen;
 
@@ -66,7 +70,7 @@ public class Logger {
             return new Instance(m_level, m_maxLineLen, newTags);
         }
 
-        public void log(int level, String message, Object... args) {
+        public void log(int level, String message, boolean bOnce, Object... args) {
             if (m_level < level) return;
 
             if (message.length() > m_maxLineLen) {
@@ -75,39 +79,53 @@ public class Logger {
                 message += " " + formatArgs(args, 0, m_maxLineLen - message.length() - 1);
             }
 
+            if (bOnce && !m_dedup.add(message)) return;
+
             String lp = switch (level) {
-                case TRACE -> "[t] ";
-                case DEBUG -> "[d] ";
-                case WARN  -> "[?] ";
-                case ERROR -> "[!] ";
+                case TRACE -> "[t]";
+                case DEBUG -> "[d]";
+                case WARN  -> "[?]";
+                case ERROR -> "[!]";
                 default    -> "";
             };
-            msg(level <= WARN ? STDERR : STDOUT, lp + m_tagStr + message);
+            msg(level <= WARN ? STDERR : STDOUT, lp, m_tagStr + message);
         }
 
         public void printStackTrace(Throwable t) {
             Logger.printStackTrace(t);
         }
 
-        public void trace(String message, Object... args) { log(TRACE, message, args); }
-        public void debug(String message, Object... args) { log(DEBUG, message, args); }
-        public void info( String message, Object... args) { log(INFO,  message, args); }
-        public void warn( String message, Object... args) { log(WARN,  message, args); }
-        public void error(String message, Object... args) { log(ERROR, message, args); }
+        public class Once {
+            public void trace(String message, Object... args) { log(TRACE, message, true, args); }
+            public void debug(String message, Object... args) { log(DEBUG, message, true, args); }
+            public void info( String message, Object... args) { log(INFO,  message, true, args); }
+            public void warn( String message, Object... args) { log(WARN,  message, true, args); }
+            public void error(String message, Object... args) { log(ERROR, message, true, args); }
+        }
+
+        public final Once once = new Once();
+
+        public void trace(String message, Object... args) { log(TRACE, message, false, args); }
+        public void debug(String message, Object... args) { log(DEBUG, message, false, args); }
+        public void info( String message, Object... args) { log(INFO,  message, false, args); }
+        public void warn( String message, Object... args) { log(WARN,  message, false, args); }
+        public void error(String message, Object... args) { log(ERROR, message, false, args); }
     }
 
     private static String add_prefix(String prefix, String msg) {
         if (msg == null)    return prefix != null ? prefix : "";
-        if (prefix == null) return msg;
+        if (Utils.isBlank(prefix)) return msg;
         boolean needSpace = prefix.endsWith("]") && !msg.startsWith("[") && !msg.startsWith(" ");
         return needSpace ? prefix + " " + msg : prefix + msg;
     }
 
-    private static void msg(Channel ch, String msg) {
+    private static void msg(Channel ch, String msg) { msg(ch, null, msg); }
+    private static void msg(Channel ch, String prefix, String msg) {
         final PrintStream priStream = (ch == STDOUT) ? System.out : System.err;
         final PrintStream secStream = (ch == STDOUT) ? _out : _err;
 
         msg = add_prefix(ZB, msg);
+        msg = add_prefix(prefix, msg);
         try {
             priStream.println(msg);
         } catch (Throwable t) { // might fail on game boot
@@ -121,12 +139,14 @@ public class Logger {
         return _instances.computeIfAbsent(tag, t -> new Instance(DEFAULT.m_level, DEFAULT.m_maxLineLen, t));
     }
 
-    public static void log(int lv, String m, Object... args) { DEFAULT.log(lv,    m,       args); }
-    public static void trace(String message, Object... args) { DEFAULT.log(TRACE, message, args); }
-    public static void debug(String message, Object... args) { DEFAULT.log(DEBUG, message, args); }
-    public static void info( String message, Object... args) { DEFAULT.log(INFO,  message, args); }
-    public static void warn( String message, Object... args) { DEFAULT.log(WARN,  message, args); }
-    public static void error(String message, Object... args) { DEFAULT.log(ERROR, message, args); }
+    public static final Instance.Once once = DEFAULT.once;
+
+    public static void log(int lv, String m, Object... args) { DEFAULT.log(lv, m, false, args); }
+    public static void trace(String message, Object... args) { DEFAULT.trace(message, args); }
+    public static void debug(String message, Object... args) { DEFAULT.debug(message, args); }
+    public static void info( String message, Object... args) { DEFAULT.info( message, args); }
+    public static void warn( String message, Object... args) { DEFAULT.warn( message, args); }
+    public static void error(String message, Object... args) { DEFAULT.error(message, args); }
 
     // intentionally package-private; mods shouldl use Instance's public setLevel
     static void setLevel(int level) { DEFAULT.setLevel(level); }
