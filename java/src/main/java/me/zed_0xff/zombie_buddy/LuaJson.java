@@ -20,6 +20,8 @@ import se.krka.kahlua.vm.KahluaTable;
 import se.krka.kahlua.vm.KahluaTableIterator;
 
 public class LuaJSON {
+    private static final boolean KAHLUA_AVAILABLE = Reflect.on("se.krka.kahlua.vm.KahluaTable").isPresent();
+
     public static final int DEFAULT_MAX_DEPTH = 1;
     public static final int DEFAULT_MAX_LEN   = 0; // no limit
 
@@ -117,41 +119,37 @@ public class LuaJSON {
         if (value instanceof Boolean b) { sb.append(b); return; }
         if (value instanceof String  s) { writeStr(sb, s); return; }
 
-        try {
-            if (value instanceof KahluaTable tbl) {
-                if (seen.contains(tbl))  { sb.append("\"[ref]\"");   return; }
-                if (depth >= m_maxDepth) { sb.append("\"[table]\""); return; }
-                seen.add(tbl);
-                if (isArray(tbl)) {
-                    sb.append('[');
-                    if (arrInjectNull()) sb.append("null");
-                    int len = tbl.len();
-                    boolean anyWritten = arrInjectNull();
-                    for (int i = 1; i <= len; i++) {
-                        if (overLimit(sb)) break;
-                        if (anyWritten) sb.append(m_comma);
-                        writeJson(sb, tbl.rawget(i), depth + 1, seen);
-                        anyWritten = true;
-                    }
-                    sb.append(']');
-                } else {
-                    sb.append('{');
-                    KahluaTableIterator iter = tbl.iterator();
-                    boolean first = true;
-                    while (iter.advance()) {
-                        if (overLimit(sb)) break;
-                        if (!first) sb.append(m_comma);
-                        first = false;
-                        Object key = iter.getKey();
-                        writeKey(sb, (key instanceof Double d) ? String.valueOf(d.longValue()) : key.toString());
-                        writeJson(sb, iter.getValue(), depth + 1, seen);
-                    }
-                    sb.append('}');
+        if (KAHLUA_AVAILABLE && value instanceof KahluaTable tbl) {
+            if (seen.contains(tbl))  { sb.append("\"[ref]\"");   return; }
+            if (depth >= m_maxDepth) { sb.append("\"[table]\""); return; }
+            seen.add(tbl);
+            if (isLuaArray(tbl)) {
+                sb.append('[');
+                if (arrInjectNull()) sb.append("null");
+                int len = tbl.len();
+                boolean anyWritten = arrInjectNull();
+                for (int i = 1; i <= len; i++) {
+                    if (overLimit(sb)) break;
+                    if (anyWritten) sb.append(m_comma);
+                    writeJson(sb, tbl.rawget(i), depth + 1, seen);
+                    anyWritten = true;
                 }
-                return;
+                sb.append(']');
+            } else {
+                sb.append('{');
+                KahluaTableIterator iter = tbl.iterator();
+                boolean first = true;
+                while (iter.advance()) {
+                    if (overLimit(sb)) break;
+                    if (!first) sb.append(m_comma);
+                    first = false;
+                    Object key = iter.getKey();
+                    writeKey(sb, (key instanceof Double d) ? String.valueOf(d.longValue()) : key.toString());
+                    writeJson(sb, iter.getValue(), depth + 1, seen);
+                }
+                sb.append('}');
             }
-        } catch (NoClassDefFoundError e) {
-            // java.lang.NoClassDefFoundError: se/krka/kahlua/vm/KahluaTable
+            return;
         }
 
         writeStr(sb, value.toString());
@@ -202,7 +200,7 @@ public class LuaJSON {
             }
             return obj;
         }
-        if (value instanceof KahluaTable) {
+        if (KAHLUA_AVAILABLE && value instanceof KahluaTable) {
             if (seen.contains(value)) {
                 return new JsonPrimitive("[ref]");
             }
@@ -211,7 +209,7 @@ public class LuaJSON {
             }
             seen.add(value);
             KahluaTable table = (KahluaTable) value;
-            if (isArray(table)) {
+            if (isLuaArray(table)) {
                 JsonArray arr = new JsonArray();
                 if (arrInjectNull()) {
                     arr.add(JsonNull.INSTANCE); // Lua arrays are 1-indexed, so add a dummy element at index 0
@@ -257,22 +255,16 @@ public class LuaJSON {
     }
 
     public static boolean canSerialize(Object value) {
-        if (   value == null
+        return value == null
             || value instanceof Map
             || value instanceof List
             || value instanceof Number
             || value instanceof Boolean
             || value instanceof String
-        ) return true;
-
-        try {
-            return value instanceof KahluaTable;
-        } catch (NoClassDefFoundError e) {
-            return false; // java.lang.NoClassDefFoundError: se/krka/kahlua/vm/KahluaTable
-        }
+            || (KAHLUA_AVAILABLE && value instanceof KahluaTable);
     }
 
-    private static boolean isArray(KahluaTable table) {
+    private static boolean isLuaArray(KahluaTable table) {
         int len = table.len();
         if (len > 0) {
             return true;

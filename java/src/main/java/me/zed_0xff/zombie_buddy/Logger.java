@@ -15,6 +15,33 @@ public class Logger {
     private static final Channel STDOUT = Channel.OUT;
     private static final Channel STDERR = Channel.ERR;
 
+    // save before PZ overrides them, so we can still log to console even if PZ's logger is messed up
+    private static final PrintStream _out = System.out;
+    private static final PrintStream _err = System.err;
+
+    public static final int TRACE =  2;
+    public static final int DEBUG =  1;
+    public static final int INFO  =  0;
+    public static final int WARN  = -1;
+    public static final int ERROR = -2;
+    public static final int DEFAULT_LEVEL = INFO;
+
+    public static final Instance DEFAULT = new Instance(DEFAULT_LEVEL, DEFAULT_MAX_LINE_LEN);
+
+    // should be after DEFAULT declaration bc static fields and static {} blocks execute strictly in source order.
+    static {
+        String envVerbosity = System.getenv("ZB_VERBOSITY");
+        if (!Utils.isBlank(envVerbosity)) {
+            try {
+                var verbosityInt = Integer.parseInt(envVerbosity);
+                Logger.setLevel(verbosityInt);
+                Logger.info("set Logger verbosity to " + verbosityInt + " from ZB_VERBOSITY environment variable");
+            } catch (NumberFormatException e) {
+                Logger.error("invalid ZB_VERBOSITY value: " + envVerbosity);
+            }
+        }
+    }
+
     public static class Instance {
         private final String[] m_tags;
         private final String m_tagStr; // preformatted tag string for efficiency
@@ -69,19 +96,6 @@ public class Logger {
         public void error(String message, Object... args) { log(ERROR, message, args); }
     }
 
-    // save before PZ overrides them, so we can still log to console even if PZ's logger is messed up
-    private static final PrintStream _out = System.out;
-    private static final PrintStream _err = System.err;
-
-    public static final int TRACE =  2;
-    public static final int DEBUG =  1;
-    public static final int INFO  =  0;
-    public static final int WARN  = -1;
-    public static final int ERROR = -2;
-    public static final int DEFAULT_LEVEL = INFO;
-
-    public static final Instance DEFAULT = new Instance(DEFAULT_LEVEL, DEFAULT_MAX_LINE_LEN);
-
     private static String add_prefix(String prefix, String msg) {
         if (msg == null)    return prefix != null ? prefix : "";
         if (prefix == null) return msg;
@@ -132,19 +146,6 @@ public class Logger {
         }
     }
 
-    private static String formatRecord(Object record) {
-        Class<?> cls = record.getClass();
-        return Arrays.stream(cls.getRecordComponents())
-            .map(rc -> {
-                try {
-                    return rc.getName() + "=" + formatArg(rc.getAccessor().invoke(record));
-                } catch (ReflectiveOperationException e) {
-                    return rc.getName() + "=<error>";
-                }
-            })
-            .collect(Collectors.joining(", ", "<record " + cls.getSimpleName() + " ", ">"));
-    }
-
     public static String formatArray(Object[] arr) {
         return Arrays.stream(arr).map(Logger::formatArg).collect(Collectors.joining(", ", "[", "]"));
     }
@@ -155,7 +156,7 @@ public class Logger {
         if (o == null) return "null";
 
         if (o instanceof Object[] arr)   return formatArray(arr);
-        if (o.getClass().isRecord())     return formatRecord(o);
+        if (o.getClass().isRecord())     return o.toString(); // records have a nice toString by default
         if (LuaJSON.canSerialize(o))     return _luaJSON.toJson(o);
 
         String s = o.toString();

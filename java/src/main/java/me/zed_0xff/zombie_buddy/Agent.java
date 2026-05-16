@@ -80,8 +80,7 @@ public class Agent {
         if (!Utils.isBlank(envVerbosity)) {
             try {
                 Loader.g_verbosity = Integer.parseInt(envVerbosity);
-                Logger.setLevel(Loader.g_verbosity);
-                Logger.info("set verbosity to " + Loader.g_verbosity + " from ZB_VERBOSITY environment variable");
+                Logger.info("set Loader verbosity to " + Loader.g_verbosity + " from ZB_VERBOSITY environment variable");
             } catch (NumberFormatException e) {
                 Logger.error("invalid ZB_VERBOSITY value: " + envVerbosity);
             }

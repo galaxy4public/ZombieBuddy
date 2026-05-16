@@ -10,7 +10,7 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 import net.bytebuddy.description.type.TypeDescription;
 
-class AnnotationConverterTest_Patch_Field extends AbstractTest {
+class AnnotationConverter_Patch_Field_Test extends AbstractTest {
     static class Target1 {
         static void m1(@Patch.Field int foo) {}
     }

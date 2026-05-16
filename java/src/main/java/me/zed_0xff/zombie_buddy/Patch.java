@@ -288,7 +288,7 @@ public @interface Patch {
      */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetClass = Advice.Local.class)
+    @Internal.Meta(targetClass = Advice.Local.class, targetParamNames={"value"}, targetParamValues={Internal.NAMEMAP_LOCAL_NAME}, requireType = Map.class)
     public @interface NameMap {}
 
     /** Runtime registry for field-name resolution maps bound via {@code @Patch.NameMap} parameters.
@@ -311,17 +311,22 @@ public @interface Patch {
     public static final class Internal {
         private Internal() {}
 
+        public static final String NAMEMAP_LOCAL_NAME = "zb.nameMap";
+
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.TYPE)
-        public @interface Metadata {
+        public @interface Metas {
             Meta[] value();
         }
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.TYPE)
-        @Repeatable(Metadata.class)
+        @Repeatable(Metas.class)
         public @interface Meta {
             Class<?> targetClass();
+            String[] targetParamNames() default {};
+            String[] targetParamValues() default {};
+            boolean isAdvice() default true;      // false => MethodDelegation
             Class<?>[] requireType() default {};
         }
 

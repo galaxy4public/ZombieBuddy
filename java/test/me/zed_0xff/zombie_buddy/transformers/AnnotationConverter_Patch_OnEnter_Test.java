@@ -10,7 +10,7 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 import net.bytebuddy.description.type.TypeDescription;
 
-class AnnotationConverterTest_Patch_OnEnter extends AbstractTest {
+class AnnotationConverter_Patch_OnEnter_Test extends AbstractTest {
     static class Target1 {
         @Patch.OnEnter
         static void m1() {}

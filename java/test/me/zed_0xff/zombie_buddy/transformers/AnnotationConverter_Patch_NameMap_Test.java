@@ -4,20 +4,23 @@ import me.zed_0xff.zombie_buddy.Patch;
 import net.bytebuddy.asm.Advice;
 
 import java.io.IOException;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
 import net.bytebuddy.description.type.TypeDescription;
 
-class AlternativeResolverTest_Patch_Field extends AbstractTest {
+class AlternativeResolver_Patch_NameMap_Test extends AbstractTest {
+    @Patch(className = "foo", methodName = "baz")
     static class Target1 {
-        static void m1(@Patch.Field("renamed") int bar) {}
-        static void m2(@Patch.Field({"first", "second"}) int bar) {} // TODO
+        @Patch.OnEnter
+        static void m1(@Patch.NameMap Map<String, String> nameMap) {
+        }
     }
 
     @Test
-    void test_OnEnter() throws IOException {
+    void test() throws IOException {
         Class<?> cls = Target1.class;
         byte[] bytes = getClassBytes(cls);
         ClassContext ctx = new ClassContext(cls.getName(), bytes, null);
@@ -30,16 +33,12 @@ class AlternativeResolverTest_Patch_Field extends AbstractTest {
         assertThat(result.modified()).isTrue();
         assertThat(result.bytes()).isNotNull();
 
-        result = new AlternativeResolver().transform(result.bytes(), ctx);
-        assertThat(result.modified()).isTrue();
-        assertThat(result.bytes()).isNotNull();
-
         p = ctx.getMethod("m1").getParameters().getOnly();
         assertThat(p.getDeclaredAnnotations())
             .hasSize(2);
 
-        var a = p.getDeclaredAnnotations().filter(x -> x.getAnnotationType().isAssignableTo(Advice.FieldValue.class)).getOnly();
+        var a = p.getDeclaredAnnotations().filter(x -> x.getAnnotationType().isAssignableTo(Advice.Local.class)).getOnly();
         assertThat(a.getValue("value").resolve())
-            .isEqualTo("renamed");
+            .isEqualTo(Patch.Internal.NAMEMAP_LOCAL_NAME);
     }
 }

@@ -1,13 +1,12 @@
 def run_tests task
   env = {
-    # "JAVA_HOME" => "/Library/Java/JavaVirtualMachines/openjdk-24.jdk/Contents/Home"
+    "ZB_VERBOSITY" => "2", # for unit tests that run without Agent, but with Logger
   }
   cp_root = File.join(PROJECT_ROOT, "versions/unstable/java")
   cp = [File.join(cp_root, "projectzomboid.jar")].join(",")
   props = {
-    :gameClasspath  => cp,
-    "zb.verbosity"  => 2,
-    :showStreams    => true,
+    :gameClasspath => cp,
+    :showStreams   => true,
   }
 
   cmd = ["gradle", task, "--info", *props.map{ |k,v| "-P#{k}=#{v}" }]
