@@ -12,27 +12,34 @@ public class Publicizer extends Transformer {
         return access;
     }
 
+    class ClsVisitor extends TrackingClassVisitor {
+        public ClsVisitor(int api, ClassVisitor cv, ScopeTracker<Object> tracker) {
+            super(api, cv, tracker);
+        }
+
+        @Override
+        public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+            int newAccess = forcePublic(access);
+            if (newAccess != access) m_changed = true;
+            return super.visitField(newAccess, name, descriptor, signature, value);
+        }
+
+        @Override
+        public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+            if (!name.equals("<clinit>")) {
+                int newAccess = forcePublic(access);
+                if (newAccess != access) {
+                    m_changed = true;
+                    access = newAccess;
+                }
+            }
+            return super.visitMethod(access, name, descriptor, signature, exceptions);
+        }
+    }
+
     @Override
     protected ClassVisitor createVisitor(ClassWriter cw, byte[] classBytes) {
-        return new ClassVisitor(ASM_API, cw) {
-            @Override
-            public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
-                int newAccess = forcePublic(access);
-                if (newAccess != access) m_changed = true;
-                return super.visitField(newAccess, name, descriptor, signature, value);
-            }
-
-            @Override
-            public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                if (!name.equals("<clinit>")) {
-                    int newAccess = forcePublic(access);
-                    if (newAccess != access) {
-                        m_changed = true;
-                        access = newAccess;
-                    }
-                }
-                return super.visitMethod(access, name, descriptor, signature, exceptions);
-            }
-        };
+        ScopeTracker<Object> tracker = new ScopeTracker<>();
+        return new ClsVisitor(ASM_API, cw, tracker);
     }
 }

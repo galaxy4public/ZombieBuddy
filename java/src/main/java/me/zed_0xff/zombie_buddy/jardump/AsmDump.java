@@ -22,9 +22,9 @@ import java.util.stream.Collectors;
 
 public class AsmDump extends CLIUtil {
     private static final int ASM_API = Opcodes.ASM9;
-    private final ClassContext m_ctx;
+    private final JarContext m_ctx;
 
-    public AsmDump(ClassContext ctx) {
+    public AsmDump(JarContext ctx) {
         m_ctx = ctx;
     }
 
@@ -160,18 +160,15 @@ public class AsmDump extends CLIUtil {
     }
 
     boolean validateAnnotation(String desc, Map<String, Object> values) {
-        try {
-            TypeDescription td =
-                m_ctx.getTypePool().describe(Type.getType(desc).getClassName())
-                .resolve();
-
-            Map<String, MethodDescription> methods = _annMemberCache.computeIfAbsent(td.getName(), k -> getAnnotationMembers(td));
-            Map<String, Rule> rules = _annotationRules.getOrDefault(desc, Map.of());
-            return validateAnnotation(td, methods, values, rules);
-        } catch (Exception e) {
-            Logger.error("Failed to resolve annotation type: " + desc + ": " + e);
+        TypeDescription td = m_ctx.getTypeDesc(desc);
+        if (td == null) {
+            Logger.error("Annotation type not found: " + desc);
             return false;
         }
+
+        Map<String, MethodDescription> methods = _annMemberCache.computeIfAbsent(td.getName(), k -> getAnnotationMembers(td));
+        Map<String, Rule> rules = _annotationRules.getOrDefault(desc, Map.of());
+        return validateAnnotation(td, methods, values, rules);
     }
 
     String formatAnnotation(String desc, Map<String, Object> values) {

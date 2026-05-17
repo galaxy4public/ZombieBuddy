@@ -3,36 +3,33 @@ package me.zed_0xff.zombie_buddy.transformers;
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Patch;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Objects;
 
+import net.bytebuddy.description.annotation.AnnotationDescription;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.dynamic.ClassFileLocator;
-import net.bytebuddy.jar.asm.Type;
-import net.bytebuddy.pool.TypePool;
 
+/** Per-class view into a shared {@link JarContext}. Prefer one instance per {@code className} while mutating that jar slice; cached {@link #getCurrentTypeDesc()} can drift if the same name is updated through another {@code ClassContext} sharing {@code jctx}. */
 public class ClassContext {
     private final String          m_className;
-    private final TypePool        m_pool;
     private final TypeDescription m_origDesc;
+    private final JarContext      m_jctx; // shared
 
     // mutable
-    private boolean         m_annChanged;
-    private boolean         m_changed;
-    private TypeDescription m_typeDesc;
-    private TypeDescription m_targetDesc;
+    private boolean               m_annChanged;
+    private boolean               m_changed;
+    private TypeDescription       m_typeDesc;
+    private AnnotationDescription m_patch = null; // lazily initialized by getPatch()
 
-    // only for internal use by this class; do not expose, do not return.
-    private static final class NOT_FOUND {};
-    private static final TypeDescription TD_NOT_FOUND = new TypeDescription.ForLoadedType(NOT_FOUND.class);
-
-    public ClassContext(String className, byte[] classBytes, TypePool pool) {
+    /**
+     * @param className JVM binary name ({@link Class#getName()})
+     * @param classBytes must match what {@link JarContext} resolves for {@code className}
+     */
+    public ClassContext(String className, JarContext jctx) {
         m_className = className;
-        m_pool      = pool;
-        m_origDesc  = buildTypeDesc(classBytes);
-        m_typeDesc  = m_origDesc;
+        m_origDesc  = jctx.getOrigTypeDesc(className);
+        m_typeDesc  = null;
+        m_jctx      = jctx;
     }
 
     @Override
@@ -41,52 +38,31 @@ public class ClassContext {
         return "ClassContext(" + simpleName + ")";
     }
 
-    private record ByteKey(byte[] bytes) {
-        @Override
-        public boolean equals(Object o) {
-            return o instanceof ByteKey bk &&
-                Arrays.equals(bytes, bk.bytes);
-        }
+    public String className() { return m_className; }
 
-        @Override
-        public int hashCode() {
-            return Arrays.hashCode(bytes);
-        }
-    }
-
-    private final Map<ByteKey, TypeDescription> _cache = new HashMap<>();
-
-    private TypeDescription buildTypeDesc(byte[] bytes) {
-        return _cache.computeIfAbsent(new ByteKey(bytes), k -> {
-            ClassFileLocator locator =
-                new ClassFileLocator.Compound(
-                        new ClassFileLocator.Simple(Map.of(m_className, bytes)),
-                        ClassFileLocator.ForClassLoader.ofSystemLoader()
-                        );
-
-            return TypePool.Default.of(locator)
-                .describe(m_className)
-                .resolve();
-        });
-    }
-
-    public void updateTypeDesc(byte[] classBytes) {
-        this.m_typeDesc = buildTypeDesc(classBytes);
+    public void setClassBytes(byte[] classBytes) {
+        m_jctx.setClassBytes(m_className, classBytes);
+        setChanged();
+        m_typeDesc = null;
     }
 
     // before any transformations; used for comparison and to access original annotations
-    public TypeDescription getOriginalTypeDesc() { return this.m_origDesc; }
-    public TypeDescription getCurrentTypeDesc()  { return this.m_typeDesc; }
-    public TypePool        getTypePool()         { return this.m_pool; }
+    public TypeDescription getOriginalTypeDesc() { return m_origDesc; }
+    public TypeDescription getCurrentTypeDesc() {
+        if (m_typeDesc == null) {
+            m_typeDesc = m_jctx.getTypeDesc(m_className);
+        }
+        return m_typeDesc;
+    }
 
-    public void setAnnChanged() { this.m_annChanged = true; } // no way to un-change
-    public boolean isAnnChanged() { return this.m_annChanged; }
+    public void setAnnChanged()   { m_annChanged = true; } // no way to un-change
+    public boolean isAnnChanged() { return m_annChanged; }
 
-    public void setChanged() { this.m_changed = true; }       // same
-    public boolean isChanged() { return this.m_changed; }
+    public void setChanged()   { m_changed = true; }       // same
+    public boolean isChanged() { return m_changed; }
 
     public MethodDescription getMethod(String name) {
-        var match = this.m_typeDesc.getDeclaredMethods().filter(m -> m.getName().equals(name));
+        var match = getCurrentTypeDesc().getDeclaredMethods().filter(m -> m.getName().equals(name));
         if (match.size() == 0) return null;
         if (match.size() == 1) return match.getOnly();
 
@@ -94,49 +70,25 @@ public class ClassContext {
         return match.get(0);
     }
 
-    /*
-     * accepts various forms of type names:
-     *  - descriptor: Ljava/lang/String;
-     *  - binary name: java.lang.String
-     *  - internal name: java/lang/String
-     *  - primitive or array descriptor: [I, [Ljava/lang/String;
-     */
-    public TypeDescription getTypeDesc(String s) {
-        try {
-            if (s == null || s.isEmpty()) {
-                throw new IllegalArgumentException("empty type");
+    public AnnotationDescription getPatch() {
+        if (m_patch != null) return m_patch;
+            
+        TypeDescription td = getOriginalTypeDesc();
+        while (td != null) {
+            var anns = td.getDeclaredAnnotations().filter(a -> a.getAnnotationType().represents(Patch.class));
+            if (!anns.isEmpty()) {
+                m_patch = anns.getOnly();
+                return m_patch;
             }
 
-            // descriptor: Ljava/lang/String;
-            if (s.charAt(0) == 'L' && s.endsWith(";")) {
-                return m_pool.describe(s).resolve();
-            }
-
-            // primitive or array descriptor: [I, [Ljava/lang/String;
-            if (s.charAt(0) == '[' || s.length() == 1) {
-                return m_pool.describe(s).resolve();
-            }
-
-            // internal name: java/lang/String
-            if (s.indexOf('/') >= 0) {
-                return m_pool.describe(s.replace('/', '.')).resolve();
-            }
-
-            // binary name: java.lang.String
-            return m_pool.describe(s).resolve();
-        } catch (Exception e) {
-            Logger.once.warn("Failed to resolve type", s, e.getMessage());
-            return null;
+            td = td.getEnclosingType();
         }
+        return null;
     }
 
-    public TypeDescription getPatchTargetTypeDesc() {
-        if (m_targetDesc == null) {
-            m_origDesc.getDeclaredAnnotations().filter(a -> a.getAnnotationType().represents(Patch.class)).forEach(a -> {
-                String className = a.getValue("className").resolve(String.class);
-                m_targetDesc = getTypeDesc(className);
-            });
-        }
-        return (m_targetDesc == TD_NOT_FOUND) ? null : m_targetDesc;
+    /** intentionally lookup original type desc only */
+    public TypeDescription getPatchTarget() {
+        String targetClass = getPatch().getValue("className").resolve(String.class);
+        return m_jctx.getOrigTypeDesc(targetClass);
     }
 }

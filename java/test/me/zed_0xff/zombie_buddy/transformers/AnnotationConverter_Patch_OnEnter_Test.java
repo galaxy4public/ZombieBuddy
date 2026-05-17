@@ -18,9 +18,8 @@ class AnnotationConverter_Patch_OnEnter_Test extends AbstractTest {
 
     @Test
     void test_OnEnter() throws IOException {
-        Class<?> cls = Target1.class;
-        byte[] bytes = getClassBytes(cls);
-        ClassContext ctx = new ClassContext(cls.getName(), bytes, null);
+        var ctx = new TestClassContext(Target1.class);
+        byte[] bytes = ctx.getBytes();
 
         var m = ctx.getMethod("m1");
         assertThat(m.getDeclaredAnnotations())
@@ -46,9 +45,8 @@ class AnnotationConverter_Patch_OnEnter_Test extends AbstractTest {
 
     @Test
     void test_OnEnter_skipOn_true() throws IOException {
-        Class<?> cls = Target2.class;
-        byte[] bytes = getClassBytes(cls);
-        ClassContext ctx = new ClassContext(cls.getName(), bytes, null);
+        var ctx = new TestClassContext(Target2.class);
+        byte[] bytes = ctx.getBytes();
 
         var m = ctx.getMethod("m1");
         assertThat(m.getDeclaredAnnotations())
@@ -74,9 +72,8 @@ class AnnotationConverter_Patch_OnEnter_Test extends AbstractTest {
 
     @Test
     void test_OnEnter_skipOn_false() throws IOException {
-        Class<?> cls = Target3.class;
-        byte[] bytes = getClassBytes(cls);
-        ClassContext ctx = new ClassContext(cls.getName(), bytes, null);
+        var ctx = new TestClassContext(Target3.class);
+        byte[] bytes = ctx.getBytes();
 
         var m = ctx.getMethod("m1");
         assertThat(m.getDeclaredAnnotations())

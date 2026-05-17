@@ -22,8 +22,7 @@ public abstract class Transformer {
             new ClassReader(classBytes).accept(createVisitor(cw, classBytes), 0);
             if (m_changed) {
                 byte[] newBytes = cw.toByteArray();
-                ctx.setChanged();
-                ctx.updateTypeDesc(newBytes);
+                ctx.setClassBytes(newBytes);
                 return new Result(newBytes, m_changed);
             } else {
                 return NOOP_RESULT;

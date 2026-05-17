@@ -13,6 +13,9 @@ import net.bytebuddy.jar.asm.*;
  * base class for transformers that need access to parameter _names_ when processing annotations (e.g. AnnotationConverter)
  */
 public abstract class AbstractParamAwareTransformer extends Transformer {
+    /** Set for the duration of {@link #createVisitor}; used by subclasses (e.g. annotation translation) to share one scope stack with {@link TrackingClassVisitor}. */
+    protected ScopeTracker<Object> m_scopeTracker;
+
     @FunctionalInterface
     public interface TriFunction<A, B, C, R> {
         R apply(A a, B b, C c);
@@ -20,11 +23,13 @@ public abstract class AbstractParamAwareTransformer extends Transformer {
 
     @Override
     protected ClassVisitor createVisitor(ClassWriter cw, byte[] classBytes) {
+        m_scopeTracker = new ScopeTracker<>();
+        ScopeTracker<Object> tracker = m_scopeTracker;
         Map<String, String[]> allParams = Transformer.collectParamNames(classBytes);
-        return new ClassVisitor(ASM_API, cw) {
+        return new TrackingClassVisitor(ASM_API, cw, tracker) {
             @Override
             public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
-                return processClassAnnotation(desc, visible, super::visitAnnotation);
+                return ScopeVisitor.wrapAnn(ASM_API, tracker, desc, processClassAnnotation(desc, visible, super::visitAnnotation));
             }
 
             @Override
@@ -34,13 +39,15 @@ public abstract class AbstractParamAwareTransformer extends Transformer {
                 return new MethodVisitor(ASM_API, mv) {
                     @Override
                     public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
-                        return processMethodAnnotation(desc, visible, super::visitAnnotation);
+                        return ScopeVisitor.wrapAnn(ASM_API, tracker, desc, processMethodAnnotation(desc, visible, super::visitAnnotation));
                     }
 
                     @Override
                     public AnnotationVisitor visitParameterAnnotation(int index, String desc, boolean visible) {
                         String paramName = (index < paramNames.length) ? paramNames[index] : ("arg" + index);
-                        return processParameterAnnotation(index, desc, visible, super::visitParameterAnnotation, paramName);
+
+                        return ScopeVisitor.wrapArg(ASM_API, tracker, index, desc,
+                            processParameterAnnotation(index, desc, visible, super::visitParameterAnnotation, paramName));
                     }
                 };
             }

@@ -21,9 +21,8 @@ class AlternativeResolver_Patch_NameMap_Test extends AbstractTest {
 
     @Test
     void test() throws IOException {
-        Class<?> cls = Target1.class;
-        byte[] bytes = getClassBytes(cls);
-        ClassContext ctx = new ClassContext(cls.getName(), bytes, null);
+        var ctx = new TestClassContext(Target1.class);
+        byte[] bytes = ctx.getBytes();
 
         var p = ctx.getMethod("m1").getParameters().getOnly();
         assertThat(p.getDeclaredAnnotations())

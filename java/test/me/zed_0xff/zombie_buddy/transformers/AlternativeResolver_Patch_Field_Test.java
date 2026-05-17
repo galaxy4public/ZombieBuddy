@@ -18,9 +18,8 @@ class AlternativeResolver_Patch_Field_Test extends AbstractTest {
 
     @Test
     void test_OnEnter() throws IOException {
-        Class<?> cls = Target1.class;
-        byte[] bytes = getClassBytes(cls);
-        ClassContext ctx = new ClassContext(cls.getName(), bytes, null);
+        var ctx = new TestClassContext(Target1.class);
+        byte[] bytes = ctx.getBytes();
 
         var p = ctx.getMethod("m1").getParameters().getOnly();
         assertThat(p.getDeclaredAnnotations())
@@ -30,7 +29,7 @@ class AlternativeResolver_Patch_Field_Test extends AbstractTest {
         assertThat(result.modified()).isTrue();
         assertThat(result.bytes()).isNotNull();
 
-        // result = new AlternativeResolver().transform(result.bytes(), ctx);
+        // result = new Resolver().transform(result.bytes(), ctx);
         // assertThat(result.modified()).isTrue();
         // assertThat(result.bytes()).isNotNull();
         //

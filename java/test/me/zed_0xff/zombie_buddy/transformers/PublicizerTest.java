@@ -16,9 +16,8 @@ class PublicizerTest extends AbstractTest {
 
     @Test
     void test() throws IOException {
-        Class<?> cls = Target.class;
-        byte[] bytes = getClassBytes(cls);
-        ClassContext ctx = new ClassContext(cls.getName(), bytes, null);
+        var ctx = new TestClassContext(Target.class);
+        byte[] bytes = ctx.getBytes();
 
         var result = new Publicizer().transform(bytes, ctx);
         assertThat(result.modified()).isTrue();

@@ -13,11 +13,13 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.pool.TypePool;
 
@@ -35,7 +37,7 @@ public class Main extends CLIUtil {
         new TransInfo("ann",      AnnotationConverter::new,   true,  "Convert ZombieBuddy annotations to ByteBuddy annotations"),
         new TransInfo("pub-all",  Publicizer::new,            false, "Publicize all members unconditionally"),
         new TransInfo("pub-cond", ConditionalPublicizer::new, true,  "Publicize if any annotations were converted by the previous steps"),
-        new TransInfo("resolve",  AlternativeResolver::new,   true,  "Resolve alternative names in annotations"),
+        new TransInfo("resolve",  Resolver::new,              true,  "Resolve alternative names in annotations"),
         new TransInfo("none",     NoopTransformer::new,       false, "Do nothing (for testing/debugging purposes)")
     );
 
@@ -99,9 +101,12 @@ public class Main extends CLIUtil {
         return positionalArgs;
     }
 
-    public static void processClass(String className, byte[] classBytes, TypePool pool) throws IOException {
+    // before any transformations
+    static final HashMap<String, TypeDescription> _origClassCache = new HashMap<>();
+
+    public static void processClass(String className, byte[] classBytes, JarContext jctx) throws IOException {
         byte[] rewritten      = classBytes.clone();
-        ClassContext classCtx = new ClassContext(className, classBytes, pool);
+        ClassContext classCtx = new ClassContext(className, jctx);
 
         // instantiate transformers for each class bc they might have internal state
         for (String trans_id : _transformers) {
@@ -114,22 +119,16 @@ public class Main extends CLIUtil {
         }
 
         if (classCtx.isChanged() || !_changedOnly) {
-            var dumper = new AsmDump(classCtx);
+            var dumper = new AsmDump(jctx);
             System.out.println(dumper.dump(rewritten));
         }
     }
 
     public static void processJar(String fname) throws IOException {
         try (
-             JarFile jar   = new JarFile(new File(fname), false);
-             // JarFile zbJar = new JarFile(Utils.getCurrentJarPath().toFile(), false);
-             ClassFileLocator locator = new ClassFileLocator.Compound(
-                 new ClassFileLocator.ForJarFile(jar),       // target
-                 ClassFileLocator.ForClassLoader.of(Main.class.getClassLoader()) // ZB + JDK
-                 // ClassFileLocator.ForModuleFile.ofBootPath() // JDK
-                 );
+             JarFile jar = new JarFile(new File(fname), false);
+             JarContext jctx = JarContext.forJar(jar);
         ) {
-            TypePool pool = TypePool.Default.of(locator);
             jar.stream()
                 .map(JarEntry::getName)
                 .filter(n -> n.endsWith(".class") && !n.startsWith("META-INF/") && !n.equals("module-info.class"))
@@ -137,13 +136,10 @@ public class Main extends CLIUtil {
                 .sorted() // ensures that all parent classes are processed before their nested classes, which is important for the transformers to work correctly
                 .forEach(className -> {
                     try {
-                        var res = locator.locate(className);
-                        if (!res.isResolved()) {
-                            System.err.println("Failed to locate class: " + className);
-                            return; // returns from lambda, not method
+                        byte[] classBytes = jctx.getClassBytes(className);
+                        if (classBytes != null) {
+                            processClass(className, classBytes, jctx);
                         }
-                        byte[] classBytes = res.resolve();
-                        processClass(className, classBytes, pool);
                     } catch (IOException e) {
                         System.err.println("Failed to read class: " + className);
                         e.printStackTrace();
@@ -153,16 +149,16 @@ public class Main extends CLIUtil {
     }
 
     public static void processClassFile(String fname) throws IOException {
-        String className = fname.endsWith(".class") ? fname.substring(0, fname.length() - 6).replace('/', '.') : fname;
-        byte[] bytes = Files.readAllBytes(Path.of(fname));
-
-        ClassFileLocator locator = new ClassFileLocator.Compound(
-                new ClassFileLocator.Simple(Map.of(className, bytes)),
-                ClassFileLocator.ForClassLoader.ofSystemLoader()
-        );
-
-        TypePool pool = TypePool.Default.of(locator);
-        processClass(className, bytes, pool);
+        // String className = fname.endsWith(".class") ? fname.substring(0, fname.length() - 6).replace('/', '.') : fname;
+        // byte[] bytes = Files.readAllBytes(Path.of(fname));
+        //
+        // ClassFileLocator locator = new ClassFileLocator.Compound(
+        //         new ClassFileLocator.Simple(Map.of(className, bytes)),
+        //         ClassFileLocator.ForClassLoader.ofSystemLoader()
+        // );
+        //
+        // TypePool pool = TypePool.Default.of(locator);
+        // processClass(className, bytes, pool);
     }
 
     public static void main(String[] args) throws IOException {

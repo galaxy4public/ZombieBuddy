@@ -17,6 +17,14 @@ import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.jar.asm.Type;
 
+// TODO: check
+// builder
+//         .defineField(name, boolean.class, Visibility.PRIVATE, Ownership.STATIC, FieldManifestation.FINAL)
+//         .visit(new AsmVisitorWrapper.ForDeclaredMethods().method(isAnnotatedWith(Enhance.class), new AccessControlWrapper(name)))
+//         .initializer(property == null
+//                 ? new Initializer.WithoutProperty(typeDescription, name)
+//                 : new Initializer.WithProperty(typeDescription, name, property));
+
 public final class AdapterFactory {
     private AdapterFactory() {}
 
