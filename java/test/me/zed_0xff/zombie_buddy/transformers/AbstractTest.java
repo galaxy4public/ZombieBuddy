@@ -15,10 +15,8 @@ abstract class AbstractTest {
         private byte[] m_bytes;
 
         public TestClassContext(Class<?> cls) throws IOException {
-            String clsName = cls.getName();
-            byte[] bytes = getClassBytes(cls);
-            super(clsName, JarContext.forClass(clsName, bytes));
-            m_bytes = bytes;
+            super(cls.getName(), JarContext.forClass(cls.getName(), getClassBytes(cls)));
+            m_bytes = getClassBytes(cls);
         }
 
         public byte[] getBytes() { return m_bytes; }

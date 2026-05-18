@@ -12,10 +12,14 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.ClassFileLocator.*;
+import net.bytebuddy.jar.asm.Type;
 
 /**
- * Locator + {@link TypePool} layering for one jar (or test slice). {@link #setClassBytes(String, byte[])} keys and {@link ClassFileLocator#locate} names use the JVM <strong>binary name</strong> ({@link Class#getName()} style, {@code pkg.Outer$Inner}).
- * {@link #m_origPool} is tied to {@link #m_origLocator}; {@link #m_curPool} is recreated whenever overlays change so it stays aligned with {@link #getCurLocator()}.
+ * Locator + {@link TypePool} layering for one jar (or test slice). {@link #setClassBytes(String, byte[])} keys and {@link ClassFileLocator#locate} names use the JVM
+ * <strong>binary name</strong> ({@link Class#getName()} style, {@code pkg.Outer$Inner}). {@link #m_origPool} is tied to {@link #m_origLocator}; {@link #m_curPool} is recreated
+ * whenever overlays change so it stays aligned with {@link #getCurLocator()}. Pools use {@link TypePool.Default.ReaderMode#EXTENDED} so ByteBuddy reads method {@code Code}
+ * (incl. {@code LocalVariableTable}) and exposes parameter names on {@link net.bytebuddy.description.method.ParameterDescription}. {@link TypePool.Default#of(ClassFileLocator)}
+ * defaults to {@link TypePool.Default.ReaderMode#FAST} ({@code SKIP_CODE}), which skips that metadata aside from {@code MethodParameters} when present.
  */
 public class JarContext implements Closeable {
     private final ClassFileLocator    m_origLocator;
@@ -25,13 +29,21 @@ public class JarContext implements Closeable {
     private ClassFileLocator          m_curLocator = null;
     private TypePool                  m_curPool = null;
 
+    /**
+     * {@link TypePool.Default.ReaderMode#FAST} skips {@code Code}, so {@code LocalVariableTable} names never bind to parameters. {@link TypePool.Default.ReaderMode#EXTENDED}
+     * parses bodies ({@code SKIP_FRAMES}) and fills {@link net.bytebuddy.description.method.ParameterDescription} names from debug info.
+     */
+    private static TypePool createTypePool(ClassFileLocator locator) {
+        return new TypePool.Default(new TypePool.CacheProvider.Simple(), locator, TypePool.Default.ReaderMode.EXTENDED);
+    }
+
     private JarContext(ClassFileLocator locator) {
         m_origLocator = new Compound(
                 locator,
                 ForClassLoader.of(JarContext.class.getClassLoader()) // ZB + JDK
                 );
         // Pool must match m_origLocator: tests pass a Simple locator with one class; nested/referenced types and annotation types resolve via the classloader leg.
-        m_origPool = TypePool.Default.of(m_origLocator);
+        m_origPool = createTypePool(m_origLocator);
     }
 
     public static JarContext forJar(JarFile jar) {
@@ -66,7 +78,7 @@ public class JarContext implements Closeable {
             return m_origPool;
         }
         if (m_curPool == null) {
-            m_curPool = TypePool.Default.of(getCurLocator());
+            m_curPool = createTypePool(getCurLocator());
         }
         return m_curPool;
     }
@@ -116,14 +128,21 @@ public class JarContext implements Closeable {
                 throw new IllegalArgumentException("empty type");
             }
 
-            // descriptor: Ljava/lang/String;
+            // Field descriptors (reference L…;, arrays [, primitives): TypePool.describe expects a symbolic name, not a raw L…; string.
             if (s.charAt(0) == 'L' && s.endsWith(";")) {
-                return pool.describe(s).resolve();
+                Type t = Type.getType(s);
+
+                return pool.describe(t.getInternalName().replace('/', '.')).resolve();
             }
 
-            // primitive or array descriptor: [I, [Ljava/lang/String;
             if (s.charAt(0) == '[' || s.length() == 1) {
-                return pool.describe(s).resolve();
+                Type t = Type.getType(s);
+
+                if (t.getSort() == Type.ARRAY) {
+                    return pool.describe(t.getDescriptor()).resolve();
+                }
+
+                return pool.describe(t.getClassName()).resolve();
             }
 
             // internal name: java/lang/String

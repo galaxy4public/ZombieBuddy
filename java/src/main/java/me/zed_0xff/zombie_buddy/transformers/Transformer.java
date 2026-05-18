@@ -11,19 +11,17 @@ public abstract class Transformer {
 
     public record Result(byte[] bytes, boolean modified) {}
 
-    protected boolean      m_changed;
     protected ClassContext m_ctx;
 
     public Result transform(byte[] classBytes, ClassContext ctx) {
         try {
             m_ctx = ctx;
-            m_changed = false;
             ClassWriter cw = new ClassWriter(0);
             new ClassReader(classBytes).accept(createVisitor(cw, classBytes), 0);
-            if (m_changed) {
+            if (m_ctx.isChanged()) {
                 byte[] newBytes = cw.toByteArray();
                 ctx.setClassBytes(newBytes);
-                return new Result(newBytes, m_changed);
+                return new Result(newBytes, true);
             } else {
                 return NOOP_RESULT;
             }
@@ -33,6 +31,8 @@ public abstract class Transformer {
     }
 
     protected abstract ClassVisitor createVisitor(ClassWriter cw, byte[] classBytes);
+
+    protected void setChanged() { m_ctx.setChanged(); }
 
     /** Reads the LocalVariableTable of each method to extract parameter names. Key = methodName + descriptor. */
     public static Map<String, String[]> collectParamNames(byte[] classBytes) {

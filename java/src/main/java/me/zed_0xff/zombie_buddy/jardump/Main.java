@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,7 @@ import net.bytebuddy.pool.TypePool;
 public class Main extends CLIUtil {
     static boolean _showHelp    = false;
     static boolean _changedOnly = false;
+    static HashSet<String> _classFilter = new HashSet<>();
 
     private record TransInfo(
             String id,
@@ -60,6 +62,7 @@ public class Main extends CLIUtil {
         System.out.println("    -h, --help         Show this help message");
         System.out.println("    -t, --transformers Specify which transformers to apply (default:all)");
         System.out.println("    -c, --changed-only Dump only classes that were modified by transformers");
+        System.out.println("    -C, --class CLASS  Dump only the specified class (can be used multiple times)");
         System.out.println();
         System.out.println("transformers:");
         for (TransInfo t : TRANS_LIST) {
@@ -78,6 +81,7 @@ public class Main extends CLIUtil {
             } else {
                      if (arg.equals("-h") || arg.equals("--help"))         _showHelp    = true;
                 else if (arg.equals("-c") || arg.equals("--changed-only")) _changedOnly = true;
+                else if (arg.equals("-C") || arg.equals("--class"))        _classFilter.add(args[++i]);
                 else if (arg.equals("-t") || arg.equals("--transformers")) {
                     if (i + 1 >= args.length) {
                         System.err.println("Error: Missing value for " + arg);
@@ -133,6 +137,7 @@ public class Main extends CLIUtil {
                 .map(JarEntry::getName)
                 .filter(n -> n.endsWith(".class") && !n.startsWith("META-INF/") && !n.equals("module-info.class"))
                 .map(n -> n.substring(0, n.length() - 6).replace('/', '.'))  // → binary class name
+                .filter(className -> _classFilter.isEmpty() || _classFilter.contains(className)) // apply class filter if specified
                 .sorted() // ensures that all parent classes are processed before their nested classes, which is important for the transformers to work correctly
                 .forEach(className -> {
                     try {
@@ -170,6 +175,7 @@ public class Main extends CLIUtil {
             return;
         }
 
+        var t0 = System.currentTimeMillis();
         for (String fname : positionalArgs) {
             System.out.println(fname);
             if (fname.endsWith(".jar")) processJar(fname);
@@ -178,5 +184,6 @@ public class Main extends CLIUtil {
                 Logger.error("Unsupported file type: ", fname);
             }
         }
+        System.out.println("[=] Done in " + (System.currentTimeMillis() - t0) + "ms");
     }
 }

@@ -146,8 +146,7 @@ public class AnnotationConverter extends AbstractPatchAnnotationTransformer {
 
     @Override
     protected AnnotationVisitor visitMappedParamAnnotation(AnnInfo ai, boolean visible, TriFunction<Integer, String, Boolean, AnnotationVisitor> visitor, int pidx, String paramName) {
-        m_changed = true;
-        m_ctx.setAnnChanged();
+        setChanged();
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(pidx, ai.descriptor(), visible) : null;
 
         var meta = ai.metas()[0]; // FIXME: handle isAdvice flag and multiple metas
@@ -158,8 +157,7 @@ public class AnnotationConverter extends AbstractPatchAnnotationTransformer {
 
     @Override
     protected AnnotationVisitor visitMappedAnnotation(AnnInfo ai, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
-        m_changed = true;
-        m_ctx.setAnnChanged();
+        setChanged();
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(ai.descriptor(), visible) : null;
 
         var meta = ai.metas()[0]; // FIXME: handle isAdvice flag and multiple metas

@@ -16,10 +16,9 @@ public class ClassContext {
     private final JarContext      m_jctx; // shared
 
     // mutable
-    private boolean               m_annChanged;
     private boolean               m_changed;
     private TypeDescription       m_typeDesc;
-    private AnnotationDescription m_patch = null; // lazily initialized by getPatch()
+    private Patch                 m_patch = null; // lazily initialized by getPatch()
 
     /**
      * @param className JVM binary name ({@link Class#getName()})
@@ -55,8 +54,8 @@ public class ClassContext {
         return m_typeDesc;
     }
 
-    public void setAnnChanged()   { m_annChanged = true; } // no way to un-change
-    public boolean isAnnChanged() { return m_annChanged; }
+    public void setAnnChanged()   { m_changed = true; } // no way to un-change
+    public boolean isAnnChanged() { return m_changed; }
 
     public void setChanged()   { m_changed = true; }       // same
     public boolean isChanged() { return m_changed; }
@@ -70,14 +69,14 @@ public class ClassContext {
         return match.get(0);
     }
 
-    public AnnotationDescription getPatch() {
+    public Patch getPatch() {
         if (m_patch != null) return m_patch;
             
         TypeDescription td = getOriginalTypeDesc();
         while (td != null) {
-            var anns = td.getDeclaredAnnotations().filter(a -> a.getAnnotationType().represents(Patch.class));
-            if (!anns.isEmpty()) {
-                m_patch = anns.getOnly();
+            Patch p = td.getDeclaredAnnotations().ofType(Patch.class).load();
+            if (p != null) {
+                m_patch = p;
                 return m_patch;
             }
 
@@ -88,7 +87,6 @@ public class ClassContext {
 
     /** intentionally lookup original type desc only */
     public TypeDescription getPatchTarget() {
-        String targetClass = getPatch().getValue("className").resolve(String.class);
-        return m_jctx.getOrigTypeDesc(targetClass);
+        return m_jctx.getOrigTypeDesc(getPatch().className());
     }
 }

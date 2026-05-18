@@ -20,7 +20,7 @@ public class Publicizer extends Transformer {
         @Override
         public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
             int newAccess = forcePublic(access);
-            if (newAccess != access) m_changed = true;
+            if (newAccess != access) setChanged();
             return super.visitField(newAccess, name, descriptor, signature, value);
         }
 
@@ -29,7 +29,7 @@ public class Publicizer extends Transformer {
             if (!name.equals("<clinit>")) {
                 int newAccess = forcePublic(access);
                 if (newAccess != access) {
-                    m_changed = true;
+                    setChanged();
                     access = newAccess;
                 }
             }
