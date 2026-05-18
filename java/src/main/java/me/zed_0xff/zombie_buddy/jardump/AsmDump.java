@@ -1,6 +1,7 @@
 package me.zed_0xff.zombie_buddy.jardump;
 
 import me.zed_0xff.zombie_buddy.transformers.*;
+import me.zed_0xff.zombie_buddy.transformers.bytebuddy.*;
 
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Utils;
@@ -297,7 +298,7 @@ public class AsmDump extends CLIUtil {
     }
 
     public String dump(byte[] classBytes) {
-        var allParams = Transformer.collectParamNames(classBytes);
+        var allParams = AbstractTransformer.collectParamNames(classBytes);
 
         StringBuilder sb = new StringBuilder();
         ClassReader   cr = new ClassReader(classBytes);

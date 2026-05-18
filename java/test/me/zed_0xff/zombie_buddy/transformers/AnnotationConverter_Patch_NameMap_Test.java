@@ -1,5 +1,6 @@
-package me.zed_0xff.zombie_buddy.transformers;
+package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
 
+import me.zed_0xff.zombie_buddy.transformers.*;
 import me.zed_0xff.zombie_buddy.Patch;
 import net.bytebuddy.asm.Advice;
 

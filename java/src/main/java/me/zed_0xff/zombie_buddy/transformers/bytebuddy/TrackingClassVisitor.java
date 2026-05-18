@@ -1,4 +1,4 @@
-package me.zed_0xff.zombie_buddy.transformers;
+package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
 
 import net.bytebuddy.jar.asm.*;
 

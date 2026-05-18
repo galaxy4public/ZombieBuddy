@@ -3,6 +3,7 @@ package me.zed_0xff.zombie_buddy.jardump;
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Utils;
 import me.zed_0xff.zombie_buddy.transformers.*;
+import me.zed_0xff.zombie_buddy.transformers.bytebuddy.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,12 +36,16 @@ public class Main extends CLIUtil {
             boolean isDefault,
             String description) {}
 
+    private static Supplier<Transformer> conditional(Supplier<? extends Transformer> factory) {
+        return () -> new ConditionalTransformer(factory);
+    }
+
     private static final List<TransInfo> TRANS_LIST = List.of(
-        new TransInfo("ann",      AnnotationConverter::new,   true,  "Convert ZombieBuddy annotations to ByteBuddy annotations"),
-        new TransInfo("pub-all",  Publicizer::new,            false, "Publicize all members unconditionally"),
-        new TransInfo("pub-cond", ConditionalPublicizer::new, true,  "Publicize if any annotations were converted by the previous steps"),
-        new TransInfo("resolve",  Resolver::new,              true,  "Resolve alternative names in annotations"),
-        new TransInfo("none",     NoopTransformer::new,       false, "Do nothing (for testing/debugging purposes)")
+        new TransInfo("ann",      AnnotationConverter::new,     true,  "Convert ZombieBuddy annotations to ByteBuddy annotations"),
+        new TransInfo("pub-all",  Publicizer::new,              false, "Publicize all members unconditionally"),
+        new TransInfo("pub-cond", conditional(Publicizer::new), true,  "Publicize if any annotations were converted by the previous steps"),
+        new TransInfo("resolve",  Resolver::new,                true,  "Resolve alternative names in annotations"),
+        new TransInfo("none",     NoopTransformer::new,         false, "Do nothing (for testing/debugging purposes)")
     );
 
     private static final Map<String, TransInfo> TRANS_MAP =

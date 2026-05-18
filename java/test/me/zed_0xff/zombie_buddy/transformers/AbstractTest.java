@@ -2,7 +2,7 @@ package me.zed_0xff.zombie_buddy.transformers;
 
 import java.io.IOException;
 
-abstract class AbstractTest {
+public abstract class AbstractTest {
     protected static byte[] getClassBytes(Class<?> cls) throws IOException {
         String path = "/" + cls.getName().replace('.', '/') + ".class";
 
@@ -11,7 +11,7 @@ abstract class AbstractTest {
         }
     }
 
-    static class TestClassContext extends ClassContext {
+    public static class TestClassContext extends ClassContext {
         private byte[] m_bytes;
 
         public TestClassContext(Class<?> cls) throws IOException {

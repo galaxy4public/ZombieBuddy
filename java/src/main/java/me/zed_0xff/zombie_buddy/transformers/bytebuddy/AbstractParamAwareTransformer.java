@@ -1,4 +1,4 @@
-package me.zed_0xff.zombie_buddy.transformers;
+package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
 
 import me.zed_0xff.zombie_buddy.Patch;
 
@@ -12,7 +12,7 @@ import net.bytebuddy.jar.asm.*;
 /*
  * base class for transformers that need access to parameter _names_ when processing annotations (e.g. AnnotationConverter)
  */
-public abstract class AbstractParamAwareTransformer extends Transformer {
+public abstract class AbstractParamAwareTransformer extends AbstractTransformer {
     /** Set for the duration of {@link #createVisitor}; used by subclasses (e.g. annotation translation) to share one scope stack with {@link TrackingClassVisitor}. */
     protected ScopeTracker<Object> m_scopeTracker;
 
@@ -25,7 +25,7 @@ public abstract class AbstractParamAwareTransformer extends Transformer {
     protected ClassVisitor createVisitor(ClassWriter cw, byte[] classBytes) {
         m_scopeTracker = new ScopeTracker<>();
         ScopeTracker<Object> tracker = m_scopeTracker;
-        Map<String, String[]> allParams = Transformer.collectParamNames(classBytes);
+        Map<String, String[]> allParams = AbstractTransformer.collectParamNames(classBytes);
         return new TrackingClassVisitor(ASM_API, cw, tracker) {
             @Override
             public AnnotationVisitor visitAnnotation(String desc, boolean visible) {

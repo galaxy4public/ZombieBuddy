@@ -8,9 +8,4 @@ public class NoopTransformer extends Transformer {
     public Result transform(byte[] classBytes, ClassContext ctx) {
         return NOOP_RESULT;
     }
-
-    @Override
-    protected ClassVisitor createVisitor(ClassWriter cw, byte[] classBytes) {
-        throw new UnsupportedOperationException("NoopTransformer should never create a visitor");
-    }
 }

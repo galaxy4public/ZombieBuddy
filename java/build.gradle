@@ -33,6 +33,8 @@ repositories {
 dependencies {
     implementation 'net.bytebuddy:byte-buddy:1.18.8'
     implementation 'net.bytebuddy:byte-buddy-agent:1.18.8'
+//    implementation 'org.ow2.asm:asm:9.9.1'
+    implementation 'org.ow2.asm:asm-tree:9.9.1'                   // XXX should match version.asm in byte-buddy's pom.xml
     implementation 'io.github.classgraph:classgraph:4.8.184'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
     implementation 'com.google.code.gson:gson:2.12.1'
@@ -76,6 +78,7 @@ shadowJar {
     
     relocate 'com.google.gson', 'zb.com.google.gson'
     relocate 'org.bouncycastle', 'zb.org.bouncycastle'
+    relocate 'org.objectweb.asm', 'zb.org.objectweb.asm'
 
     exclude 'META-INF/*.SF'
     exclude 'META-INF/*.DSA'

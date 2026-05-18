@@ -1,4 +1,4 @@
-package me.zed_0xff.zombie_buddy.transformers;
+package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
 
 import me.zed_0xff.zombie_buddy.Patch;
 import me.zed_0xff.zombie_buddy.Patch.Internal.Meta;
@@ -10,7 +10,7 @@ import net.bytebuddy.description.method.MethodDescription;
 /*
  * base class for transformers that rewrite patch annotations (e.g. AlternativeResolver, AnnotationConverter)
  */
-public abstract class AbstractPatchAnnotationTransformerV2 extends Transformer {
+public abstract class AbstractPatchAnnotationTransformerV2 extends AbstractTransformer {
     static boolean isZBdesc(String desc) {
         return desc != null && desc.startsWith("Lme/zed_0xff/zombie_buddy/");
     }

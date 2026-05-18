@@ -1,11 +1,11 @@
-package me.zed_0xff.zombie_buddy.transformers;
+package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
 
 import net.bytebuddy.jar.asm.*;
 
 /*
  * makes all fields and methods public
  */
-public class Publicizer extends Transformer {
+public class Publicizer extends AbstractTransformer {
     static public int forcePublic(int access) {
         access &= ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED);
         access |= Opcodes.ACC_PUBLIC;
