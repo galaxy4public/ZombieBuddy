@@ -74,9 +74,9 @@ public class ClassContext {
             
         TypeDescription td = getOriginalTypeDesc();
         while (td != null) {
-            Patch p = td.getDeclaredAnnotations().ofType(Patch.class).load();
+            var p = td.getDeclaredAnnotations().ofType(Patch.class);
             if (p != null) {
-                m_patch = p;
+                m_patch = p.load();
                 return m_patch;
             }
 

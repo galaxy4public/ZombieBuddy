@@ -95,7 +95,12 @@ public class CompactTable {
         m_rows.add(new Row(cols, lens));
     }
 
+    @Override
     public String toString() {
+        return render();
+    }
+
+    public String render() {
         if (m_rows.isEmpty()) return "";
 
         int n = m_numCols - 1;

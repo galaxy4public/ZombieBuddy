@@ -28,27 +28,27 @@ public class Resolver extends AbstractPatchAnnotationTransformerV2 {
 
         @Override
         public void visit(String name, Object value) {
-            Logger.debug("visit   ", tracker.path(), name, value);
+            // Logger.debug("visit   ", tracker.path(), name, value);
             super.visit(name, value);
         }
 
         @Override
         public AnnotationVisitor visitAnnotation(String name, String descriptor) {
-            Logger.debug("visitAnn", tracker.path(), name, descriptor);
+            // Logger.debug("visitAnn", tracker.path(), name, descriptor);
             AnnotationVisitor av = super.visitAnnotation(name, descriptor);
             return av == null ? null : new AnnVisitor(api, av, tracker);
         }
 
         @Override
         public AnnotationVisitor visitArray(String name) {
-            Logger.debug("visitArr", tracker.path(), name);
+            // Logger.debug("visitArr", tracker.path(), name);
             AnnotationVisitor av = super.visitArray(name);
             return av == null ? null : new AnnVisitor(api, av, tracker);
         }
 
         @Override
         public void visitEnd() {
-            Logger.debug("visitEnd", tracker.path());
+            // Logger.debug("visitEnd", tracker.path());
             //super.visit("value", "test");
             super.visitEnd();
         }
@@ -105,7 +105,7 @@ public class Resolver extends AbstractPatchAnnotationTransformerV2 {
                     .filter(m -> m.getDeclaredAnnotations().isAnnotationPresent(Patch.Internal.Flags.class))
                     .forEach(m -> {
                         Patch.Internal.Flags flags = m.getDeclaredAnnotations().ofType(Patch.Internal.Flags.class).load();
-                        Logger.debug("  ", m, flags);
+                        // Logger.debug("  ", m, flags);
                     });
 
                 // if (methods.isEmpty()) { Logger.warn("No annotation element found for parameter:", paramName, "in", mi.annDesc()); break; }
@@ -131,12 +131,12 @@ public class Resolver extends AbstractPatchAnnotationTransformerV2 {
     class ClsVisitor extends TrackingClassVisitor {
         public ClsVisitor(int api, ClassVisitor cv, ScopeTracker<Object> tracker) {
             super(api, cv, tracker);
-            Logger.debug("visit class", tracker.path(), m_ctx.className());
+            // Logger.debug("visit class", tracker.path(), m_ctx.className());
         }
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
-            Logger.debug("visit method", tracker.path(), name, desc);
+            // Logger.debug("visit method", tracker.path(), name, desc);
             MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
             return "<clinit>".equals(name) ? mv : new MtdVisitor(api, mv, tracker, name, desc);
         }

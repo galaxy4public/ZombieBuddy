@@ -22,6 +22,24 @@ import net.bytebuddy.jar.asm.Type;
  * defaults to {@link TypePool.Default.ReaderMode#FAST} ({@code SKIP_CODE}), which skips that metadata aside from {@code MethodParameters} when present.
  */
 public class JarContext implements Closeable {
+    private static final class NonClosingJarLocator implements ClassFileLocator {
+        private final ClassFileLocator delegate;
+
+        NonClosingJarLocator(ClassFileLocator delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public Resolution locate(String name) throws IOException {
+            return delegate.locate(name);
+        }
+
+        @Override
+        public void close() throws IOException {
+            // Caller retains ownership (e.g. external JarFile opened alongside this context).
+        }
+    }
+
     private final ClassFileLocator    m_origLocator;
     private final TypePool            m_origPool;
     private final Map<String, byte[]> m_newClassBytes = new HashMap<>(); // className → new class bytes
@@ -46,12 +64,28 @@ public class JarContext implements Closeable {
         m_origPool = createTypePool(m_origLocator);
     }
 
+    /** Closes the delegate {@link ForJarFile} (and thus the {@link JarFile}) when this context is closed. */
     public static JarContext forJar(JarFile jar) {
-        return new JarContext(new ForJarFile(jar));
+        return forJar(jar, true);
+    }
+
+    /** @param closeJarWithContext if {@code false}, {@link #close()} does not close the underlying {@link JarFile} (caller must close it). */
+    public static JarContext forJar(JarFile jar, boolean closeJarWithContext) {
+        ClassFileLocator jarLeg = new ForJarFile(jar);
+        if (!closeJarWithContext) {
+            jarLeg = new NonClosingJarLocator(jarLeg);
+        }
+
+        return new JarContext(jarLeg);
     }
 
     public static JarContext forClass(String className, byte[] classBytes) {
         return new JarContext(new Simple(Map.of(className, classBytes)));
+    }
+
+    /** Keys are JVM binary class names ({@link Class#getName()}). {@link TypePool} resolves strictly from this map plus the class-loader leg; no live {@link JarFile}. */
+    public static JarContext forClasses(Map<String, byte[]> binaryNameToBytes) {
+        return new JarContext(new Simple(binaryNameToBytes));
     }
 
     @Override

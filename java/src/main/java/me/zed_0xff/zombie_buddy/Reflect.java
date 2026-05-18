@@ -91,9 +91,18 @@ public final class Reflect {
      */
     public static Reflect on(Object obj) {
         if (obj instanceof String s) {
-            return new Reflect(Accessor.findClass(s));
+            obj = Accessor.findClass(s);
         }
-        return new Reflect(obj);
+        return obj == null ? REFLECT_NULL : new Reflect(obj);
+    }
+
+    public static Reflect on(String s, Flag... flags) {
+        EnumSet<Flag> flagSet = toFlagSet(flags);
+        Class<?> cls = Accessor.findClass(s);
+        if (cls != null && matchesMod(cls.getModifiers(), flagSet)) {
+            return new Reflect(cls);
+        }
+        return REFLECT_NULL;
     }
 
     private static final class ClassInfo {
@@ -123,7 +132,7 @@ public final class Reflect {
     }
 
     public Reflect staticField(String fieldName) {
-        Class<?> cls = resolveClass();
+        Class<?> cls = getType();
         if (cls == null || Utils.isBlank(fieldName)) return REFLECT_NULL;
     
         return new Reflect(Accessor.tryGet(cls, fieldName, null));
@@ -131,7 +140,7 @@ public final class Reflect {
 
     /** Tries {@code getInstance()} static method, then falls back to a static {@code instance} field. */
     public Reflect getInstance() {
-        Class<?> cls = resolveClass();
+        Class<?> cls = getType();
         if (cls == null) return REFLECT_NULL;
 
         Method m = Accessor.findExactMethod(cls, "getInstance");
@@ -176,7 +185,7 @@ public final class Reflect {
      * Both groups must match when both are present.
      */
     public List<Method> methods(Flag... flags) {
-        Class<?> cls = resolveClass();
+        Class<?> cls = getType();
         if (cls == null) return Collections.emptyList();
 
         ClassInfo cinfo = getClassInfo(cls);
@@ -200,7 +209,7 @@ public final class Reflect {
      * wins) matching {@code flags}. Same flag semantics as {@link #methods(Flag...)}.
      */
     public List<Field> fields(Flag... flags) {
-        Class<?> cls = resolveClass();
+        Class<?> cls = getType();
         if (cls == null) return Collections.emptyList();
 
         EnumSet<Flag> flagSet = toFlagSet(flags);
@@ -246,7 +255,7 @@ public final class Reflect {
         return true;
     }
 
-    private Class<?> resolveClass() {
+    public Class<?> getType() {
         if (value == null) return null;
         return value instanceof Class<?> c ? c : value.getClass();
     }
@@ -289,7 +298,7 @@ public final class Reflect {
 
     // call it once and cache the result
     public VarHandle getVarHandle(Class<?> type, String... names) {
-        Class<?> cls = resolveClass();
+        Class<?> cls = getType();
         if (cls == null) return null;
     
         ClassInfo cinfo = getClassInfo(cls);
@@ -324,7 +333,7 @@ public final class Reflect {
 
     // call it once and cache the result
     public MethodHandle getMethodHandle(Class<?> returnType, Class<?>[] parameterTypes, String... names) {
-        Class<?> cls = resolveClass();
+        Class<?> cls = getType();
         if (cls == null) return null;
 
         ClassInfo cinfo = getClassInfo(cls);
