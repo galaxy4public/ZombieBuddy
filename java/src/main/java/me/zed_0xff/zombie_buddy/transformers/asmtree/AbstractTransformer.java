@@ -12,21 +12,27 @@ abstract class AbstractTransformer extends Transformer {
 
     @Override
     public Result transform(byte[] classBytes, ClassContext ctx) {
-        m_ctx = ctx;
-        ClassReader cr = new ClassReader(classBytes);
+        try {
+            m_ctx = ctx;
+            ClassReader cr = new ClassReader(classBytes);
 
-        ClassNode cn = new ClassNode();
-        cr.accept(cn, 0);
+            ClassNode cn = new ClassNode();
+            cr.accept(cn, 0);
 
-        transformNode(cn);
+            transformNode(cn);
 
-        if (!m_ctx.isChanged()) {
-            return NOOP_RESULT;
+            if (!m_ctx.isChanged()) {
+                return NOOP_RESULT;
+            }
+
+            ClassWriter cw = new ClassWriter(0);
+            cn.accept(cw);
+            byte[] newBytes = cw.toByteArray();
+            ctx.setClassBytes(newBytes);
+
+            return new Result(newBytes, true);
+        } finally {
+            m_ctx = null;
         }
-
-        ClassWriter cw = new ClassWriter(0);
-        cn.accept(cw);
-
-        return new Result(cw.toByteArray(), true);
     }
 }

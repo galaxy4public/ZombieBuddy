@@ -1,8 +1,8 @@
-package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
+package me.zed_0xff.zombie_buddy.transformers;
 
-import me.zed_0xff.zombie_buddy.transformers.*;
-
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.*;
 import java.io.IOException;
 
@@ -16,12 +16,17 @@ class PublicizerTest extends AbstractTest {
         static protected boolean m2() { return false; }
     }
 
-    @Test
-    void test() throws IOException {
+    @ParameterizedTest
+    @ValueSource(classes = {
+        me.zed_0xff.zombie_buddy.transformers.asmtree.Publicizer.class,
+        me.zed_0xff.zombie_buddy.transformers.bytebuddy.Publicizer.class
+    })
+    void test(Class<? extends Transformer> cls) throws Exception {
         var ctx = new TestClassContext(Target.class);
         byte[] bytes = ctx.getBytes();
 
-        var result = new Publicizer().transform(bytes, ctx);
+        Transformer transformer = cls.getDeclaredConstructor().newInstance();
+        var result = transformer.transform(bytes, ctx);
         assertThat(result.modified()).isTrue();
         assertThat(result.bytes()).isNotNull();
 
