@@ -13,6 +13,9 @@ import java.util.Map;
 import org.objectweb.asm.tree.*;
 import org.objectweb.asm.Type;
 
+import net.bytebuddy.description.type.TypeDescription;
+import static net.bytebuddy.matcher.ElementMatchers.named;
+
 /*
  * Rewrites ByteBuddy-bound annotations paired with {@code @Patch.*}: {@link Patch.Internal.MapBool} maps booleans to {@code Class} literals ({@link org.objectweb.asm.Type}),
  * and {@link Patch.Internal.Flags} fills infer-from-name / single-element probes on parameters (see {@link #resolveMethodParams}).
@@ -105,7 +108,7 @@ public class Resolver extends AbstractTransformer {
         return changed;
     }
 
-    private static boolean resolveParamAnn(String paramName, AnnotationNode bbAnn, AnnotationNode zbAnn) {
+    private boolean resolveParamAnn(String paramName, AnnotationNode bbAnn, AnnotationNode zbAnn) {
         var ai = AnnCache.get(zbAnn.desc);
         if (ai == null) return false;
 
@@ -120,7 +123,6 @@ public class Resolver extends AbstractTransformer {
         }
 
         changed |= applyMapBoolFromZbAnn(bbAnn, zbAnn);
-
         return changed;
     }
 
@@ -135,7 +137,6 @@ public class Resolver extends AbstractTransformer {
             if (mapBool_ != null)
                 changed |= processMapBool(bbAnn, elem.getName(), mapBool_.load());
         }
-
         return changed;
     }
 
@@ -156,7 +157,7 @@ public class Resolver extends AbstractTransformer {
         return onFalse == Patch.Internal.DropAnnParam.class ? Type.VOID_TYPE : Type.getType(onFalse);
     }
 
-    private static boolean processFlags(AnnotationNode bbAnn, String elemName, Patch.Internal.Flags flags, String paramName) {
+    private boolean processFlags(AnnotationNode bbAnn, String elemName, Patch.Internal.Flags flags, String paramName) {
         boolean changed = false;
 
         if (flags.inferFromTargetName()) {
@@ -166,14 +167,36 @@ public class Resolver extends AbstractTransformer {
             }
         }
 
-        if (flags.probeField()) {
+        while (flags.probeField()) {
             List<?> values = getAnnElem(bbAnn, elemName, List.class);
-            if (values != null && values.size() == 1) {
+            if (Utils.isBlank(values)) break;
+
+            if (values.size() == 1) {
+                // trivial case, just one value to fill in, no need to resolve, just convert String[] -> String
                 bbAnn.visit(elemName, values.get(0));
                 changed = true;
+                break;
             }
-        }
 
+            TypeDescription td = m_ctx.getPatchTarget();
+            if (td == null) {
+                Logger.once.warn("cannot find patch target class", m_ctx.getPatch().className());
+                break;
+            }
+            var fields = td.getDeclaredFields();
+            for( var f : values) {
+                if (!(f instanceof String fieldName)) continue;
+
+                var r = fields.filter(named(fieldName));
+                if (r.size() == 1) {
+                    bbAnn.visit(elemName, fieldName);
+                    changed = true;
+                    break;
+                }
+            }
+
+            break;
+        }
         return changed;
     }
 
@@ -183,13 +206,9 @@ public class Resolver extends AbstractTransformer {
         for (int i = 0, n = ann.values.size(); i < n; i += 2) {
             if (name.equals(ann.values.get(i))) {
                 Object val = ann.values.get(i + 1);
-
-                return type.isInstance(val)
-                    ? type.cast(val)
-                    : null;
+                return type.isInstance(val) ? type.cast(val) : null;
             }
         }
-
         return null;
     }
 }

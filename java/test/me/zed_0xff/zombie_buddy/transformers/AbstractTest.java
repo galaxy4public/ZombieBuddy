@@ -2,6 +2,9 @@ package me.zed_0xff.zombie_buddy.transformers;
 
 import me.zed_0xff.zombie_buddy.Logger;
 
+import net.bytebuddy.description.method.MethodDescription;
+import static net.bytebuddy.matcher.ElementMatchers.named;
+
 import java.io.IOException;
 
 public abstract class AbstractTest {
@@ -22,5 +25,14 @@ public abstract class AbstractTest {
         }
 
         public byte[] getBytes() { return m_bytes; }
+
+        public MethodDescription getMethod(String name) {
+            var match = getCurrentTypeDesc().getDeclaredMethods().filter(named(name));
+            if (match.size() == 0) return null;
+            if (match.size() == 1) return match.getOnly();
+
+            Logger.warn("Multiple methods found. Returning first match for", name);
+            return match.get(0);
+        }
     }
 }

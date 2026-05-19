@@ -65,17 +65,8 @@ public class ClassContext {
     public void setAnnChanged()   { m_changed = true; } // no way to un-change
     public boolean isAnnChanged() { return m_changed; }
 
-    public void setChanged()   { m_changed = true; }       // same
-    public boolean isChanged() { return m_changed; }
-
-    public MethodDescription getMethod(String name) {
-        var match = getCurrentTypeDesc().getDeclaredMethods().filter(m -> m.getName().equals(name));
-        if (match.size() == 0) return null;
-        if (match.size() == 1) return match.getOnly();
-
-        Logger.warn("Multiple methods found. Returning first match for", name, m_className);
-        return match.get(0);
-    }
+    public void setChanged()      { m_changed = true; } // same
+    public boolean isChanged()    { return m_changed; }
 
     public Patch getPatch() {
         if (m_patch != null) return m_patch;
