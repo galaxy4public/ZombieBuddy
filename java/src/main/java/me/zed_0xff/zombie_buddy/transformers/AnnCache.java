@@ -12,23 +12,26 @@ import static org.objectweb.asm.Type.getDescriptor;
 public class AnnCache {
     private static final Map<String, AnnInfo> _cache = new HashMap<>();
 
-    static {
-        for (Class<?> c : Patch.class.getDeclaredClasses()) {
-            if (!c.isAnnotation()) continue;
-
-            String desc = getDescriptor(c);
-            Meta[] metas = c.getAnnotationsByType(Meta.class);
-            TypeDescription td = TypeDescription.ForLoadedType.of(c);
-
-            _cache.put(desc, new AnnInfo(c, td, metas));
-        }
-    }
-
     public record AnnInfo(
             Class<?> cls, 
             TypeDescription td, 
             Meta[] metas
     ) {}
+
+    static {
+        for (Class<?> c : Patch.class.getDeclaredClasses()) {
+            if (!c.isAnnotation()) continue;
+
+            _cache.put(
+                    getDescriptor(c),
+                    new AnnInfo(
+                        c,
+                        TypeDescription.ForLoadedType.of(c),
+                        c.getDeclaredAnnotationsByType(Meta.class)
+                    )
+            );
+        }
+    }
     
     public static AnnInfo get(String desc) {
         return _cache.get(desc);

@@ -10,7 +10,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.*;
 import static org.assertj.core.api.Assertions.*;
 
-class AlternativeResolver_Patch_NameMap_Test extends AbstractTest {
+class AnnotationConverter_Patch_NameMap_Test extends AbstractTest {
     protected static Stream<Arguments> provideClasses() {
         return Stream.of(
                 Arguments.of(me.zed_0xff.zombie_buddy.transformers.asmtree.AnnotationConverter.class),
