@@ -14,11 +14,12 @@ public class Publicizer extends AbstractTransformer {
     }
 
     @Override
-    protected void transformNode(ClassNode cn) {
+    protected boolean transformNode(ClassNode cn) {
+        boolean changed = false;
         int newClsAccess = forcePublic(cn.access);
         if (newClsAccess != cn.access) {
             cn.access = newClsAccess;
-            setChanged();
+            changed = true;
         }
 
         for (FieldNode fn : cn.fields) {
@@ -26,7 +27,7 @@ public class Publicizer extends AbstractTransformer {
 
             if (newAccess != fn.access) {
                 fn.access = newAccess;
-                setChanged();
+                changed = true;
             }
         }
 
@@ -36,9 +37,10 @@ public class Publicizer extends AbstractTransformer {
 
                 if (newAccess != mn.access) {
                     mn.access = newAccess;
-                    setChanged();
+                    changed = true;
                 }
             }
         }
+        return changed;
     }
 }

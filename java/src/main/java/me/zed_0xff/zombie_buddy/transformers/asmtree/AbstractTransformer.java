@@ -1,66 +1,49 @@
 package me.zed_0xff.zombie_buddy.transformers.asmtree;
 
-import me.zed_0xff.zombie_buddy.Patch;
 import me.zed_0xff.zombie_buddy.transformers.ClassContext;
 import me.zed_0xff.zombie_buddy.transformers.Transformer;
-
-import java.util.*;
+import me.zed_0xff.zombie_buddy.Utils;
 
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
 
+import java.lang.reflect.Modifier;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 abstract class AbstractTransformer extends Transformer {
+    private static final HashMap<String, Map<Integer, String>> _methodArgNamesCache = new HashMap<>();
 
-    /** Lazily built from {@link Patch} nested annotations + {@link Patch.Internal.Meta}; shared by all asm-tree transformers. */
-    private static volatile Map<String, PatchAnnMeta[]> PATCH_ANN_META_BY_DESC;
+    protected static Map<Integer, String> getArgNames(MethodNode mn) {
+        Type[] argTypes = Type.getArgumentTypes(mn.desc);
+        if (argTypes.length == 0 || Utils.isBlank(mn.localVariables))
+            return Map.of();
 
-    /** Descriptor {@code Lme/zed_0xff/zombie_buddy/Patch$…;} → BB/advice target annotation (+ advice/delegation choice). */
-    protected record PatchAnnMeta(String targetDesc, boolean advice, String[] targetParamNames, String[] targetParamValues) {}
-
-    /** Reflection scan once per JVM; thread-safe published map. */
-    protected static Map<String, PatchAnnMeta[]> patchAnnMetaByDesc() {
-        Map<String, PatchAnnMeta[]> v = PATCH_ANN_META_BY_DESC;
-
-        if (v != null) return v;
-
-        synchronized (AbstractTransformer.class) {
-            if (PATCH_ANN_META_BY_DESC != null) return PATCH_ANN_META_BY_DESC;
-
-            PATCH_ANN_META_BY_DESC = buildPatchAnnMetaByDesc();
-
-            return PATCH_ANN_META_BY_DESC;
+        Map<Integer, LocalVariableNode> varsBySlot = mn.localVariables.stream().collect(Collectors.toMap(v -> v.index, v -> v, (a, b) -> a));
+        Map<Integer, String> result = new HashMap<>();
+        int slot = Modifier.isStatic(mn.access) ? 0 : 1;
+        for (int i = 0; i < argTypes.length; slot += argTypes[i++].getSize()) {
+            LocalVariableNode lv = varsBySlot.get(slot);
+            result.put(i, lv != null ? lv.name : "arg" + i);
         }
+
+        return result;
     }
 
-    private static Map<String, PatchAnnMeta[]> buildPatchAnnMetaByDesc() {
-        Map<String, List<PatchAnnMeta>> tmp = new HashMap<>();
-
-        for (Class<?> c : Patch.class.getDeclaredClasses()) {
-            if (!c.isAnnotation()) continue;
-
-            Patch.Internal.Meta[] metas = c.getAnnotationsByType(Patch.Internal.Meta.class);
-            if (metas.length == 0) continue;
-
-            List<PatchAnnMeta> row = new ArrayList<>(metas.length);
-            for (Patch.Internal.Meta m : metas) {
-                Class<?> ta = m.targetAnnotation();
-                if (ta == null || ta == void.class) continue;
-
-                row.add(new PatchAnnMeta(Type.getDescriptor(ta), m.isAdvice(), m.targetParamNames(), m.targetParamValues()));
-            }
-
-            if (!row.isEmpty()) tmp.put(Type.getDescriptor(c), row);
+    protected String getArgName(MethodNode mn, int pidx) {
+        if (mn.parameters != null && pidx < mn.parameters.size()) {
+            // if compiled with -parameters
+            return mn.parameters.get(pidx).name;
         }
 
-        Map<String, PatchAnnMeta[]> out = new HashMap<>(tmp.size());
-        for (Map.Entry<String, List<PatchAnnMeta>> e : tmp.entrySet()) {
-            out.put(e.getKey(), e.getValue().toArray(PatchAnnMeta[]::new));
-        }
-
-        return Collections.unmodifiableMap(out);
+        String cacheKey = mn.name + "|" + mn.desc;
+        _methodArgNamesCache.computeIfAbsent(cacheKey, k -> getArgNames(mn));
+        return _methodArgNamesCache.get(cacheKey).get(pidx);
     }
 
-    protected abstract void transformNode(ClassNode cn);
+    // overridden by subclasses
+    protected abstract boolean transformNode(ClassNode cn);
 
     @Override
     public Result transform(byte[] classBytes, ClassContext ctx) {
@@ -71,7 +54,9 @@ abstract class AbstractTransformer extends Transformer {
             ClassNode cn = new ClassNode();
             cr.accept(cn, 0);
 
-            transformNode(cn);
+            if (transformNode(cn)) {
+                m_ctx.setChanged();
+            }
 
             if (!m_ctx.isChanged()) {
                 return NOOP_RESULT;

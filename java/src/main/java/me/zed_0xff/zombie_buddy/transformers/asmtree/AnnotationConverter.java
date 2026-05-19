@@ -1,11 +1,14 @@
 package me.zed_0xff.zombie_buddy.transformers.asmtree;
 
+import me.zed_0xff.zombie_buddy.transformers.AnnCache;
 import me.zed_0xff.zombie_buddy.Patch;
+import me.zed_0xff.zombie_buddy.Utils;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
@@ -17,78 +20,57 @@ import org.objectweb.asm.tree.MethodNode;
  * ZombieBuddy annotations are left in place.
  */
 public class AnnotationConverter extends AbstractTransformer {
+    private boolean m_isAdvice;
 
     @Override
-    protected void transformNode(ClassNode cn) {
+    protected boolean transformNode(ClassNode cn) {
         Patch patch = m_ctx.getPatch();
-        if (patch == null) return;
+        if (patch == null) return false;
 
-        boolean patchAdvice = patch.isAdvice();
-        Map<String, PatchAnnMeta[]> cache = patchAnnMetaByDesc();
+        m_isAdvice = patch.isAdvice();
 
-        boolean changed = false;
-        changed |= convertAnnList(cn.visibleAnnotations, patchAdvice, cache);
-        changed |= convertAnnList(cn.invisibleAnnotations, patchAdvice, cache);
+        boolean changed = convertAnns(cn.visibleAnnotations);
 
         for (FieldNode fn : cn.fields) {
-            changed |= convertAnnList(fn.visibleAnnotations, patchAdvice, cache);
-            changed |= convertAnnList(fn.invisibleAnnotations, patchAdvice, cache);
+            changed |= convertAnns(fn.visibleAnnotations); // |= does not short-circuit
         }
 
         for (MethodNode mn : cn.methods) {
-            changed |= convertAnnList(mn.visibleAnnotations, patchAdvice, cache);
-            changed |= convertAnnList(mn.invisibleAnnotations, patchAdvice, cache);
-            changed |= convertParameterAnnLists(mn.visibleParameterAnnotations, patchAdvice, cache);
-            changed |= convertParameterAnnLists(mn.invisibleParameterAnnotations, patchAdvice, cache);
-        }
-
-        if (changed) setChanged();
-    }
-
-    private static boolean convertParameterAnnLists(List<AnnotationNode>[] lists, boolean patchAdvice, Map<String, PatchAnnMeta[]> cache) {
-        if (lists == null) return false;
-
-        boolean changed = false;
-        for (List<AnnotationNode> plist : lists) {
-            if (plist == null) continue;
-
-            changed |= convertAnnList(plist, patchAdvice, cache);
+            changed |= convertAnns(mn.visibleAnnotations);
+            changed |= convertParamAnns(mn.visibleParameterAnnotations);
         }
 
         return changed;
     }
 
-    private static boolean convertAnnList(List<AnnotationNode> list, boolean patchAdvice, Map<String, PatchAnnMeta[]> cache) {
+    private boolean convertParamAnns(List<AnnotationNode>[] lists) {
+        if (lists == null) return false;
+
+        boolean changed = false;
+        for (List<AnnotationNode> plist : lists) {
+            if (plist == null) continue;
+            changed |= convertAnns(plist);
+        }
+        return changed;
+    }
+
+    private boolean convertAnns(List<AnnotationNode> list) {
         if (list == null || list.isEmpty()) return false;
 
         List<AnnotationNode> snapshot = List.copyOf(list);
         List<AnnotationNode> toAdd = new ArrayList<>();
         for (AnnotationNode ann : snapshot) {
-            PatchAnnMeta[] rules = cache.get(ann.desc);
-            if (rules == null) continue;
-
-            PatchAnnMeta rule = pick(rules, patchAdvice);
+            Patch.Internal.Meta rule = AnnCache.getMeta(ann.desc, m_isAdvice);
             if (rule == null) continue;
 
-            if (containsDesc(list,  rule.targetDesc())) continue;
-            if (containsDesc(toAdd, rule.targetDesc())) continue;
+            String targetDesc = Type.getDescriptor(rule.targetAnnotation());
+            if (containsDesc(list, targetDesc)) continue;
+            if (containsDesc(toAdd, targetDesc)) continue;
 
             toAdd.add(translated(ann, rule));
         }
-
-        if (toAdd.isEmpty()) return false;
-
         list.addAll(toAdd);
-
-        return true;
-    }
-
-    private static PatchAnnMeta pick(PatchAnnMeta[] rules, boolean patchAdvice) {
-        for (PatchAnnMeta r : rules) {
-            if (r.advice() != patchAdvice) continue;
-            return r;
-        }
-        return null;
+        return !toAdd.isEmpty();
     }
 
     private static boolean containsDesc(List<AnnotationNode> list, String desc) {
@@ -98,33 +80,22 @@ public class AnnotationConverter extends AbstractTransformer {
         return false;
     }
 
-    private static AnnotationNode translated(AnnotationNode src, PatchAnnMeta rule) {
-        AnnotationNode dst = new AnnotationNode(rule.targetDesc());
+    private static AnnotationNode translated(AnnotationNode src, Patch.Internal.Meta meta) {
+        AnnotationNode dst = new AnnotationNode(Type.getDescriptor(meta.targetAnnotation()));
         if (src.values != null && !src.values.isEmpty()) {
             List<Object> vals = new ArrayList<>(src.values);
-            applyTargetParamRename(vals, rule.targetParamNames(), rule.targetParamValues());
+            applyTargetParams(vals, meta.targetParamNames(), meta.targetParamValues());
             dst.values = vals;
         }
         return dst;
     }
 
-    private static void applyTargetParamRename(List<Object> vals, String[] names, String[] values) {
-        if (names == null || names.length == 0 || vals == null || vals.isEmpty()) return;
+    private static void applyTargetParams(List<Object> vals, String[] names, String[] values) {
+        if (Utils.isBlank(names) || Utils.isBlank(values)) return;
 
-        int n = values == null ? 0 : Math.min(names.length, values.length);
-        if (n == 0) return;
-
-        for (int i = 0; i < n; i++) {
-            renameKey(vals, names[i], values[i]);
-        }
-    }
-
-    private static void renameKey(List<Object> vals, String from, String to) {
-        for (int i = 0; i < vals.size(); i += 2) {
-            Object k = vals.get(i);
-            if (!(k instanceof String s)) continue;
-            if (from.equals(s))
-                vals.set(i, to);
+        for(int i = 0; i < names.length && i < values.length; i++) {
+            vals.add(names[i]);
+            vals.add(values[i]);
         }
     }
 }

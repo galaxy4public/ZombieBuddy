@@ -1,27 +1,26 @@
-package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
-
-import java.io.IOException;
-import java.util.stream.Stream;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.*;
-import static org.assertj.core.api.Assertions.*;
+package me.zed_0xff.zombie_buddy.transformers;
 
 import me.zed_0xff.zombie_buddy.transformers.*;
 import me.zed_0xff.zombie_buddy.Patch;
-import net.bytebuddy.asm.Advice;
 
-import static net.bytebuddy.matcher.ElementMatchers.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import static org.assertj.core.api.Assertions.*;
+import org.junit.jupiter.params.provider.*;
+
+import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
 
+import java.util.stream.Stream;
+
 class AnnotationConverter_Patch_OnEnter_Test extends AbstractTest {
-    private static Stream<Arguments> provideClasses() {
+    protected static Stream<Arguments> provideClasses() {
         return Stream.of(
                 Arguments.of(me.zed_0xff.zombie_buddy.transformers.asmtree.AnnotationConverter.class),
                 Arguments.of(me.zed_0xff.zombie_buddy.transformers.bytebuddy.AnnotationConverter.class)
                 );
     }
 
-    @Patch(className = "foo.bar", methodName = "getFoo")
+    @Patch(className = "me.zed_0xff.TestClass", methodName = "getFoo")
     static class Target1 {
         @Patch.OnEnter
         static void m1() {}
@@ -52,7 +51,7 @@ class AnnotationConverter_Patch_OnEnter_Test extends AbstractTest {
             .isEqualTo(TypeDescription.ForLoadedType.of(void.class));
     }
 
-    @Patch(className = "foo.bar", methodName = "getFoo")
+    @Patch(className = "me.zed_0xff.TestClass", methodName = "getFoo")
     static class Target2 {
         @Patch.OnEnter(skipOn = true)
         static boolean m1() { return true; }
@@ -83,7 +82,7 @@ class AnnotationConverter_Patch_OnEnter_Test extends AbstractTest {
         //     .isEqualTo(TypeDescription.ForLoadedType.of(Advice.OnNonDefaultValue.class));
     }
 
-    @Patch(className = "foo.bar", methodName = "getFoo")
+    @Patch(className = "me.zed_0xff.TestClass", methodName = "getFoo")
     static class Target3 {
         @Patch.OnEnter(skipOn = false)
         static boolean m1() { return true; }

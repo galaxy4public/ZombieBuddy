@@ -2,13 +2,19 @@ package me.zed_0xff.zombie_buddy.transformers;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.*;
 import static org.assertj.core.api.Assertions.*;
-import java.io.IOException;
 
-import net.bytebuddy.description.type.TypeDescription;
+import java.util.stream.Stream;
 
 class PublicizerTest extends AbstractTest {
+    protected static Stream<Arguments> provideClasses() {
+        return Stream.of(
+                Arguments.of(me.zed_0xff.zombie_buddy.transformers.asmtree.Publicizer.class),
+                Arguments.of(me.zed_0xff.zombie_buddy.transformers.bytebuddy.Publicizer.class)
+                );
+    }
+
     static class Target {
         private int f1;
         static Object f2;
@@ -17,10 +23,7 @@ class PublicizerTest extends AbstractTest {
     }
 
     @ParameterizedTest
-    @ValueSource(classes = {
-        me.zed_0xff.zombie_buddy.transformers.asmtree.Publicizer.class,
-        me.zed_0xff.zombie_buddy.transformers.bytebuddy.Publicizer.class
-    })
+    @MethodSource("provideClasses")
     void test(Class<? extends Transformer> cls) throws Exception {
         var ctx = new TestClassContext(Target.class);
         byte[] bytes = ctx.getBytes();

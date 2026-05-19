@@ -13,6 +13,8 @@ import net.bytebuddy.asm.Advice;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface Patch {
+    public static final String NAMEMAP_LOCAL_NAME = "zb.nameMap";
+
     String className();
     String methodName();
     boolean isAdvice() default true;     // false => MethodDelegation
@@ -288,7 +290,7 @@ public @interface Patch {
      */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetAnnotation = Advice.Local.class, targetParamNames={"value"}, targetParamValues={Internal.NAMEMAP_LOCAL_NAME}, requireType = Map.class)
+    @Internal.Meta(targetAnnotation = Advice.Local.class, targetParamNames={"value"}, targetParamValues={NAMEMAP_LOCAL_NAME}, requireType = Map.class)
     public @interface NameMap {}
 
     /** Runtime registry for field-name resolution maps bound via {@code @Patch.NameMap} parameters.
@@ -309,9 +311,9 @@ public @interface Patch {
     }
 
     public static final class Internal {
-        private Internal() {}
+        public static final String ANN_PREFIX = "Lme/zed_0xff/zombie_buddy/Patch$";
 
-        public static final String NAMEMAP_LOCAL_NAME = "zb.nameMap";
+        private Internal() {}
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.TYPE)

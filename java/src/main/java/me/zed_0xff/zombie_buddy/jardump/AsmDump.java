@@ -4,6 +4,7 @@ import me.zed_0xff.zombie_buddy.transformers.*;
 import me.zed_0xff.zombie_buddy.transformers.bytebuddy.*;
 
 import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Patch;
 import me.zed_0xff.zombie_buddy.Utils;
 
 import net.bytebuddy.asm.Advice;
@@ -196,7 +197,7 @@ public class AsmDump extends CLIUtil {
             sb.append(")");
         }
 
-        boolean valid = desc.startsWith("Lme/zed_0xff/zombie_buddy/Patch") || validateAnnotation(desc, values);
+        boolean valid = desc.startsWith(Patch.Internal.ANN_PREFIX) || validateAnnotation(desc, values);
         return colorize(sb.toString(), valid ? (desc.contains("bytebuddy") ? BB_ANN_COLOR : ANN_COLOR) : RED);
     }
 

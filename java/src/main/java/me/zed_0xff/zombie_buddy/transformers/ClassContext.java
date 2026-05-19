@@ -3,14 +3,22 @@ package me.zed_0xff.zombie_buddy.transformers;
 import me.zed_0xff.zombie_buddy.Logger;
 import me.zed_0xff.zombie_buddy.Patch;
 
-import java.util.Objects;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-import net.bytebuddy.description.annotation.AnnotationDescription;
+import org.objectweb.asm.Type;
+
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
 
 /** Per-class view into a shared {@link JarContext}. Prefer one instance per {@code className} while mutating that jar slice; cached {@link #getCurrentTypeDesc()} can drift if the same name is updated through another {@code ClassContext} sharing {@code jctx}. */
 public class ClassContext {
+    /** Lazily built from {@link Patch} nested annotations + {@link Patch.Internal.Meta}; JVM-wide, keyed by ZB annotation ASM descriptor ({@code Lme/zed_0xff/zombie_buddy/Patch$…;}). */
+    private static volatile Map<String, Patch.Internal.Meta[]> PATCH_META_BY_ZB_DESC;
+
     private final String          m_className;
     private final TypeDescription m_origDesc;
     private final JarContext      m_jctx; // shared

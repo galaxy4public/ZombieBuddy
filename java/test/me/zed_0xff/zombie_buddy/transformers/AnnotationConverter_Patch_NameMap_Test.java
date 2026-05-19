@@ -1,27 +1,33 @@
-package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
+package me.zed_0xff.zombie_buddy.transformers;
 
-import me.zed_0xff.zombie_buddy.transformers.*;
 import me.zed_0xff.zombie_buddy.Patch;
 import net.bytebuddy.asm.Advice;
 
-import java.io.IOException;
 import java.util.Map;
-import org.junit.jupiter.api.Test;
-import static org.assertj.core.api.Assertions.*;
-import static net.bytebuddy.matcher.ElementMatchers.*;
+import java.util.stream.Stream;
 
-import net.bytebuddy.description.type.TypeDescription;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.*;
+import static org.assertj.core.api.Assertions.*;
 
 class AlternativeResolver_Patch_NameMap_Test extends AbstractTest {
-    @Patch(className = "foo", methodName = "baz")
+    protected static Stream<Arguments> provideClasses() {
+        return Stream.of(
+                Arguments.of(me.zed_0xff.zombie_buddy.transformers.asmtree.AnnotationConverter.class),
+                Arguments.of(me.zed_0xff.zombie_buddy.transformers.bytebuddy.AnnotationConverter.class)
+                );
+    }
+
+    @Patch(className = "me.zed_0xff.TestClass", methodName = "getFoo")
     static class Target1 {
         @Patch.OnEnter
-        static void m1(@Patch.NameMap Map<String, String> nameMap) {
+        static void m1(@Patch.Local(Patch.NAMEMAP_LOCAL_NAME) Map<String, String> nameMap) {
         }
     }
 
-    @Test
-    void test() throws IOException {
+    @ParameterizedTest
+    @MethodSource("provideClasses")
+    void test(Class<? extends Transformer> cls) throws Exception {
         var ctx = new TestClassContext(Target1.class);
         byte[] bytes = ctx.getBytes();
 
@@ -29,7 +35,9 @@ class AlternativeResolver_Patch_NameMap_Test extends AbstractTest {
         assertThat(p.getDeclaredAnnotations())
             .hasSize(1);
 
-        var result = new AnnotationConverter().transform(bytes, ctx);
+        Transformer transformer = cls.getDeclaredConstructor().newInstance();
+        var result = transformer.transform(bytes, ctx);
+
         assertThat(result.modified()).isTrue();
         assertThat(result.bytes()).isNotNull();
 
@@ -39,6 +47,6 @@ class AlternativeResolver_Patch_NameMap_Test extends AbstractTest {
 
         var a = p.getDeclaredAnnotations().filter(x -> x.getAnnotationType().isAssignableTo(Advice.Local.class)).getOnly();
         assertThat(a.getValue("value").resolve())
-            .isEqualTo(Patch.Internal.NAMEMAP_LOCAL_NAME);
+            .isEqualTo(Patch.NAMEMAP_LOCAL_NAME);
     }
 }

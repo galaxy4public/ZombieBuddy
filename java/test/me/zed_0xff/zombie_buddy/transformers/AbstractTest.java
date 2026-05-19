@@ -1,5 +1,7 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
+import me.zed_0xff.zombie_buddy.Logger;
+
 import java.io.IOException;
 
 public abstract class AbstractTest {
