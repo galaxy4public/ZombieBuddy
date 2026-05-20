@@ -181,12 +181,12 @@ final class PatchTransformer {
             }
 
             Map<String, String> typeAliases = new HashMap<>();
-            for (Class<?> inner : patchClass.getDeclaredClasses()) {
-                Patch.TypeAlias ann = inner.getAnnotation(Patch.TypeAlias.class);
-                if (ann == null) continue;
-                typeAliases.put(Utils.toInternalName(inner), Utils.toInternalName(ann.value()));
-                needsTransformation = true;
-            }
+            // for (Class<?> inner : patchClass.getDeclaredClasses()) {
+            //     Patch.TypeAlias ann = inner.getAnnotation(Patch.TypeAlias.class);
+            //     if (ann == null) continue;
+            //     typeAliases.put(Utils.toInternalName(inner), Utils.toInternalName(ann.value()));
+            //     needsTransformation = true;
+            // }
 
             Patch patchAnn = patchClass.getAnnotation(Patch.class);
             String defaultTargetCls = (patchAnn != null) ? patchAnn.className() : "";

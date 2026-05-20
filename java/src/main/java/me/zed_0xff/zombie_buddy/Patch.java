@@ -179,34 +179,6 @@ public @interface Patch {
         boolean optional() default false;
     }
 
-    /**
-     * Marks a nested stub class as a stand-in for an inaccessible type (e.g. a private inner class
-     * of the target). At patch transpile time PatchEngine rewrites every bytecode reference to the
-     * stub to the real class named by {@link #value()}.
-     *
-     * <p>Since advice is inlined into the target class's bytecode, the rewritten references have
-     * full access to the real type's private members without any reflection.
-     *
-     * <pre>{@code
-     * @Patch(className = "game.Foo", methodName = "bar")
-     * public class FooPatch {
-     *     @Patch.TypeAlias("game.Foo$Inner")
-     *     static class Inner { String field; Inner(String v) {} }
-     *
-     *     @Patch.OnEnter
-     *     public static void enter(@Patch.This Object self) {
-     *         Inner i = new Inner("x");   // → new game/Foo$Inner at runtime
-     *         Foo.result = i.field;       // → GETFIELD game/Foo$Inner.field
-     *     }
-     * }
-     * }</pre>
-     */
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target(ElementType.TYPE)
-    public @interface TypeAlias {
-        String value();  // fully qualified name of the real class
-    }
-
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.Handle.html            - returns only MethodHandle, no VarHandle support
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldGetterHandle.html - respects field visibility
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldSetterHandle.html - --//--
@@ -258,7 +230,7 @@ public @interface Patch {
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.PARAMETER, ElementType.TYPE})
     public @interface Adapter {
-        String className();
+        String value();
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.FIELD)
@@ -277,6 +249,14 @@ public @interface Patch {
         public @interface Method {
             @Internal.Flags(inferFromTargetName = true, probeMethod = true)
             String[] value() default {};  // empty = infer from parameter name; multiple = try in order
+        }
+
+        /*
+         * drop method body and short-circuit argument to return value
+         */
+        @Retention(RetentionPolicy.RUNTIME)
+        @Target(ElementType.METHOD)
+        public @interface Intrinsic {
         }
     }
 
@@ -310,12 +290,6 @@ public @interface Patch {
             Class<?> onTrue();
             Class<?> onFalse() default DropAnnParam.class;
         }
-
-        // @Retention(RetentionPolicy.RUNTIME)
-        // @Target(ElementType.METHOD)
-        // public @interface Alias {
-        //     String value();
-        // }
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.METHOD)

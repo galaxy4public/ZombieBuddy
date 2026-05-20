@@ -6,7 +6,7 @@ import testjar.TypeAliasTarget;
 @Patch(className = "testjar.TypeAliasTarget", methodName = "process")
 public class PatchTypeAlias {
 
-    @Patch.TypeAlias("testjar.TypeAliasTarget$Result")
+    // @Patch.TypeAlias("testjar.TypeAliasTarget$Result")
     static class Result {
         String value;
         Result(String v) {}

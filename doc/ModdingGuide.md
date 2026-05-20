@@ -244,24 +244,6 @@ public class PlayerUpdatePatch {
 }
 ```
 
-### Private Type Access (@Patch.TypeAlias)
-
-When a target method works with private inner classes, declare a stub class in the patch and annotate it with `@Patch.TypeAlias`. PatchEngine rewrites every bytecode reference to the stub to the real class at load time, giving the inlined advice full access to the type's private members without reflection.
-
-```java
-@Patch(className = "game.Foo", methodName = "bar")
-public class FooPatch {
-    @Patch.TypeAlias("game.Foo$Inner")
-    static class Inner { String field; Inner(String v) {} }
-
-    @Patch.OnEnter
-    public static void enter(@Patch.This Object self) {
-        Inner i = new Inner("x");   // → new game/Foo$Inner at runtime
-        String v = i.field;         // → GETFIELD game/Foo$Inner.field
-    }
-}
-```
-
 ### Accessing Private Members with Handles (@Patch.VarHandle)
 
 **VarHandle** (direct field access without reflection):
