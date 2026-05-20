@@ -98,10 +98,10 @@ public class Main extends CLIUtil {
     }
 
     private static final TransSpec[] TRANS_SPECS = {
+        new TransSpec("resolve",  "Resolver",            "Resolve alternative names in annotations", TransOpt.DEFAULT),
         new TransSpec("convert",  "AnnotationConverter", "Convert ZombieBuddy annotations to ByteBuddy annotations", TransOpt.DEFAULT),
         new TransSpec("pub-all",  "Publicizer",          "Publicize all members unconditionally"),
         new TransSpec("pub-cond", "Publicizer",          "Publicize if any annotations were converted by the previous steps", TransOpt.CONDITIONAL, TransOpt.DEFAULT),
-        new TransSpec("resolve",  "Resolver",            "Resolve alternative names in annotations", TransOpt.DEFAULT),
         new TransSpec("noop",     "NoopTransformer",     "Do nothing (for testing/debugging purposes)"),
     };
 

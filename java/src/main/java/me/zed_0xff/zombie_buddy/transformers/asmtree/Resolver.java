@@ -3,8 +3,10 @@ package me.zed_0xff.zombie_buddy.transformers.asmtree;
 import static net.bytebuddy.matcher.ElementMatchers.named;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiPredicate;
 
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
@@ -18,8 +20,8 @@ import me.zed_0xff.zombie_buddy.transformers.AnnCache;
 import net.bytebuddy.description.type.TypeDescription;
 
 /*
- * Rewrites ByteBuddy-bound annotations paired with {@code @Patch.*}: {@link Patch.Internal.MapBool} maps booleans to {@code Class} literals ({@link org.objectweb.asm.Type}),
- * and {@link Patch.Internal.Flags} fills infer-from-name / single-element probes on parameters (see {@link #resolveMethodParams}).
+ * Rewrites annotations using {@link Patch.Internal.MapBool} and parameter {@link Patch.Internal.Flags} (see {@link #resolveMethodParams}).
+ * Pairs ZombieBuddy {@code @Patch.*} with same-list ByteBuddy targets when present; otherwise applies in-place on the ZombieBuddy node.
  */
 public class Resolver extends AbstractTransformer {
     @Override
@@ -37,30 +39,7 @@ public class Resolver extends AbstractTransformer {
     }
 
     private boolean resolveMethodAnns(MethodNode mn) {
-        if (Utils.isBlank(mn.visibleAnnotations)) return false;
-
-        Map<String, AnnotationNode> zbByTarget = new HashMap<>();
-        boolean isAdvice = m_ctx.getPatch().isAdvice();
-        for (AnnotationNode ann : mn.visibleAnnotations) {
-            if (!ann.desc.startsWith(Patch.Internal.ANN_PREFIX)) continue;
-
-            var meta = AnnCache.getMeta(ann.desc, isAdvice);
-            if (meta == null || meta.targetAnnotation() == void.class) continue;
-
-            zbByTarget.put(Type.getDescriptor(meta.targetAnnotation()), ann);
-        }
-
-        boolean changed = false;
-        for (AnnotationNode ann : mn.visibleAnnotations) {
-            if (ann.desc.startsWith(Patch.Internal.ANN_PREFIX)) continue;
-
-            AnnotationNode zbAnn = zbByTarget.get(ann.desc);
-            if (zbAnn == null) continue;
-
-            changed |= applyMapBoolFromZbAnn(ann, zbAnn);
-        }
-
-        return changed;
+        return applyZbPairing(mn.visibleAnnotations, m_ctx.getPatch().isAdvice(), Resolver::applyMapBoolFromZbAnn);
     }
 
     private boolean resolveMethodParams(MethodNode mn) {
@@ -86,27 +65,53 @@ public class Resolver extends AbstractTransformer {
         List<AnnotationNode> plist = lists[pidx];
         if (Utils.isBlank(plist)) return false;
 
-        Map<String, AnnotationNode> annMap = new HashMap<>();
         boolean isAdvice = m_ctx.getPatch().isAdvice();
-        for (AnnotationNode ann : plist) {
-            if (ann.desc.startsWith(Patch.Internal.ANN_PREFIX)) { // scan only ZB annotations
-                var meta = AnnCache.getMeta(ann.desc, isAdvice);
-                if (meta == null || meta.targetAnnotation() == void.class) continue;
+        return applyZbPairing(plist, isAdvice, (bb, zb) -> resolveParamAnn(paramName, bb, zb));
+    }
 
-                annMap.put(Type.getDescriptor(meta.targetAnnotation()), ann);
-            }
-        }
+    /**
+     * For each {@code @Patch.*} with {@link AnnCache#getMeta}, pairs a same-list ByteBuddy annotation with the same target descriptor when present;
+     * otherwise runs {@code onPair} on the ZombieBuddy annotation in-place ({@code bb == zb}).
+     */
+    private static boolean applyZbPairing(List<AnnotationNode> list, boolean isAdvice, BiPredicate<AnnotationNode, AnnotationNode> onPair) {
+        if (Utils.isBlank(list)) return false;
 
+        Map<String, AnnotationNode> zbByTarget = zbAnnByTargetDesc(list, isAdvice);
+        if (zbByTarget.isEmpty()) return false;
+
+        HashSet<AnnotationNode> pairedZb = new HashSet<>();
         boolean changed = false;
-        for (AnnotationNode ann : plist) {
-            if (ann.desc.startsWith(Patch.Internal.ANN_PREFIX)) continue; // scan only non-ZB annotations
-            AnnotationNode zbAnn = annMap.get(ann.desc);
+
+        for (AnnotationNode ann : list) {
+            if (ann.desc.startsWith(Patch.Internal.ANN_PREFIX)) continue;
+
+            AnnotationNode zbAnn = zbByTarget.get(ann.desc);
             if (zbAnn == null) continue;
 
-            changed |= resolveParamAnn(paramName, ann, zbAnn);
+            pairedZb.add(zbAnn);
+            changed |= onPair.test(ann, zbAnn);
+        }
+
+        for (AnnotationNode zbAnn : zbByTarget.values()) {
+            if (!pairedZb.contains(zbAnn))
+                changed |= onPair.test(zbAnn, zbAnn);
         }
 
         return changed;
+    }
+
+    private static Map<String, AnnotationNode> zbAnnByTargetDesc(List<AnnotationNode> list, boolean isAdvice) {
+        Map<String, AnnotationNode> zbByTarget = new HashMap<>();
+        for (AnnotationNode ann : list) {
+            if (!ann.desc.startsWith(Patch.Internal.ANN_PREFIX)) continue;
+
+            var meta = AnnCache.getMeta(ann.desc, isAdvice);
+            if (meta == null || meta.targetAnnotation() == void.class) continue;
+
+            zbByTarget.put(Type.getDescriptor(meta.targetAnnotation()), ann);
+        }
+
+        return zbByTarget;
     }
 
     private boolean resolveParamAnn(String paramName, AnnotationNode bbAnn, AnnotationNode zbAnn) {
@@ -131,7 +136,7 @@ public class Resolver extends AbstractTransformer {
         return changed;
     }
 
-    /** Applies {@link Patch.Internal.MapBool} rules from the ZombieBuddy annotation type onto the paired ByteBuddy annotation node. */
+    /** Applies {@link Patch.Internal.MapBool} metadata from {@code zbAnn}'s type onto {@code bbAnn} (ByteBuddy copy when present, or the ZombieBuddy node in-place when {@code bbAnn == zbAnn}). */
     private static boolean applyMapBoolFromZbAnn(AnnotationNode bbAnn, AnnotationNode zbAnn) {
         var ai = AnnCache.get(zbAnn.desc);
         if (ai == null) return false;
@@ -146,7 +151,7 @@ public class Resolver extends AbstractTransformer {
     }
 
     private static boolean processMapBool(AnnotationNode bbAnn, String elemName, Patch.Internal.MapBool mapBool) {
-        Boolean bValue = getAnnElem(bbAnn, elemName, Boolean.class);
+        Boolean bValue = AnnElements.fromValues(bbAnn.values).getBoolean(elemName);
         if (bValue == null) return false;
 
         bbAnn.visit(elemName, mapBoolEncodedClassLiteral(mapBool, bValue));
@@ -172,8 +177,8 @@ public class Resolver extends AbstractTransformer {
         }
 
         while (flags.probeField()) {
-            List<?> values = getAnnElem(bbAnn, elemName, List.class);
-            if (Utils.isBlank(values)) break;
+            Object raw = els.get(elemName);
+            if (!(raw instanceof List<?> values) || Utils.isBlank(values)) break;
 
             if (values.size() == 1) {
                 // trivial case, just one value to fill in, no need to resolve, just convert String[] -> String
@@ -188,7 +193,7 @@ public class Resolver extends AbstractTransformer {
                 break;
             }
             var fields = td.getDeclaredFields();
-            for( var f : values) {
+            for (var f : values) {
                 if (!(f instanceof String fieldName)) continue;
 
                 var r = fields.filter(named(fieldName));
@@ -202,17 +207,5 @@ public class Resolver extends AbstractTransformer {
             break;
         }
         return changed;
-    }
-
-    private static <T> T getAnnElem(AnnotationNode ann, String name, Class<T> type) {
-        if (ann.values == null) return null;
-
-        for (int i = 0, n = ann.values.size(); i < n; i += 2) {
-            if (name.equals(ann.values.get(i))) {
-                Object val = ann.values.get(i + 1);
-                return type.isInstance(val) ? type.cast(val) : null;
-            }
-        }
-        return null;
     }
 }

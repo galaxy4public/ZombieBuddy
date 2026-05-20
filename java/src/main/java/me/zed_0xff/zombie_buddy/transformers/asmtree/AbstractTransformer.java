@@ -58,6 +58,15 @@ abstract class AbstractTransformer extends Transformer {
             return map;
         }
 
+        /** ASM runtime may store annotation booleans as {@link Integer} ({@code 0}/{@code 1}) instead of {@link Boolean}. */
+        public Boolean getBoolean(String name) {
+            Object val = get(name);
+            if (val instanceof Boolean b) return b;
+            if (val instanceof Integer j) return j != 0;
+
+            return null;
+        }
+
         public List<Object> toValues() {
             if (Utils.isBlank(this)) return List.of();
 
