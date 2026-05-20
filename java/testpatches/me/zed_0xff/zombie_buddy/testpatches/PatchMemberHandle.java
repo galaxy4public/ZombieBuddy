@@ -1,14 +1,15 @@
 package me.zed_0xff.zombie_buddy.testpatches;
 
 import java.lang.invoke.MethodHandle;
+
 import me.zed_0xff.zombie_buddy.Patch;
 import testjar.MemberHandleHelper;
 
-// verifies: @MemberHandle resolves a method by name+signature and makes it callable via MethodHandle
+// verifies: @MethodHandle resolves a method by name+signature and makes it callable via MethodHandle
 @Patch(className = "testjar.MemberHandleTarget", methodName = "doGreet")
 public class PatchMemberHandle {
     // targets MemberHandleHelper (a separate class, already loaded before the transform callback)
-    @Patch.MemberHandle(className = "testjar.MemberHandleHelper", returnType = String.class, parameterTypes = {String.class, String.class})
+    @Patch.MethodHandle(className = "testjar.MemberHandleHelper", returnType = String.class, paramTypes = {String.class, String.class})
     public static MethodHandle greet;
 
     @Patch.OnEnter

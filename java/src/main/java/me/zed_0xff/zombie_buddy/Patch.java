@@ -144,7 +144,7 @@ public @interface Patch {
      * }</pre>
      */
     @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.PARAMETER, ElementType.FIELD, ElementType.METHOD})
+    @Target(ElementType.PARAMETER)
     @Internal.Meta(targetAnnotation = Advice.FieldValue.class)
     public @interface Field {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
@@ -179,13 +179,6 @@ public @interface Patch {
         boolean optional() default false;
     }
 
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target(ElementType.METHOD)
-    public @interface Method {
-        @Internal.Flags(inferFromTargetName = true, probeMethod = true)
-        String[] value() default {};  // empty = infer from parameter name; multiple = try in order
-    }
-
     /**
      * Marks a nested stub class as a stand-in for an inaccessible type (e.g. a private inner class
      * of the target). At patch transpile time PatchEngine rewrites every bytecode reference to the
@@ -217,23 +210,23 @@ public @interface Patch {
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.Handle.html            - returns only MethodHandle, no VarHandle support
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldGetterHandle.html - respects field visibility
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldSetterHandle.html - --//--
-    @Deprecated(forRemoval = true) // use @Patch.MethodHandle and @Patch.VarHandle instead, which support both methods and fields in a single annotation
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.FIELD, ElementType.PARAMETER})
-    public @interface MemberHandle {
-        String[] value() default {};              // empty = infer from stub field name; multiple = try in order
-        String[] name() default {};               // alias for value(); specifying both is a compile error
-        String className() default "";            // empty = infer from enclosing @Patch.className(); mutually exclusive with owner()
-        Class<?> owner() default void.class;      // type-safe alternative to className(); mutually exclusive with className()
-        boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
-
-        // MethodHandle:
-        Class<?> returnType() default void.class;
-        Class<?>[] parameterTypes() default {};
-
-        // VarHandle:
-        Class<?> type() default void.class;
-    }
+    // @Deprecated(forRemoval = true) // use @Patch.MethodHandle and @Patch.VarHandle instead, which support both methods and fields in a single annotation
+    // @Retention(RetentionPolicy.RUNTIME)
+    // @Target({ElementType.FIELD, ElementType.PARAMETER})
+    // public @interface MemberHandle {
+    //     String[] value() default {};              // empty = infer from stub field name; multiple = try in order
+    //     String[] name() default {};               // alias for value(); specifying both is a compile error
+    //     String className() default "";            // empty = infer from enclosing @Patch.className(); mutually exclusive with owner()
+    //     Class<?> owner() default void.class;      // type-safe alternative to className(); mutually exclusive with className()
+    //     boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
+    //
+    //     // MethodHandle:
+    //     Class<?> returnType() default void.class;
+    //     Class<?>[] parameterTypes() default {};
+    //
+    //     // VarHandle:
+    //     Class<?> type() default void.class;
+    // }
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.PARAMETER})
@@ -262,44 +255,29 @@ public @interface Patch {
         Class<?> type();
     }
 
-    /**
-     * Binds a {@code Map<String, String>} parameter to the immutable field-name resolution map
-     * for the enclosing advice method.
-     *
-     * <p>Keys are parameter names (e.g. {@code "chunkGridWidth"}); values are the actual field
-     * names resolved on the target class (e.g. {@code "ChunkGridWidth"}).
-     * Only {@link Field} / {@link FieldRW} params with multiple candidate names or inferred names
-     * produce entries. The map is immutable.
-     *
-     * <pre>{@code
-     * @Patch.OnExit
-     * public static void exit(
-     *         @Patch.NameMap Map<String, String> names,
-     *         @Patch.FieldRW({"chunkGridWidth", "ChunkGridWidth"}) int chunkGridWidth) {
-     *     tbl.rawset(names.get("chunkGridWidth"), chunkGridWidth);
-     * }
-     * }</pre>
-     */
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target(ElementType.PARAMETER)
-    @Internal.Meta(targetAnnotation = Advice.Local.class, targetParamNames={"value"}, targetParamValues={NAMEMAP_LOCAL_NAME}, requireType = Map.class)
-    public @interface NameMap {}
-
-    /** Runtime registry for field-name resolution maps bound via {@code @Patch.NameMap} parameters.
-     *  Populated by PatchTransformer at instrumentation time; read by inlined advice bytecode. */
-    public final class NameStore {
-        private static final ConcurrentHashMap<String, Map<String, String>> store = new ConcurrentHashMap<>();
-
-        public static Map<String, String> get(String key) { return store.get(key); }
-        static void put(String key, Map<String, String> map) { if (map != null) store.put(key, map); }
-
-        private NameStore() {}
-    }
-
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.PARAMETER, ElementType.TYPE})
     public @interface Adapter {
-        Class<?> value() default void.class;    // void.class = infer from enclosing @Patch.className()
+        String className();
+
+        @Retention(RetentionPolicy.RUNTIME)
+        @Target(ElementType.FIELD)
+        public @interface Field {
+            @Internal.Flags(inferFromTargetName = true, probeField = true)
+            String[] value() default {};                 // field name(s): empty = infer from parameter name; multiple = try in order
+            @Internal.Flags(targetElement = "value")
+            String[] name() default {};                  // alias for value()
+            Class<?> declaringType() default void.class; // the class that declares the field; void.class = infer from target class
+            boolean readOnly() default true;
+            boolean optional() default false;
+        }
+
+        @Retention(RetentionPolicy.RUNTIME)
+        @Target(ElementType.METHOD)
+        public @interface Method {
+            @Internal.Flags(inferFromTargetName = true, probeMethod = true)
+            String[] value() default {};  // empty = infer from parameter name; multiple = try in order
+        }
     }
 
     public static final class Internal {
@@ -347,6 +325,17 @@ public @interface Patch {
             boolean probeField() default false;
             boolean probeMethod() default false;
         }
+    }
+
+    /** Runtime registry for field-name resolution maps bound via {@code @Patch.NameMap} parameters.
+     *  Populated by PatchTransformer at instrumentation time; read by inlined advice bytecode. */
+    public final class NameStore {
+        private static final ConcurrentHashMap<String, Map<String, String>> store = new ConcurrentHashMap<>();
+
+        public static Map<String, String> get(String key) { return store.get(key); }
+        static void put(String key, Map<String, String> map) { if (map != null) store.put(key, map); }
+
+        private NameStore() {}
     }
 
     /** Runtime registry for method handles bound via parameter-level {@code @Patch.MemberHandle}.

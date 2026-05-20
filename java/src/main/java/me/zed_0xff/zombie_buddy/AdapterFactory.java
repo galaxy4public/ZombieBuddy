@@ -113,7 +113,7 @@ public final class AdapterFactory {
             if (Modifier.isStatic(m.getModifiers())) continue;
 
             Patch.Field   fieldAnn  = m.getAnnotation(Patch.Field.class);
-            Patch.Method  methodAnn = m.getAnnotation(Patch.Method.class);
+            Patch.Adapter.Method  methodAnn = m.getAnnotation(Patch.Adapter.Method.class);
 
             if (fieldAnn != null) {
                 String[] names = fieldAnn.value().length > 0 ? fieldAnn.value() : new String[]{ m.getName() };

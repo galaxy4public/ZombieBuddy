@@ -1,13 +1,14 @@
 package me.zed_0xff.zombie_buddy.testpatches;
 
 import java.lang.invoke.MethodHandle;
+
 import me.zed_0xff.zombie_buddy.Patch;
 import testjar.MemberHandleHelper;
 
-// verifies: non-optional unresolvable @MemberHandle drops the entire patch class
+// verifies: non-optional unresolvable @MethodHandle drops the entire patch class
 @Patch(className = "testjar.MemberHandleTarget", methodName = "doSkipPatch")
 public class PatchMemberHandleSkip {
-    @Patch.MemberHandle(value = "noSuchMethod", className = "testjar.MemberHandleHelper", returnType = void.class, parameterTypes = {})
+    @Patch.MethodHandle(value = "noSuchMethod", className = "testjar.MemberHandleHelper", returnType = void.class, paramTypes = {})
     static MethodHandle missing;
 
     @Patch.OnEnter

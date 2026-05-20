@@ -1,13 +1,11 @@
 package me.zed_0xff.zombie_buddy;
 
 import java.io.IOException;
-import java.lang.instrument.Instrumentation;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -24,13 +22,13 @@ import net.bytebuddy.jar.asm.AnnotationVisitor;
 import net.bytebuddy.jar.asm.ClassReader;
 import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.ClassWriter;
-import net.bytebuddy.jar.asm.commons.ClassRemapper;
-import net.bytebuddy.jar.asm.commons.SimpleRemapper;
 import net.bytebuddy.jar.asm.FieldVisitor;
 import net.bytebuddy.jar.asm.Label;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 import net.bytebuddy.jar.asm.Type;
+import net.bytebuddy.jar.asm.commons.ClassRemapper;
+import net.bytebuddy.jar.asm.commons.SimpleRemapper;
 
 /**
  * Transforms patch classes by replacing Patch.* annotations with ByteBuddy equivalents.
@@ -170,7 +168,6 @@ final class PatchTransformer {
                             param.isAnnotationPresent(Patch.Field.class)        ||
                             param.isAnnotationPresent(Patch.FieldRW.class)      ||
                             param.isAnnotationPresent(Patch.Local.class)        ||
-                            param.isAnnotationPresent(Patch.MemberHandle.class) ||
                             param.isAnnotationPresent(Patch.SuperCall.class)    ||
                             param.isAnnotationPresent(Patch.SuperMethod.class)  ||
                             param.isAnnotationPresent(Patch.This.class)         ||
@@ -196,17 +193,17 @@ final class PatchTransformer {
 
             Map<String, IMemberHandle> memberHandles = new HashMap<>();
             for (java.lang.reflect.Field f : patchClass.getDeclaredFields()) {
-                Patch.MemberHandle ann = f.getAnnotation(Patch.MemberHandle.class);
-                if (ann == null) continue;
-                String tc   = ann.owner() != void.class ? ann.owner().getName()
-                            : ann.className().isEmpty()  ? defaultTargetCls
-                            : ann.className();
-                String[] cs = ann.value().length > 0 ? ann.value() : ann.name().length > 0 ? ann.name() : new String[]{ f.getName() };
-                IMemberHandle info = f.getType() == java.lang.invoke.VarHandle.class
-                    ? new VarHandleInfo(tc, cs, ann.optional(), ann.type())
-                    : new MemberHandleInfo(tc, cs, ann.optional(), ann.returnType(), ann.parameterTypes());
-                memberHandles.put(f.getName(), info);
-                needsTransformation = true;
+                // Patch.MemberHandle ann = f.getAnnotation(Patch.MemberHandle.class);
+                // if (ann == null) continue;
+                // String tc   = ann.owner() != void.class ? ann.owner().getName()
+                //             : ann.className().isEmpty()  ? defaultTargetCls
+                //             : ann.className();
+                // String[] cs = ann.value().length > 0 ? ann.value() : ann.name().length > 0 ? ann.name() : new String[]{ f.getName() };
+                // IMemberHandle info = f.getType() == java.lang.invoke.VarHandle.class
+                //     ? new VarHandleInfo(tc, cs, ann.optional(), ann.type())
+                //     : new MemberHandleInfo(tc, cs, ann.optional(), ann.returnType(), ann.parameterTypes());
+                // memberHandles.put(f.getName(), info);
+                // needsTransformation = true;
             }
 
             Logger.trace("class " + patchClass.getName() + ": needsTransformation=" + needsTransformation);
@@ -247,35 +244,35 @@ final class PatchTransformer {
                 int slot = isStaticM ? 0 : 1;
                 for (int pi = 0; pi < paramAnns.length; pi++) {
                     for (java.lang.annotation.Annotation a : paramAnns[pi]) {
-                        if (a instanceof Patch.NameMap) {
-                            String storeKey = patchClass.getName() + "#" + method.getName() + "#" + pi;
-                            paramNameMapSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
-                            nameMapKeyToMethod.put(storeKey, method.getName());
-                            continue;
-                        }
-                        if (!(a instanceof Patch.MemberHandle mh)) continue;
-                        boolean isVarHandleParam = method.getParameterTypes()[pi] == java.lang.invoke.VarHandle.class;
-                        String pName = (pNames != null && pi < pNames.length && pNames[pi] != null) ? pNames[pi] : null;
-                        String tc = mh.owner() != void.class  ? mh.owner().getName()
-                                  : !mh.className().isEmpty() ? mh.className()
-                                  : defaultTargetCls;
-
-                        String[] cs = mh.value().length > 0 ? mh.value()
-                                    : mh.name().length > 0  ? mh.name()
-                                    : pName != null         ? new String[]{pName}
-                                    : new String[]{};
-
-                        if (tc.isEmpty() || cs.length == 0) {
-                            Logger.error("@Patch.MemberHandle on param " + pi + " of " + method.getName() + " in " + patchClass.getName() +
-                                (tc.isEmpty() ? ": no target class" : ": no candidate names (specify value/name or compile with -g)"));
-                            if (!mh.optional()) hasUnresolvableParamHandle[0] = true;
-                            break;
-                        }
-                        String storeKey = patchClass.getName() + "#" + method.getName() + "#" + pi;
-                        paramAllHandleSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
-                        paramHandleInfos.put(storeKey, isVarHandleParam
-                            ? new VarHandleInfo(tc, cs, mh.optional(), mh.type())
-                            : new MemberHandleInfo(tc, cs, mh.optional(), mh.returnType(), mh.parameterTypes()));
+                        // if (a instanceof Patch.NameMap) {
+                        //     String storeKey = patchClass.getName() + "#" + method.getName() + "#" + pi;
+                        //     paramNameMapSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
+                        //     nameMapKeyToMethod.put(storeKey, method.getName());
+                        //     continue;
+                        // }
+                        // if (!(a instanceof Patch.MemberHandle mh)) continue;
+                        // boolean isVarHandleParam = method.getParameterTypes()[pi] == java.lang.invoke.VarHandle.class;
+                        // String pName = (pNames != null && pi < pNames.length && pNames[pi] != null) ? pNames[pi] : null;
+                        // String tc = mh.owner() != void.class  ? mh.owner().getName()
+                        //           : !mh.className().isEmpty() ? mh.className()
+                        //           : defaultTargetCls;
+                        //
+                        // String[] cs = mh.value().length > 0 ? mh.value()
+                        //             : mh.name().length > 0  ? mh.name()
+                        //             : pName != null         ? new String[]{pName}
+                        //             : new String[]{};
+                        //
+                        // if (tc.isEmpty() || cs.length == 0) {
+                        //     Logger.error("@Patch.MemberHandle on param " + pi + " of " + method.getName() + " in " + patchClass.getName() +
+                        //         (tc.isEmpty() ? ": no target class" : ": no candidate names (specify value/name or compile with -g)"));
+                        //     if (!mh.optional()) hasUnresolvableParamHandle[0] = true;
+                        //     break;
+                        // }
+                        // String storeKey = patchClass.getName() + "#" + method.getName() + "#" + pi;
+                        // paramAllHandleSlots.computeIfAbsent(mKey, k -> new HashMap<>()).put(slot, storeKey);
+                        // paramHandleInfos.put(storeKey, isVarHandleParam
+                        //     ? new VarHandleInfo(tc, cs, mh.optional(), mh.type())
+                        //     : new MemberHandleInfo(tc, cs, mh.optional(), mh.returnType(), mh.parameterTypes()));
                     }
                     if (pi < argTypes.length) slot += argTypes[pi].getSize();
                 }
@@ -367,29 +364,29 @@ final class PatchTransformer {
 
                         @Override
                         public AnnotationVisitor visitParameterAnnotation(int parameter, String descriptor, boolean visible) {
-                            if (Type.getDescriptor(Patch.MemberHandle.class).equals(descriptor) ||
-                                Type.getDescriptor(Patch.NameMap.class).equals(descriptor)) {
-                                // Compute the local variable slot for this parameter
-                                Type[] argTypes = Type.getArgumentTypes(mDesc);
-                                boolean isSt = (mAccess & Opcodes.ACC_STATIC) != 0;
-                                int s = isSt ? 0 : 1;
-                                for (int i = 0; i < parameter && i < argTypes.length; i++) s += argTypes[i].getSize();
-                                // Populate the appropriate slot map for use in visitVarInsn
-                                if (Type.getDescriptor(Patch.MemberHandle.class).equals(descriptor)) {
-                                    Map<Integer, String> slotMap = paramAllHandleSlots.get(mName + mDesc);
-                                    if (slotMap != null) { String key = slotMap.get(s); if (key != null) allHandleSlots.put(s, key); }
-                                } else {
-                                    Map<Integer, String> slotMap = paramNameMapSlots.get(mName + mDesc);
-                                    if (slotMap != null) { String key = slotMap.get(s); if (key != null) nameMapSlots.put(s, key); }
-                                }
-                                // Replace with @Advice.Local so ByteBuddy recognizes the parameter slot;
-                                // the actual value is provided at runtime by the ALOAD rewrite above.
-                                String localName = Type.getDescriptor(Patch.NameMap.class).equals(descriptor)
-                                    ? "__nm_param_" + parameter + "__" : "__mh_param_" + parameter + "__";
-                                AnnotationVisitor av = super.visitParameterAnnotation(parameter, Type.getDescriptor(Advice.Local.class), visible);
-                                if (av != null) { av.visit("value", localName); av.visitEnd(); }
-                                return null;
-                            }
+                            // if (Type.getDescriptor(Patch.MemberHandle.class).equals(descriptor) ||
+                            //     Type.getDescriptor(Patch.NameMap.class).equals(descriptor)) {
+                            //     // Compute the local variable slot for this parameter
+                            //     Type[] argTypes = Type.getArgumentTypes(mDesc);
+                            //     boolean isSt = (mAccess & Opcodes.ACC_STATIC) != 0;
+                            //     int s = isSt ? 0 : 1;
+                            //     for (int i = 0; i < parameter && i < argTypes.length; i++) s += argTypes[i].getSize();
+                            //     // Populate the appropriate slot map for use in visitVarInsn
+                            //     if (Type.getDescriptor(Patch.MemberHandle.class).equals(descriptor)) {
+                            //         Map<Integer, String> slotMap = paramAllHandleSlots.get(mName + mDesc);
+                            //         if (slotMap != null) { String key = slotMap.get(s); if (key != null) allHandleSlots.put(s, key); }
+                            //     } else {
+                            //         Map<Integer, String> slotMap = paramNameMapSlots.get(mName + mDesc);
+                            //         if (slotMap != null) { String key = slotMap.get(s); if (key != null) nameMapSlots.put(s, key); }
+                            //     }
+                            //     // Replace with @Advice.Local so ByteBuddy recognizes the parameter slot;
+                            //     // the actual value is provided at runtime by the ALOAD rewrite above.
+                            //     String localName = Type.getDescriptor(Patch.NameMap.class).equals(descriptor)
+                            //         ? "__nm_param_" + parameter + "__" : "__mh_param_" + parameter + "__";
+                            //     AnnotationVisitor av = super.visitParameterAnnotation(parameter, Type.getDescriptor(Advice.Local.class), visible);
+                            //     if (av != null) { av.visit("value", localName); av.visitEnd(); }
+                            //     return null;
+                            // }
                             AnnotationVisitor av = super.visitParameterAnnotation(parameter, rewriteAnnotationDescriptor(descriptor, isDelegation), visible);
                             boolean isField      = Type.getDescriptor(Patch.Field.class).equals(descriptor);
                             boolean isFieldRW    = Type.getDescriptor(Patch.FieldRW.class).equals(descriptor);

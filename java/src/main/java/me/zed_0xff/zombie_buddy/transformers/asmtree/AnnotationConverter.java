@@ -78,10 +78,8 @@ public class AnnotationConverter extends AbstractTransformer {
     private Object transformValue(Object value) {
         if (value == null) return null;
 
-        if (value.getClass().isArray()) {
-            int len = Array.getLength(value);
-            if (len == 1)
-                return Array.get(value, 0);
+        if (value.getClass().isArray() && Array.getLength(value) == 1) {
+            return Array.get(value, 0);
         }
 
         if (value instanceof List<?> list && list.size() == 1) {
