@@ -1,11 +1,11 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
-import me.zed_0xff.zombie_buddy.Logger;
-
-import net.bytebuddy.description.method.MethodDescription;
 import static net.bytebuddy.matcher.ElementMatchers.named;
 
 import java.io.IOException;
+
+import me.zed_0xff.zombie_buddy.Logger;
+import net.bytebuddy.description.method.MethodDescription;
 
 public abstract class AbstractTest {
     protected static byte[] getClassBytes(Class<?> cls) throws IOException {

@@ -16,9 +16,11 @@ import net.bytebuddy.pool.TypePool;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -121,7 +123,7 @@ public class AsmDump extends CLIUtil {
         )
     );
 
-    boolean validateAnnotation(TypeDescription td, Map<String, MethodDescription> methods, Map<String, Object> values, Map<String, Rule> rules) {
+    boolean validateAnnotation(TypeDescription td, Map<String, MethodDescription> methods, Map<String, Object> values, Map<String, Rule> rules, Set<String> unkMembers) {
         boolean valid = true;
         for (MethodDescription m : methods.values()) {
             String name = m.getName();
@@ -154,14 +156,15 @@ public class AsmDump extends CLIUtil {
         }
         for (var name : values.keySet()) {
             if (!methods.containsKey(name)) {
-                Logger.debug("unknown annotation member", name);
-                valid = false;
+                unkMembers.add(name);
+                // Logger.debug("unknown annotation member", name);
+                // valid = false;
             }
         }
         return valid;
     }
 
-    boolean validateAnnotation(String desc, Map<String, Object> values) {
+    boolean validateAnnotation(String desc, Map<String, Object> values, Set<String> unkMembers) {
         TypeDescription td = m_ctx.getTypeDesc(desc);
         if (td == null) {
             Logger.error("Annotation type not found: " + desc);
@@ -170,16 +173,19 @@ public class AsmDump extends CLIUtil {
 
         Map<String, MethodDescription> methods = _annMemberCache.computeIfAbsent(td.getName(), k -> getAnnotationMembers(td));
         Map<String, Rule> rules = _annotationRules.getOrDefault(desc, Map.of());
-        return validateAnnotation(td, methods, values, rules);
+        return validateAnnotation(td, methods, values, rules, unkMembers);
     }
 
     String formatAnnotation(String desc, Map<String, Object> values) {
         StringBuilder sb = new StringBuilder();
         sb.append(annotationName(desc));
 
+        Set<String> unkMembers = new HashSet<>();
+        boolean valid = desc.startsWith(Patch.Internal.ANN_PREFIX) || validateAnnotation(desc, values, unkMembers);
+        int rowColor = valid ? (desc.contains("bytebuddy") ? BB_ANN_COLOR : ANN_COLOR) : RED;
+
         if (!values.isEmpty()) {
             sb.append("(");
-
             if (values.size() == 1 && values.containsKey("value")) {
                 // special case for single "value" member to allow @Anno("foo") instead of @Anno(value="foo")
                 sb.append(formatValue(values.get("value")));
@@ -190,15 +196,17 @@ public class AsmDump extends CLIUtil {
                         sb.append(", ");
                     }
                     first = false;
-
-                    sb.append(e.getKey()).append("=").append(formatValue(e.getValue()));
+                    String formattedKV = e.getKey() + "=" + formatValue(e.getValue());
+                    if (unkMembers.contains(e.getKey())) {
+                        formattedKV = colorize(formattedKV, YELLOW, rowColor);
+                    }
+                    sb.append(formattedKV);
                 }
             }
             sb.append(")");
         }
 
-        boolean valid = desc.startsWith(Patch.Internal.ANN_PREFIX) || validateAnnotation(desc, values);
-        return colorize(sb.toString(), valid ? (desc.contains("bytebuddy") ? BB_ANN_COLOR : ANN_COLOR) : RED);
+        return colorize(sb.toString(), rowColor);
     }
 
     static String formatValue(Object v) {
@@ -382,6 +390,7 @@ public class AsmDump extends CLIUtil {
 
                         int nAnns = 0;
                         int nAnnotatedParams = 0;
+                        int maxAnnLen = 0;
                         CompactTable tbl = new CompactTable(4).setAlign(2, CompactTable.Align.RIGHT);
                         for (int i = 0; i < args.length; i++) {
                             List<String> anns = paramAnnotations.get(i).stream().map(s -> s.replace("$", ".")).toList();
@@ -391,12 +400,23 @@ public class AsmDump extends CLIUtil {
                             } 
                             Map<Boolean, List<String>> parts = anns.stream().collect(Collectors.partitioningBy(s -> s.contains("@Patch")));
                             String paramName = (i >= paramNames.length) ? ("arg" + i ) : paramNames[i];
-                            tbl.addRow(
-                                    String.join(" ", parts.get(true)),
-                                    String.join(" ", parts.get(false)),
-                                    simpleName(args[i].getDescriptor()),
-                                    paramName + ((i < args.length - 1) ? "," : "")
-                                    );
+                            if (
+                                    parts.get(true).size() == 1 &&
+                                    parts.get(false).size() == 1 &&
+                                    parts.get(true).get(0).length() > 50 &&
+                                    parts.get(false).get(0).length() > 50
+                            ) {
+                                tbl.addCompactRow( parts.get(true).get(0),  null, null, null );
+                                tbl.addCompactRow( parts.get(false).get(0), null, null, null );
+                                tbl.addRow( null, null, simpleName(args[i].getDescriptor()), paramName + ((i < args.length - 1) ? "," : "") );
+                            } else {
+                                tbl.addRow(
+                                        String.join(" ", parts.get(true)),
+                                        String.join(" ", parts.get(false)),
+                                        simpleName(args[i].getDescriptor()),
+                                        paramName + ((i < args.length - 1) ? "," : "")
+                                        );
+                            }
                         }
 
                         if (nAnns > 4 && nAnnotatedParams < nAnns){

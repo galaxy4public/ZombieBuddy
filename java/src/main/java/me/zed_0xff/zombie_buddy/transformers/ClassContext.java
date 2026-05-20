@@ -1,17 +1,8 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
-import me.zed_0xff.zombie_buddy.Logger;
-import me.zed_0xff.zombie_buddy.Patch;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-import org.objectweb.asm.Type;
-
-import net.bytebuddy.description.method.MethodDescription;
+import me.zed_0xff.zombie_buddy.Patch;
 import net.bytebuddy.description.type.TypeDescription;
 
 /** Per-class view into a shared {@link JarContext}. Prefer one instance per {@code className} while mutating that jar slice; cached {@link #getCurrentTypeDesc()} can drift if the same name is updated through another {@code ClassContext} sharing {@code jctx}. */
@@ -46,6 +37,7 @@ public class ClassContext {
     }
 
     public String className() { return m_className; }
+    public JarContext jarContext() { return m_jctx; }
 
     public void setClassBytes(byte[] classBytes) {
         m_jctx.setClassBytes(m_className, classBytes);

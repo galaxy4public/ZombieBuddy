@@ -1,18 +1,19 @@
 package me.zed_0xff.zombie_buddy.transformers.asmtree;
 
-import me.zed_0xff.zombie_buddy.transformers.AnnCache;
-import me.zed_0xff.zombie_buddy.Patch;
-import me.zed_0xff.zombie_buddy.Utils;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
+
+import me.zed_0xff.zombie_buddy.Patch;
+import me.zed_0xff.zombie_buddy.Patch.Internal.Meta;
+import me.zed_0xff.zombie_buddy.Utils;
+import me.zed_0xff.zombie_buddy.transformers.AnnCache;
+import me.zed_0xff.zombie_buddy.transformers.AnnCache.AnnInfo;
 
 /**
  * For each {@code @Patch.*} annotation that declares {@link Patch.Internal.Meta}, appends the matching target annotation
@@ -55,47 +56,51 @@ public class AnnotationConverter extends AbstractTransformer {
     }
 
     private boolean convertAnns(List<AnnotationNode> list) {
-        if (list == null || list.isEmpty()) return false;
+        if (Utils.isBlank(list)) return false;
 
         List<AnnotationNode> snapshot = List.copyOf(list);
         List<AnnotationNode> toAdd = new ArrayList<>();
         for (AnnotationNode ann : snapshot) {
-            Patch.Internal.Meta rule = AnnCache.getMeta(ann.desc, m_isAdvice);
-            if (rule == null) continue;
+            AnnInfo ai = AnnCache.get(ann.desc);
+            if (ai == null) continue;
 
-            String targetDesc = Type.getDescriptor(rule.targetAnnotation());
-            if (containsDesc(list, targetDesc)) continue;
-            if (containsDesc(toAdd, targetDesc)) continue;
+            var translated = translated(ann, ai);
+            if (translated == null) continue;
 
-            toAdd.add(translated(ann, rule));
+            toAdd.add(translated);
         }
         list.addAll(toAdd);
         return !toAdd.isEmpty();
     }
 
-    private static boolean containsDesc(List<AnnotationNode> list, String desc) {
-        for (AnnotationNode a : list) {
-            if (desc.equals(a.desc)) return true;
-        }
-        return false;
-    }
+    private AnnotationNode translated(AnnotationNode src, AnnInfo ai) {
+        Meta meta = ai.getMeta(m_isAdvice);
+        if (meta == null) return null;
 
-    private static AnnotationNode translated(AnnotationNode src, Patch.Internal.Meta meta) {
         AnnotationNode dst = new AnnotationNode(Type.getDescriptor(meta.targetAnnotation()));
-        if (src.values != null && !src.values.isEmpty()) {
-            List<Object> vals = new ArrayList<>(src.values);
-            applyTargetParams(vals, meta.targetParamNames(), meta.targetParamValues());
-            dst.values = vals;
+
+        AnnElements els = AnnElements.fromValues(src.values);
+        applyTargetParams(els, meta.targetParamNames(), meta.targetParamValues());
+
+        for (var elem : ai.td().getDeclaredMethods().asDefined()) {
+            var elemAnns = elem.getDeclaredAnnotations();
+            var flags_ = elemAnns.ofType(Patch.Internal.Flags.class);
+            if (flags_ == null) continue;
+
+            Patch.Internal.Flags flags = flags_.load();
+            if (!Utils.isBlank(flags.targetElement()) && els.containsKey(elem.getName())) {
+                els.put(flags.targetElement(), els.remove(elem.getName()));
+            }
         }
+        dst.values = els.toValues();
         return dst;
     }
 
-    private static void applyTargetParams(List<Object> vals, String[] names, String[] values) {
+    private static void applyTargetParams(AnnElements els, String[] names, String[] values) {
         if (Utils.isBlank(names) || Utils.isBlank(values)) return;
 
         for(int i = 0; i < names.length && i < values.length; i++) {
-            vals.add(names[i]);
-            vals.add(values[i]);
+            els.put(names[i], values[i]);
         }
     }
 }

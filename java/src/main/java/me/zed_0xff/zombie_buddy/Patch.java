@@ -149,8 +149,6 @@ public @interface Patch {
     public @interface Field {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
         String[] value() default {};    // field name(s): empty = infer from parameter name; multiple = try in order
-        @Internal.Alias("value")
-        String[] name() default {};     // alias for value(); specifying both is a compile error
         Class<?> declaringType() default void.class; // the class that declares the field; void.class = infer from target class
         boolean readOnly() default true;
         boolean optional() default false;
@@ -177,8 +175,6 @@ public @interface Patch {
     public @interface FieldRW {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
         String[] value() default {};  // empty = infer from parameter name; multiple = try in order
-        @Internal.Alias("value")
-        String[] name() default {};     // alias for value(); specifying both is a compile error
         Class<?> declaringType() default void.class; // the class that declares the field; void.class = infer from target class
         boolean optional() default false;
     }
@@ -221,7 +217,7 @@ public @interface Patch {
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.Handle.html            - returns only MethodHandle, no VarHandle support
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldGetterHandle.html - respects field visibility
     // https://javadoc.io/doc/net.bytebuddy/byte-buddy/1.18.8/net/bytebuddy/asm/Advice.FieldSetterHandle.html - --//--
-    // @Deprecated(forRemoval = true) // use @Patch.MethodHandle and @Patch.VarHandle instead, which support both methods and fields in a single annotation
+    @Deprecated(forRemoval = true) // use @Patch.MethodHandle and @Patch.VarHandle instead, which support both methods and fields in a single annotation
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.PARAMETER})
     public @interface MemberHandle {
@@ -245,29 +241,25 @@ public @interface Patch {
     public @interface MethodHandle {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
         String[] value() default {};              // empty = infer from stub field name; multiple = try in order
-        @Internal.Alias("value")
-        String[] name() default {};               // alias for value(); specifying both is a compile error
         String className() default "";            // empty = infer from enclosing @Patch.className(); mutually exclusive with owner()
         Class<?> owner() default void.class;      // type-safe alternative to className(); mutually exclusive with className()
         boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
 
-        Class<?> returnType() default void.class;
-        Class<?>[] parameterTypes() default {};
+        Class<?> returnType();
+        Class<?>[] paramTypes() default {};
     }
 
     @Retention(RetentionPolicy.RUNTIME)
     @Target({ElementType.FIELD, ElementType.PARAMETER})
     @Internal.Meta(targetAnnotation = Advice.Local.class, requireType = java.lang.invoke.VarHandle.class)
     public @interface VarHandle {
-        @Internal.Flags(inferFromTargetName = true, probeField = true)
-        String[] value() default {};              // empty = infer from stub field name; multiple = try in order
-        @Internal.Alias("value")
-        String[] name() default {};               // alias for value(); specifying both is a compile error
+        @Internal.Flags(targetElement = "value", inferFromTargetName = true, probeField = true)
+        String[] name() default {};               // empty = infer from stub field name; multiple = try in order
         String className() default "";            // empty = infer from enclosing @Patch.className(); mutually exclusive with owner()
         Class<?> owner() default void.class;      // type-safe alternative to className(); mutually exclusive with className()
         boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
 
-        Class<?> type() default void.class;
+        Class<?> type();
     }
 
     /**
@@ -341,15 +333,16 @@ public @interface Patch {
             Class<?> onFalse() default DropAnnParam.class;
         }
 
-        @Retention(RetentionPolicy.RUNTIME)
-        @Target(ElementType.METHOD)
-        public @interface Alias {
-            String value();
-        }
+        // @Retention(RetentionPolicy.RUNTIME)
+        // @Target(ElementType.METHOD)
+        // public @interface Alias {
+        //     String value();
+        // }
 
         @Retention(RetentionPolicy.RUNTIME)
         @Target(ElementType.METHOD)
         public @interface Flags {
+            String targetElement() default "";
             boolean inferFromTargetName() default false;
             boolean probeField() default false;
             boolean probeMethod() default false;

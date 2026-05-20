@@ -48,8 +48,23 @@ public class CompactTable {
         return this;
     }
 
-    record Row(String[] cols, int[] lens) {
+    class Row {
+        private final String[] cols;
+        private final int[]    lens;
+        private final boolean  bCompact;
+
+        Row(String[] cols, int[] lens, boolean bCompact) {
+            this.cols     = cols;
+            this.lens     = lens;
+            this.bCompact = bCompact;
+        }
+
+        String[] cols() { return cols; }
+        int[] lens()    { return lens; }
+
         String toString(int[] colWidths, Align[] aligns) {
+            if (bCompact) return toString(); // compact rows ignore column widths and alignments
+
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < cols.length - 1; i++) {
                 int w = colWidths[i];
@@ -73,7 +88,16 @@ public class CompactTable {
 
     public ArrayList<Row> rows() { return m_rows; }
 
+    // compact rows do not contribute to column width calculations
+    public void addCompactRow(String... cols) {
+        addRow(true, cols);
+    }
+
     public void addRow(String... cols) {
+        addRow(false, cols);
+    }
+
+    private Row addRow(boolean bCompact, String... cols) {
         if (cols.length != m_numCols) {
             Logger.warn("CompactTable.addRow: expected " + m_numCols + " cols, got " + cols.length);
             if (cols.length < m_numCols) {
@@ -88,11 +112,18 @@ public class CompactTable {
                 cols = merged;
             }
         }
+        for (int i = 0; i < cols.length; i++)
+            if (cols[i] == null) cols[i] = "";
+
         int[] lens = new int[cols.length - 1];
-        for (int i = 0; i < lens.length; i++) {
-            lens[i] = CLIUtil.uncolorize(cols[i]).lines().mapToInt(String::length).max().orElse(0);
+        if (!bCompact) {
+            for (int i = 0; i < lens.length; i++) {
+                lens[i] = CLIUtil.uncolorize(cols[i]).lines().mapToInt(String::length).max().orElse(0);
+            }
         }
-        m_rows.add(new Row(cols, lens));
+        var row = new Row(cols, lens, bCompact);
+        m_rows.add(row);
+        return row;
     }
 
     @Override
@@ -111,7 +142,12 @@ public class CompactTable {
             // (rows that are blank in all earlier cols are "sparse" and shouldn't inflate later cols)
             final int limit = j;
             java.util.stream.Stream<Row> filtered = j == 0 ? m_rows.stream()
-                : m_rows.stream().filter(r -> { for (int k = 0; k < limit; k++) if (!Utils.isBlank(r.cols()[k])) return true; return false; });
+                : m_rows.stream().filter(r -> {
+                    if (r.bCompact) return false; // compact rows don't contribute to width calculations
+                    for (int k = 0; k < limit; k++)
+                        if (!Utils.isBlank(r.cols()[k])) return true;
+                    return false;
+                });
             if (m_minDelta == 0 || m_rows.size() <= 1) {
                 colWidths[j] = filtered.mapToInt(r -> r.lens()[col]).max().orElse(0);
             } else {
@@ -132,8 +168,11 @@ public class CompactTable {
                 final int ci = i, ci1 = i + 1;
                 int minSurplus = m_rows.stream()
                     .filter(r -> {
-                        if (Utils.isBlank(r.cols()[ci]) || Utils.isBlank(r.cols()[ci1])) return false;
-                        for (int k = 0; k < n; k++) if (!Utils.isBlank(r.cols()[k]) && r.lens()[k] > colWidths[k]) return false;
+                        if (Utils.isBlank(r.cols()[ci]) || Utils.isBlank(r.cols()[ci1]))
+                            return false;
+                        for (int k = 0; k < n; k++)
+                            if (!Utils.isBlank(r.cols()[k]) && r.lens()[k] > colWidths[k])
+                                return false;
                         return true;
                     })
                     .mapToInt(r -> (colWidths[ci] - r.lens()[ci]) + (colWidths[ci1] - r.lens()[ci1]))
@@ -144,6 +183,8 @@ public class CompactTable {
         }
 
         return m_rows.stream().map(r -> {
+            if (r.bCompact) return r.toString();
+
             for (int j = 0; j < n; j++) {
                 if (!Utils.isBlank(r.cols()[j]) && r.lens()[j] > colWidths[j]) {
                     // render cols 0..j-1 normally, then trim trailing space for RIGHT-aligned overflow

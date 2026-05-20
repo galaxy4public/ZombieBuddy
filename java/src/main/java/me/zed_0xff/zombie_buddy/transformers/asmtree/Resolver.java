@@ -1,20 +1,21 @@
 package me.zed_0xff.zombie_buddy.transformers.asmtree;
 
-import me.zed_0xff.zombie_buddy.transformers.AnnCache;
-
-import me.zed_0xff.zombie_buddy.Logger;
-import me.zed_0xff.zombie_buddy.Patch;
-import me.zed_0xff.zombie_buddy.Utils;
+import static net.bytebuddy.matcher.ElementMatchers.named;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.objectweb.asm.tree.*;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AnnotationNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodNode;
 
+import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Patch;
+import me.zed_0xff.zombie_buddy.Utils;
+import me.zed_0xff.zombie_buddy.transformers.AnnCache;
 import net.bytebuddy.description.type.TypeDescription;
-import static net.bytebuddy.matcher.ElementMatchers.named;
 
 /*
  * Rewrites ByteBuddy-bound annotations paired with {@code @Patch.*}: {@link Patch.Internal.MapBool} maps booleans to {@code Class} literals ({@link org.objectweb.asm.Type}),
@@ -118,8 +119,12 @@ public class Resolver extends AbstractTransformer {
             var elemAnns = elem.getDeclaredAnnotations();
 
             var flags_ = elemAnns.ofType(Patch.Internal.Flags.class);
-            if (flags_ != null)
-                changed |= processFlags(bbAnn, elem.getName(), flags_.load(), paramName);
+            if (flags_ != null) {
+                Patch.Internal.Flags flags = flags_.load();
+                String targetElement = flags.targetElement();
+                if (Utils.isBlank(targetElement)) targetElement = elem.getName();
+                changed |= processFlags(bbAnn, targetElement, flags, paramName);
+            }
         }
 
         changed |= applyMapBoolFromZbAnn(bbAnn, zbAnn);
@@ -158,13 +163,12 @@ public class Resolver extends AbstractTransformer {
     }
 
     private boolean processFlags(AnnotationNode bbAnn, String elemName, Patch.Internal.Flags flags, String paramName) {
+        AnnElements els = AnnElements.fromValues(bbAnn.values);
         boolean changed = false;
 
-        if (flags.inferFromTargetName()) {
-            if (bbAnn.values == null) {
-                bbAnn.visit(elemName, paramName);
-                changed = true;
-            }
+        if (flags.inferFromTargetName() && Utils.isBlank(els.get(elemName))) {
+            bbAnn.visit(elemName, paramName);
+            changed = true;
         }
 
         while (flags.probeField()) {

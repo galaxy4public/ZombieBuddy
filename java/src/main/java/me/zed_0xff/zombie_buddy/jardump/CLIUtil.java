@@ -33,8 +33,12 @@ class CLIUtil {
     static boolean _color = true;
 
     public static String colorize(String s, int color) {
+        return colorize(s, color, RESET);
+    }
+
+    public static String colorize(String s, int color, int defaultColor) {
         if (!_color || Utils.isBlank(s)) return s;
-        return "\u001B[" + color + "m" + s + "\u001B[0m";
+        return "\u001B[" + color + "m" + s + "\u001B[" + defaultColor + "m";
     }
 
     public static String uncolorize(String s) {

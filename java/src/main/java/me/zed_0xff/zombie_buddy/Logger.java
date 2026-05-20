@@ -1,6 +1,8 @@
 package me.zed_0xff.zombie_buddy;
 
 import java.io.PrintStream;
+import java.lang.reflect.Array;
+import java.util.stream.IntStream;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -166,8 +168,12 @@ public class Logger {
         }
     }
 
-    public static String formatArray(Object[] arr) {
-        return Arrays.stream(arr).map(Logger::formatArg).collect(Collectors.joining(", ", "[", "]"));
+    public static String formatArray(Object arr) {
+        int len = Array.getLength(arr);
+
+        return IntStream.range(0, len)
+            .mapToObj(i -> formatArg(Array.get(arr, i)))
+            .collect(Collectors.joining(", ", "[", "]"));
     }
 
     /** Format an object for logging: strings quoted, arrays expanded, length capped. */
@@ -175,9 +181,9 @@ public class Logger {
     public static String formatArg(Object o) {
         if (o == null) return "null";
 
-        if (o instanceof Object[] arr)   return formatArray(arr);
-        if (o.getClass().isRecord())     return o.toString(); // records have a nice toString by default
-        if (LuaJSON.canSerialize(o))     return _luaJSON.toJson(o);
+        if (o.getClass().isArray())  return formatArray(o);
+        if (o.getClass().isRecord()) return o.toString(); // records have a nice toString by default
+        if (LuaJSON.canSerialize(o)) return _luaJSON.toJson(o);
 
         String s = o.toString();
         if (s.length() > MAX_ARG_LEN) s = s.substring(0, MAX_ARG_LEN - 3) + "...";

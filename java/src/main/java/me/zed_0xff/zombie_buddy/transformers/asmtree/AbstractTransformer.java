@@ -1,16 +1,22 @@
 package me.zed_0xff.zombie_buddy.transformers.asmtree;
 
-import me.zed_0xff.zombie_buddy.transformers.ClassContext;
-import me.zed_0xff.zombie_buddy.transformers.Transformer;
-import me.zed_0xff.zombie_buddy.Utils;
-
-import org.objectweb.asm.*;
-import org.objectweb.asm.tree.*;
-
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.LocalVariableNode;
+import org.objectweb.asm.tree.MethodNode;
+
+import me.zed_0xff.zombie_buddy.Utils;
+import me.zed_0xff.zombie_buddy.transformers.ClassContext;
+import me.zed_0xff.zombie_buddy.transformers.Transformer;
 
 abstract class AbstractTransformer extends Transformer {
     private static final HashMap<String, Map<Integer, String>> _methodArgNamesCache = new HashMap<>();
@@ -27,7 +33,6 @@ abstract class AbstractTransformer extends Transformer {
             LocalVariableNode lv = varsBySlot.get(slot);
             result.put(i, lv != null ? lv.name : "arg" + i);
         }
-
         return result;
     }
 
@@ -40,6 +45,26 @@ abstract class AbstractTransformer extends Transformer {
         String cacheKey = mn.name + "|" + mn.desc;
         _methodArgNamesCache.computeIfAbsent(cacheKey, k -> getArgNames(mn));
         return _methodArgNamesCache.get(cacheKey).get(pidx);
+    }
+
+    static class AnnElements extends HashMap<String, Object> {
+        public static AnnElements fromValues(List<Object> values) {
+            if (Utils.isBlank(values)) return new AnnElements();
+
+            AnnElements map = new AnnElements();
+            for (int i = 0; i < values.size(); i += 2) {
+                map.put((String)values.get(i), values.get(i + 1));
+            }
+            return map;
+        }
+
+        public List<Object> toValues() {
+            if (Utils.isBlank(this)) return List.of();
+
+            return this.entrySet().stream()
+                .flatMap(e -> Stream.of(e.getKey(), e.getValue()))
+                .toList();
+        }
     }
 
     // overridden by subclasses

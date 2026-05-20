@@ -16,7 +16,16 @@ public class AnnCache {
             Class<?> cls, 
             TypeDescription td, 
             Meta[] metas
-    ) {}
+    ) {
+        public Meta getMeta(boolean isAdvice) {
+            for (Meta meta : metas) {
+                if (meta.isAdvice() == isAdvice) {
+                    return meta;
+                }
+            }
+            return null;
+        }
+    }
 
     static {
         for (Class<?> c : Patch.class.getDeclaredClasses()) {
@@ -38,15 +47,7 @@ public class AnnCache {
     }
 
     public static Meta getMeta(String desc, boolean isAdvice) {
-        AnnInfo info = get(desc);
-        if (info == null) return null;
-
-        for (Meta meta : info.metas()) {
-            if (meta.isAdvice() == isAdvice) {
-                return meta;
-            }
-        }
-
-        return null;
+        AnnInfo ai = get(desc);
+        return (ai == null) ? null : ai.getMeta(isAdvice);
     }
 }

@@ -1,35 +1,32 @@
 package me.zed_0xff.zombie_buddy.jardump;
 
-import me.zed_0xff.zombie_buddy.Logger;
-import me.zed_0xff.zombie_buddy.Reflect;
-import me.zed_0xff.zombie_buddy.Utils;
-import me.zed_0xff.zombie_buddy.transformers.*;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Enumeration;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
-import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.dynamic.ClassFileLocator;
-import net.bytebuddy.pool.TypePool;
+import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Reflect;
+import me.zed_0xff.zombie_buddy.Utils;
+import me.zed_0xff.zombie_buddy.transformers.ClassContext;
+import me.zed_0xff.zombie_buddy.transformers.ConditionalTransformer;
+import me.zed_0xff.zombie_buddy.transformers.JarContext;
+import me.zed_0xff.zombie_buddy.transformers.Transformer;
 
 public class Main extends CLIUtil {
     static boolean _showHelp    = false;
