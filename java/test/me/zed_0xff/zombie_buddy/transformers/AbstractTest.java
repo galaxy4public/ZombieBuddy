@@ -5,6 +5,7 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
 import java.io.IOException;
 
 import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.jardump.AsmDump;
 import net.bytebuddy.description.method.MethodDescription;
 
 public abstract class AbstractTest {
@@ -33,6 +34,11 @@ public abstract class AbstractTest {
 
             Logger.warn("Multiple methods found. Returning first match for", name);
             return match.get(0);
+        }
+
+        public String dumpClass(byte[] bytes) {
+            AsmDump dumper = new AsmDump(jarContext());
+            return dumper.dump(bytes);
         }
     }
 }

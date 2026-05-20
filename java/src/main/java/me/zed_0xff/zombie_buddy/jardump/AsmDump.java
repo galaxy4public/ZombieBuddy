@@ -1,19 +1,5 @@
 package me.zed_0xff.zombie_buddy.jardump;
 
-import me.zed_0xff.zombie_buddy.transformers.*;
-import me.zed_0xff.zombie_buddy.transformers.bytebuddy.*;
-
-import me.zed_0xff.zombie_buddy.Logger;
-import me.zed_0xff.zombie_buddy.Patch;
-import me.zed_0xff.zombie_buddy.Utils;
-
-import net.bytebuddy.asm.Advice;
-import net.bytebuddy.description.method.MethodDescription;
-import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.jar.asm.*; // shaded org.objectweb.asm
-import net.bytebuddy.pool.TypePool;
-
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,6 +9,23 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+
+import me.zed_0xff.zombie_buddy.Logger;
+import me.zed_0xff.zombie_buddy.Patch;
+import me.zed_0xff.zombie_buddy.Utils;
+import me.zed_0xff.zombie_buddy.transformers.JarContext;
+import me.zed_0xff.zombie_buddy.transformers.bytebuddy.AbstractTransformer;
+import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.type.TypeDescription;
+// shaded org.objectweb.asm
+import net.bytebuddy.jar.asm.AnnotationVisitor;
+import net.bytebuddy.jar.asm.ClassReader;
+import net.bytebuddy.jar.asm.ClassVisitor;
+import net.bytebuddy.jar.asm.FieldVisitor;
+import net.bytebuddy.jar.asm.MethodVisitor;
+import net.bytebuddy.jar.asm.Opcodes;
+import net.bytebuddy.jar.asm.Type;
 
 public class AsmDump extends CLIUtil {
     private static final int ASM_API = Opcodes.ASM9;
@@ -401,10 +404,8 @@ public class AsmDump extends CLIUtil {
                             Map<Boolean, List<String>> parts = anns.stream().collect(Collectors.partitioningBy(s -> s.contains("@Patch")));
                             String paramName = (i >= paramNames.length) ? ("arg" + i ) : paramNames[i];
                             if (
-                                    parts.get(true).size() == 1 &&
-                                    parts.get(false).size() == 1 &&
-                                    parts.get(true).get(0).length() > 50 &&
-                                    parts.get(false).get(0).length() > 50
+                                    parts.get(true).size() == 1          && parts.get(false).size() == 1 &&
+                                    parts.get(true).get(0).length() > 50 && parts.get(false).get(0).length() > 50
                             ) {
                                 tbl.addCompactRow( parts.get(true).get(0),  null, null, null );
                                 tbl.addCompactRow( parts.get(false).get(0), null, null, null );
@@ -419,7 +420,7 @@ public class AsmDump extends CLIUtil {
                             }
                         }
 
-                        if (nAnns > 4 && nAnnotatedParams < nAnns){
+                        if (nAnns > 4 || args.length > 10) {
                             // multi-line if there are many annotations but not all params are annotated (to avoid too much clutter)
                             msb.append("\n");
                             msb.append(indent(tbl.toString()));

@@ -148,7 +148,7 @@ public @interface Patch {
     @Internal.Meta(targetAnnotation = Advice.FieldValue.class)
     public @interface Field {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
-        String[] value() default {};    // field name(s): empty = infer from parameter name; multiple = try in order
+        String[] value() default {};                 // field name(s): empty = infer from parameter name; multiple = try in order
         Class<?> declaringType() default void.class; // the class that declares the field; void.class = infer from target class
         boolean readOnly() default true;
         boolean optional() default false;
@@ -240,9 +240,9 @@ public @interface Patch {
     @Internal.Meta(targetAnnotation = Advice.Handle.class, requireType = java.lang.invoke.MethodHandle.class)
     public @interface MethodHandle {
         @Internal.Flags(inferFromTargetName = true, probeField = true)
-        String[] value() default {};              // empty = infer from stub field name; multiple = try in order
+        String[] value()   default {};            // empty = infer from stub field name; multiple = try in order
         String className() default "";            // empty = infer from enclosing @Patch.className(); mutually exclusive with owner()
-        Class<?> owner() default void.class;      // type-safe alternative to className(); mutually exclusive with className()
+        Class<?> owner()   default void.class;    // type-safe alternative to className(); mutually exclusive with className()
         boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
 
         Class<?> returnType();
@@ -254,9 +254,9 @@ public @interface Patch {
     @Internal.Meta(targetAnnotation = Advice.Local.class, requireType = java.lang.invoke.VarHandle.class)
     public @interface VarHandle {
         @Internal.Flags(targetElement = "value", inferFromTargetName = true, probeField = true)
-        String[] name() default {};               // empty = infer from stub field name; multiple = try in order
+        String[] name()    default {};            // empty = infer from stub field name; multiple = try in order
         String className() default "";            // empty = infer from enclosing @Patch.className(); mutually exclusive with owner()
-        Class<?> owner() default void.class;      // type-safe alternative to className(); mutually exclusive with className()
+        Class<?> owner()   default void.class;    // type-safe alternative to className(); mutually exclusive with className()
         boolean optional() default false;         // false = drop patch class on missing field; true = leave field as null
 
         Class<?> type();

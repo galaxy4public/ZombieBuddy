@@ -2,12 +2,13 @@ package me.zed_0xff.zombie_buddy;
 
 import java.io.PrintStream;
 import java.lang.reflect.Array;
-import java.util.stream.IntStream;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Logger {
     private static final String ZB                = "[ZB]";
@@ -55,10 +56,10 @@ public class Logger {
         private int m_maxLineLen;
 
         Instance(int level, int maxLineLen, String... tags) {
-            m_level  = level;
+            m_level      = level;
             m_maxLineLen = maxLineLen;
-            m_tags   = tags;
-            m_tagStr = tags.length == 0 ? "" : Arrays.stream(tags).map(t -> "[" + t + "]").collect(Collectors.joining(" ", "", " "));
+            m_tags       = tags;
+            m_tagStr     = tags.length == 0 ? "" : Arrays.stream(tags).map(t -> "[" + t + "]").collect(Collectors.joining(" ", "", " "));
         }
 
         public void setLevel(int level)  { this.m_level = level; }
@@ -176,12 +177,19 @@ public class Logger {
             .collect(Collectors.joining(", ", "[", "]"));
     }
 
+    public static String formatList(List<?> list) {
+        return list.stream()
+            .map(Logger::formatArg)
+            .collect(Collectors.joining(", ", "[", "]"));
+    }
+
     /** Format an object for logging: strings quoted, arrays expanded, length capped. */
     private static final LuaJSON _luaJSON = new LuaJSON(5, MAX_ARG_LEN, LuaJSON.Flags.STRIP_QUOTES, LuaJSON.Flags.ADD_SPACE_AFTER_COMMA);
     public static String formatArg(Object o) {
         if (o == null) return "null";
 
         if (o.getClass().isArray())  return formatArray(o);
+        if (o instanceof List<?> l)  return formatList(l);
         if (o.getClass().isRecord()) return o.toString(); // records have a nice toString by default
         if (LuaJSON.canSerialize(o)) return _luaJSON.toJson(o);
 

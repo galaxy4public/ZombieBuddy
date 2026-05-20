@@ -1,5 +1,6 @@
 package me.zed_0xff.zombie_buddy.transformers.asmtree;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -73,6 +74,22 @@ public class AnnotationConverter extends AbstractTransformer {
         return !toAdd.isEmpty();
     }
 
+    // {"name"} => "name"
+    private Object transformValue(Object value) {
+        if (value == null) return null;
+
+        if (value.getClass().isArray()) {
+            int len = Array.getLength(value);
+            if (len == 1)
+                return Array.get(value, 0);
+        }
+
+        if (value instanceof List<?> list && list.size() == 1) {
+            return list.get(0);
+        }
+        return value;
+    }
+
     private AnnotationNode translated(AnnotationNode src, AnnInfo ai) {
         Meta meta = ai.getMeta(m_isAdvice);
         if (meta == null) return null;
@@ -80,6 +97,10 @@ public class AnnotationConverter extends AbstractTransformer {
         AnnotationNode dst = new AnnotationNode(Type.getDescriptor(meta.targetAnnotation()));
 
         AnnElements els = AnnElements.fromValues(src.values);
+        for (var e : els.entrySet()) {
+            e.setValue(transformValue(e.getValue()));
+        }
+
         applyTargetParams(els, meta.targetParamNames(), meta.targetParamValues());
 
         for (var elem : ai.td().getDeclaredMethods().asDefined()) {
