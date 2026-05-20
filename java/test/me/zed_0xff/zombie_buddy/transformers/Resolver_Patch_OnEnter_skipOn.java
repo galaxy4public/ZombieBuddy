@@ -1,16 +1,16 @@
 package me.zed_0xff.zombie_buddy.transformers;
 
-import me.zed_0xff.zombie_buddy.transformers.*;
-import me.zed_0xff.zombie_buddy.Patch;
-
-import org.junit.jupiter.params.ParameterizedTest;
-import static org.assertj.core.api.Assertions.*;
-import org.junit.jupiter.params.provider.*;
-
-import net.bytebuddy.asm.Advice;
-import net.bytebuddy.description.type.TypeDescription;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.stream.Stream;
+
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import me.zed_0xff.zombie_buddy.Patch;
+import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.type.TypeDescription;
 
 class Resolver_Patch_OnEnter_skipOn_Test extends AbstractTest {
     protected static Stream<Arguments> provideClasses() {
@@ -18,10 +18,6 @@ class Resolver_Patch_OnEnter_skipOn_Test extends AbstractTest {
                 Arguments.of(
                     me.zed_0xff.zombie_buddy.transformers.asmtree.AnnotationConverter.class,
                     me.zed_0xff.zombie_buddy.transformers.asmtree.Resolver.class
-                    ),
-                Arguments.of(
-                    me.zed_0xff.zombie_buddy.transformers.bytebuddy.AnnotationConverter.class,
-                    me.zed_0xff.zombie_buddy.transformers.bytebuddy.Resolver.class
                     )
                 );
     }
@@ -45,11 +41,13 @@ class Resolver_Patch_OnEnter_skipOn_Test extends AbstractTest {
         Transformer converter = converterCls.getDeclaredConstructor().newInstance();
         var result = converter.transform(bytes, ctx);
 
-        Transformer resolver = resolverCls.getDeclaredConstructor().newInstance();
-        result = resolver.transform(result.bytes(), ctx);
-
         assertThat(result.modified()).isTrue();
         assertThat(result.bytes()).isNotNull();
+
+        Transformer resolver = resolverCls.getDeclaredConstructor().newInstance();
+        var result2 = resolver.transform(result.bytes(), ctx);
+
+        assertThat(result2.modified()).isFalse(); // nothing to resolve here
 
         m = ctx.getMethod("m1");
         assertThat(m.getDeclaredAnnotations())

@@ -80,10 +80,10 @@ abstract class AbstractTransformer extends Transformer {
             cr.accept(cn, 0);
 
             if (transformNode(cn)) {
-                m_ctx.setChanged();
+                setModified();
             }
 
-            if (!m_ctx.isChanged()) {
+            if (!isModified()) {
                 return NOOP_RESULT;
             }
 

@@ -6,8 +6,16 @@ public abstract class Transformer {
     public record Result(byte[] bytes, boolean modified) {}
 
     protected ClassContext m_ctx;
+    private boolean m_modified;    // means THIS transformer has made changes, not the whole chain as m_ctx.setChanged does
 
-    protected void setChanged() { m_ctx.setChanged(); }
+    protected void setModified() {
+        m_modified = true;
+        m_ctx.setChanged();
+    }
+
+    protected boolean isModified() {
+        return m_modified;
+    }
 
     public abstract Result transform(byte[] classBytes, ClassContext ctx);
 }

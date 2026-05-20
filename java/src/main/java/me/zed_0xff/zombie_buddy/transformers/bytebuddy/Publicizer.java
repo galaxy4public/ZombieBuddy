@@ -1,6 +1,10 @@
 package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
 
-import net.bytebuddy.jar.asm.*;
+import net.bytebuddy.jar.asm.ClassVisitor;
+import net.bytebuddy.jar.asm.ClassWriter;
+import net.bytebuddy.jar.asm.FieldVisitor;
+import net.bytebuddy.jar.asm.MethodVisitor;
+import net.bytebuddy.jar.asm.Opcodes;
 
 /*
  * makes all fields and methods public
@@ -20,7 +24,7 @@ public class Publicizer extends AbstractTransformer {
         @Override
         public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
             int newAccess = forcePublic(access);
-            if (newAccess != access) setChanged();
+            if (newAccess != access) setModified();
             return super.visitField(newAccess, name, descriptor, signature, value);
         }
 
@@ -29,7 +33,7 @@ public class Publicizer extends AbstractTransformer {
             if (!name.equals("<clinit>")) {
                 int newAccess = forcePublic(access);
                 if (newAccess != access) {
-                    setChanged();
+                    setModified();
                     access = newAccess;
                 }
             }

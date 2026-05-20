@@ -1,13 +1,11 @@
 package me.zed_0xff.zombie_buddy.transformers.bytebuddy;
 
-import me.zed_0xff.zombie_buddy.Logger;
-import me.zed_0xff.zombie_buddy.Utils;
-
-import java.util.function.BiFunction;
 import java.util.HashMap;
-import java.util.List;
+import java.util.function.BiFunction;
 
-import net.bytebuddy.jar.asm.*;
+import me.zed_0xff.zombie_buddy.Utils;
+import net.bytebuddy.jar.asm.AnnotationVisitor;
+import net.bytebuddy.jar.asm.Type;
 
 /*
  * converts ZombieBuddy annotations to ByteBuddy's, driven by @Patch.Internal.Meta metadata
@@ -146,7 +144,7 @@ public class AnnotationConverter extends AbstractPatchAnnotationTransformer {
 
     @Override
     protected AnnotationVisitor visitMappedParamAnnotation(AnnInfo ai, boolean visible, TriFunction<Integer, String, Boolean, AnnotationVisitor> visitor, int pidx, String paramName) {
-        setChanged();
+        setModified();
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(pidx, ai.descriptor(), visible) : null;
 
         var meta = ai.metas()[0]; // FIXME: handle isAdvice flag and multiple metas
@@ -157,7 +155,7 @@ public class AnnotationConverter extends AbstractPatchAnnotationTransformer {
 
     @Override
     protected AnnotationVisitor visitMappedAnnotation(AnnInfo ai, boolean visible, BiFunction<String, Boolean, AnnotationVisitor> visitor) {
-        setChanged();
+        setModified();
         AnnotationVisitor src = bKeepOriginalAnnotations ? visitor.apply(ai.descriptor(), visible) : null;
 
         var meta = ai.metas()[0]; // FIXME: handle isAdvice flag and multiple metas
